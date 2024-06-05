@@ -10,8 +10,8 @@ rp_s = scpi.scpi(IP)
 print('Connected to ' + IP)
 
 wave_form = 'sine'
-freq = 1000000
-ampl = 1
+freq = 200
+ampl = 0.9
 
 # Reset Generation and Acquisition
 rp_s.tx_txt('GEN:RST')
@@ -19,7 +19,7 @@ rp_s.tx_txt('ACQ:RST')
 
 ##### Generation #####
 # Function for configuring Source
-rp_s.sour_set(1, wave_form, ampl, freq, burst=True, ncyc=3)
+rp_s.sour_set(1, wave_form, ampl, freq, burst=False, ncyc=10)
 
 ##### Acqusition #####
 # Function for configuring Acquisition
@@ -47,7 +47,9 @@ while 1:
 
 # Read data and plot
 # function for Data Acquisition
-data = rp_s.acq_data(1, convert= True)
+data = rp_s.acq_data(1, convert=True)
 
-plt.plot(data)
+plt.plot(10*data)
+plt.ylabel('Amplitude [V]')
+plt.xlabel('Samples')
 plt.show()
