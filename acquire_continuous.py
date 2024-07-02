@@ -9,7 +9,7 @@ IP = 'rp-f0c04a.local'
 rp_s = scpi.scpi(IP)
 print('Connected to ' + IP)
 
-wave_form = 'sine'
+wave_form = "SINE"
 freq = 100
 ampl = 0.5
 
@@ -19,19 +19,20 @@ rp_s.tx_txt('ACQ:RST')
 
 ##### Generation #####
 # Function for configuring Source
-rp_s.sour_set(1, wave_form, ampl, freq, burst=False, ncyc=10)
+rp_s.sour_set(1, wave_form, ampl, freq, burst=False)
+
+# Enable output
+rp_s.tx_txt('OUTPUT1:STATE ON')
+rp_s.tx_txt('SOUR1:TRig:INT')
 
 ##### Acqusition #####
 # Function for configuring Acquisition
-rp_s.acq_set(dec=1, trig_lvl=0, trig_delay=0)
+rp_s.acq_set(dec=1)
 
 rp_s.tx_txt('ACQ:START')
 time.sleep(1)
 rp_s.tx_txt('ACQ:TRig AWG_PE')
-rp_s.tx_txt('OUTPUT1:STATE ON')
 time.sleep(1)
-
-rp_s.tx_txt('SOUR1:TRig:INT')
 
 # Wait for trigger
 while 1:
@@ -47,7 +48,7 @@ while 1:
 
 # Read data and plot
 # function for Data Acquisition
-data = rp_s.acq_data(1, convert=True)
+data = rp_s.acq_data(chan=1, convert=True)
 
 plt.plot(10*data)
 plt.ylabel('Amplitude [V]')
