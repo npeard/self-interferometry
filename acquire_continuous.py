@@ -4,6 +4,7 @@ import sys
 import time
 import matplotlib.pyplot as plt
 import redpitaya_scpi as scpi
+import numpy as np
 
 IP = 'rp-f0c04a.local'
 rp_s = scpi.scpi(IP)
@@ -27,8 +28,7 @@ rp_s.tx_txt('SOUR1:TRig:INT')
 
 ##### Acqusition #####
 # Function for configuring Acquisition
-rp_s.acq_set(dec=1)
-
+rp_s.acq_set(dec=32, trig_delay=0)
 rp_s.tx_txt('ACQ:START')
 time.sleep(1)
 rp_s.tx_txt('ACQ:TRig AWG_PE')
@@ -50,7 +50,7 @@ while 1:
 # function for Data Acquisition
 data = rp_s.acq_data(chan=1, convert=True)
 
-plt.plot(10*data)
+plt.plot(data)
 plt.ylabel('Amplitude [V]')
 plt.xlabel('Samples')
 plt.show()
