@@ -49,7 +49,7 @@ while 1:
 # function for Data Acquisition
 data = rp_s.acq_data(1, convert=True)
 
-plt.plot(10*data)
+plt.plot(data)
 plt.ylabel('Amplitude [V]')
 plt.xlabel('Samples')
 plt.show()
