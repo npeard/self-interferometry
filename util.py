@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.fftpack import fft, ifft, fftfreq
+import h5py
 
 '''
 Generates a random waveform within the given frequency range of a given length. 
@@ -34,21 +35,41 @@ def linear_convert(data, new_min=-1, new_max=1):
     new_range = new_max - new_min
     return new_min + new_range * (data - old_min) / old_range
 
-f0 = 257.1722062654443
-Q = 15.680894756413974
-k = 32.638601262518705
-c = -3.219944358492212
+def write_data(file_path, entries):
+    '''Add data to a given dataset in 'file'. Creates dataset if it doesn't exist; otherwise,
+    appends. 
+
+    Keyword arguments: 
+            file_path (string) - the name of the output HDF5 file to which to append data
+            entries (dict) - dictionary of column name & corresponding data 
+    '''
+    with h5py.File(file_path, 'a') as f:
+        for col_name, col_data in entries.items():
+            if col_name in f.keys():
+                f[col_name].resize((f[col_name].shape[0] + 1), axis=0)
+                new_data = np.expand_dims(col_data, axis=0)
+                f[col_name][-1:] = new_data
+            else:
+                f.create_dataset(col_name,
+                    data=np.expand_dims(col_data, axis=0),
+                    maxshape=(None, col_data.shape[0]), 
+                    chunks=True)
+
+# Constants from calibration_rp using RPRPData.csv
+f0 = 257.20857316296724
+Q = 15.804110908084784
+k = 33.42493417407945
+c = -3.208233068626455
 
 '''
 Calculates the expected displacement of the speaker at an inputted drive amplitude 'ampl' 
 for a given frequency 'f', based on the calibration fit at 0.2Vpp. 
 
-@param f: optimal range 20Hz-1kHz
-@param ampl: optimal range 0-0.6V 
+@param f: frequencies at which to calculate expected displacement
 @return: expected displacement in microns 
 '''
-def A(f, ampl):
-    return ampl * (k * f0**2) / np.sqrt((f0**2 - f**2)**2 + f0**2*f**2/Q**2)
+def A(f):
+    return (k * f0**2) / np.sqrt((f0**2 - f**2)**2 + f0**2*f**2/Q**2)
 
 '''
 Calculates the phase delay between the speaker voltage waveform and the photodiode response
@@ -64,14 +85,31 @@ def phase(f):
 Calculates the corresponding displacement waveform based on the given voltage waveform
 using calibration. 
 '''
-def displacement_waveform(speaker_data, sample_rate, ampl, right=True):
-    fourier_signal = fft(speaker_data)
+def displacement_waveform(speaker_data, sample_rate):
+    speaker_spectrum = fft(speaker_data)
     n = speaker_data.size
     sample_spacing = 1/sample_rate 
     freq = fftfreq(n, d=sample_spacing) # units: cycles/s = Hz
     
     # Multiply signal by transfer func in freq domain, then return to time domain
-    converted_signal = fourier_signal * A(freq, ampl) * np.where(freq < 0, np.exp(-1j*phase(-freq)), np.exp(1j*phase(freq)))
+    converted_signal = speaker_spectrum * A(freq) * np.where(freq < 0, np.exp(-1j*phase(-freq)), np.exp(1j*phase(freq)))
     y = np.real(ifft(converted_signal))
 
     return y, converted_signal, freq
+
+'''
+Calculates the corresponding velocity waveform based on the given voltage waveform
+using calibration. 
+'''
+def velocity_waveform(speaker_data, sample_rate):
+    speaker_spectrum = fft(speaker_data)
+    n = speaker_data.size
+    sample_spacing = 1/sample_rate 
+    freq = fftfreq(n, d=sample_spacing) # units: cycles/s = Hz
+    
+    # Multiply signal by transfer func in freq domain, then return to time domain
+    converted_signal = 1j*freq * speaker_spectrum * A(freq) * np.where(freq < 0, np.exp(-1j*phase(-freq)), np.exp(1j*phase(freq)))
+    v = np.real(ifft(converted_signal))
+#     y = np.fft.fftshift(y)
+
+    return v, converted_signal, freq
