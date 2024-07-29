@@ -14,14 +14,16 @@ IP = 'rp-f0c04a.local'
 rp_s = scpi.scpi(IP)
 print('Connected to ' + IP)
 
-'''
-Runs one shot of driving the speaker with a waveform and collecting the relevant data. 
-
-@param store_data: whether to save time, measured speaker & PD voltage, 
-                    and expected speaker velocity data to h5py
-@param plot_data: whether to plot data after acquisition 
-'''
 def run_one_shot(start_freq=1, end_freq=1000, decimation=8192, store_data=False, plot_data=False):
+    """Runs one shot of driving the speaker with a waveform and collecting the relevant data. 
+
+    Args:
+        start_freq (int, optional): the lower bound of the valid frequency range. Defaults to 1.
+        end_freq (int, optional): the upper bound of the valid frequency range. Defaults to 1000.
+        decimation (int, optional): Decimation that determines sample rate, should be power of 2. Defaults to 8192.
+        store_data (bool, optional): Whether to store data in h5py file. Defaults to False.
+        plot_data (bool, optional): Whether to plot data after acquisition. Defaults to False.
+    """
     ##### Create Waveform #####
 
     N = 16384 # Number of samples in buffer
@@ -129,6 +131,6 @@ def run_one_shot(start_freq=1, end_freq=1000, decimation=8192, store_data=False,
     rp_s.tx_txt('ACQ:RST')
 
 
-num_shots = 1e3
+num_shots = 1
 for i in range(num_shots):
-    run_one_shot(store_data=False, plot_data=False)
+    run_one_shot(store_data=False, plot_data=True)
