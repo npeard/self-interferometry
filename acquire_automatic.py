@@ -30,7 +30,7 @@ def run_one_shot(start_freq=1, end_freq=1000, decimation=8192, store_data=False,
     burst_time = N / smpl_rate
 
     wave_form = 'ARBITRARY'
-    freq =  1 / burst_time
+    freq = 1 / burst_time
     ampl = 0.1 # good range 0-0.6V
 
     t, y = util.bounded_frequency_waveform(start_freq, end_freq, length=N, sample_rate=smpl_rate)
@@ -77,7 +77,8 @@ def run_one_shot(start_freq=1, end_freq=1000, decimation=8192, store_data=False,
     pd_data = np.array(rp_s.acq_data(chan=1, convert=True)) # Volts
     speaker_data = np.array(rp_s.acq_data(chan=2, convert=True)) # Volts
     velocity_data, converted_signal, freq = util.velocity_waveform(speaker_data, smpl_rate)
-    y_vel, _, _ = util.velocity_waveform(ampl*y, smpl_rate)
+    displ_data, _, _ = util.displacement_waveform(speaker_data, smpl_rate)
+    y_vel, y_converted, _ = util.velocity_waveform(ampl*y, smpl_rate)
     time_data = np.linspace(0, N-1, num=N) / smpl_rate
 
     if plot_data:
@@ -92,6 +93,8 @@ def run_one_shot(start_freq=1, end_freq=1000, decimation=8192, store_data=False,
 
         ax[1].plot(freq, np.abs(fft(speaker_data)), color='black', label='Observed Drive')
         ax[1].plot(freq, np.abs(converted_signal), color='green', label='Expected Observed Vel')
+        ax[1].plot(freq, np.abs(fft(ampl*y)), color='blue', label='Expected Drive')
+        ax[1].plot(freq, np.abs(y_converted), color='orange', label='Expected Ideal Vel')
         ax[1].loglog()
         ax[1].set_xlabel('Frequency (Hz)')
         ax[1].set_ylabel('$|\^{V}|$')
@@ -99,7 +102,7 @@ def run_one_shot(start_freq=1, end_freq=1000, decimation=8192, store_data=False,
 
         ax[2].plot(time_data, velocity_data, color='black', label='Observed Drive')
         ax[2].plot(time_data, y_vel, label='Drive Output')
-        ax[2].set_ylabel('Expected Velocity (Microns/s)')
+        ax[2].set_ylabel('Expected Vel (Microns/s)')
         ax[2].set_xlabel('Time (s)')
         ax[2].legend()
         plt.tight_layout()
@@ -115,7 +118,8 @@ def run_one_shot(start_freq=1, end_freq=1000, decimation=8192, store_data=False,
                 'Time (s)': time_data, 
                 'Speaker (V)': speaker_data,
                 'Speaker (Microns/s)': velocity_data,
-                'PD (V)': pd_data
+                'PD (V)': pd_data,
+                'Speaker (Microns)': displ_data
                 }
         
         util.write_data(file_path, entries)
@@ -125,6 +129,6 @@ def run_one_shot(start_freq=1, end_freq=1000, decimation=8192, store_data=False,
     rp_s.tx_txt('ACQ:RST')
 
 
-num_shots = 1
+num_shots = 1e3
 for i in range(num_shots):
-    run_one_shot(5, 6, plot_data=True)
+    run_one_shot(store_data=False, plot_data=False)
