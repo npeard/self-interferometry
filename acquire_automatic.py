@@ -64,10 +64,8 @@ def run_one_shot(start_freq=1, end_freq=1000, decimation=8192, store_data=False,
     # Wait for trigger
     while 1:
         rp_s.tx_txt('ACQ:TRig:STAT?') # Get Trigger Status
-        print('got status')
         if rp_s.rx_txt() == 'TD': # Triggered?
             break
-    print('triggered')
     ## ! OS 2.00 or higher only ! ##
     while 1:
         rp_s.tx_txt('ACQ:TRig:FILL?')
@@ -130,7 +128,8 @@ def run_one_shot(start_freq=1, end_freq=1000, decimation=8192, store_data=False,
     rp_s.tx_txt('GEN:RST')
     rp_s.tx_txt('ACQ:RST')
 
-
-num_shots = 1
+num_shots = 200
 for i in range(num_shots):
-    run_one_shot(store_data=False, plot_data=True)
+    if i % 100 == 0:
+        print(i)
+    run_one_shot(1, 1000, decimation=256, store_data=True, plot_data=False)
