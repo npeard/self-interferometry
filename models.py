@@ -11,20 +11,22 @@ class CNN(nn.Module):
             nn.MaxPool1d(2), # Lout = 125, given L = 250
             nn.Conv1d(16, 32, kernel_size=7), # Lout = 119, given L = 125
             nn.MaxPool1d(2), # Lout = 59, given L = 119
-            nn.Conv1d(32, 64, kernel_size=7) # Lout = 53, given L = 59
+            nn.Conv1d(32, 64, kernel_size=7), # Lout = 53, given L = 59
             nn.MaxPool1d(2), # Lout = 26, given L = 53
             nn.Dropout(0.1), 
             nn.Conv1d(64, 64, kernel_size=7), # Lout = 20, given L = 26
             nn.MaxPool1d(2) # Lout = 10, given L = 20
         )
         self.fc_layers = nn.Sequential(
-            nn.Linear(640, 16),
+            nn.Linear(10, 16),
+            nn.ReLU(),
             nn.Linear(16, 1)
         )
         
     def forward(self, x):
         out = self.conv_layers(x)
-        out = self.view(640)
+        print(f"out size after conv: {out.size()}") # expect [128, 64, 10]
         out = self.fc_layers(out)
+        print(f"out size after fc: {out.size()}") # expect [128, 64, 1]
         return out
         

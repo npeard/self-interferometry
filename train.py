@@ -19,16 +19,18 @@ class VelocityDataset(Dataset):
     def __init__(self, h5_file):
         self.h5_file = h5_file
         with h5py.File(self.h5_file, 'r') as f:
-            self.length = len(f['time_data']) # num shots 
+            self.length = len(f['Time (s)']) # num shots
 
-    def open_hdf5(self, group_size=64, num_groups=256):
+    def open_hdf5(self, num_groups=64, group_size=256):
         # solves issue where hdf5 file opened in __init__ prevents multiple
         # workers: https://github.com/pytorch/pytorch/issues/11929
         self.file = h5py.File(self.h5_file, 'r')
-        self.inputs = self.file['PD (V)'][:, ::group_size] # take num_groups evenly spaced points, [num_shots, num_groups]
+        grouped_pd = np.array(np.hsplit(self.file['PD (V)'], num_groups))  # [num_groups, num_shots, group_size]
+        self.inputs = np.transpose(grouped_pd, [1, 0, 2]) # [num_shots, num_groups, group_size]
         grouped_velocities = np.array(np.hsplit(self.file['Speaker (Microns/s)'], num_groups)) # [num_groups, num_shots, group_size]
         grouped_velocities = np.transpose(grouped_velocities, [1, 0, 2]) # [num_shots, num_groups, group_size]
-        self.targets = np.average(grouped_velocities, axis=3) # store average velocity per group per shot: [num_shots, num_groups]
+        grouped_velocities = np.average(grouped_velocities, axis=2) # store average velocity per group per shot: [num_shots, num_groups]
+        self.targets = np.expand_dims(grouped_velocities, axis=2) # [num_shots, num_groups, 1]
 
     def __len__(self):
         return self.length
@@ -40,7 +42,7 @@ class VelocityDataset(Dataset):
 
 class TrainingRunner:
     def __init__(self, training_h5, validation_h5, testing_h5,
-                 velocity_only=False):
+                 velocity_only=False, num_groups=64):
         self.training_h5 = training_h5
         self.validation_h5 = validation_h5
         self.testing_h5 = testing_h5
@@ -50,16 +52,22 @@ class TrainingRunner:
         self.set_dataloaders()
 
         # dimensions
-        self.input_size = next(iter(self.train_loader))[0].size(-1) ** 2
-        self.output_size = next(iter(self.train_loader))[1].size(-1)
+        input_ref = next(iter(self.train_loader))
+        output_ref = next(iter(self.train_loader))
+        self.input_size = num_groups #input_ref[0].size(-1) #** 2
+        self.output_size = num_groups # output_ref[1].size(-1)
+        print(f"input ref {len(input_ref)} , {input_ref[0].size()}")
+        print(f"output ref {len(output_ref)} , {output_ref[1].size()}")
+        print(f"train.py input_size {self.input_size}")
+        print(f"train.py output_size {self.output_size}")
 
         # directories
         self.checkpoint_dir = "./checkpoints"
         
     def get_custom_dataloader(self, h5_file, batch_size=128, shuffle=True,
                               velocity_only=True):
-        if velocity_only:
-            dataset = VelocityDataset(h5_file)
+        # if velocity_only:
+        dataset = VelocityDataset(h5_file)
 
         # We can use DataLoader to get batches of data
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle,
@@ -109,7 +117,7 @@ class TrainingRunner:
             devices=[0],
             max_epochs=180,
             callbacks=[early_stop_callback, checkpoint_callback],
-            check_val_every_n_epoch=10,
+            check_val_every_n_epoch=1, #10,
             logger=logger
         )
 
@@ -133,45 +141,45 @@ class TrainingRunner:
 
         return model, result
     
-def scan_hyperparams(self):
-        for lr in [1e-3, 1e-2, 3e-2]:
+    def scan_hyperparams(self):
+            for lr in [1e-3]:#, 1e-2, 3e-2]:
 
-            model_config = {"input_size": self.input_size,
-                            "output_size": self.output_size}
-            optimizer_config = {"lr": lr}
-                                #"momentum": 0.9,}
-            misc_config = {"batch_size": self.batch_size}
+                model_config = {"input_size": self.input_size,
+                                "output_size": self.output_size}
+                optimizer_config = {"lr": lr}
+                                    #"momentum": 0.9,}
+                misc_config = {"batch_size": self.batch_size}
 
-            self.train_model(model_name="CNN",
-                             model_hparams=model_config,
-                             optimizer_name="Adam",
-                             optimizer_hparams=optimizer_config,
-                             misc_hparams=misc_config)
+                self.train_model(model_name="CNN",
+                                 model_hparams=model_config,
+                                 optimizer_name="Adam",
+                                 optimizer_hparams=optimizer_config,
+                                 misc_hparams=misc_config)
 
-def load_model(self):
-    Check whether pretrained model exists. If yes, load it and skip training
-    pretrained_filename = os.path.join(self.checkpoint_dir, "SMI", "f63rieqp",
-                                        "checkpoints", "*" + ".ckpt")
-    print(pretrained_filename)
-    if os.path.isfile(glob.glob(pretrained_filename)[0]):
-        pretrained_filename = glob.glob(pretrained_filename)[0]
-        print(
-            f"Found pretrained model at {pretrained_filename}, loading...")
-        # Automatically loads the model with the saved hyperparameters
-        model = VelocityDecoder.load_from_checkpoint(pretrained_filename)
+    def load_model(self):
+        # Check whether pretrained model exists. If yes, load it and skip training
+        pretrained_filename = os.path.join(self.checkpoint_dir, "SMI", "f63rieqp",
+                                            "checkpoints", "*" + ".ckpt")
+        print(pretrained_filename)
+        if os.path.isfile(glob.glob(pretrained_filename)[0]):
+            pretrained_filename = glob.glob(pretrained_filename)[0]
+            print(
+                f"Found pretrained model at {pretrained_filename}, loading...")
+            # Automatically loads the model with the saved hyperparameters
+            model = VelocityDecoder.load_from_checkpoint(pretrained_filename)
 
-        # Create a PyTorch Lightning trainer with the generation callback
-        trainer = L.Trainer(
-            accelerator="gpu",
-            devices=[0]
-        )
+            # Create a PyTorch Lightning trainer with the generation callback
+            trainer = L.Trainer(
+                accelerator="gpu",
+                devices=[0]
+            )
 
-        # Test best model on validation and test set
-        val_result = trainer.test(model, dataloaders=self.valid_loader,
-                                    verbose=False)
-        test_result = trainer.test(model, dataloaders=self.test_loader,
-                                    verbose=False)
-        result = {"test": test_result[0]["test_acc"],
-                    "val": val_result[0]["test_acc"]}
+            # Test best model on validation and test set
+            val_result = trainer.test(model, dataloaders=self.valid_loader,
+                                        verbose=False)
+            test_result = trainer.test(model, dataloaders=self.test_loader,
+                                        verbose=False)
+            result = {"test": test_result[0]["test_acc"],
+                        "val": val_result[0]["test_acc"]}
 
-        return model, result
+            return model, result

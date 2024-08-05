@@ -5,6 +5,8 @@ import torch
 import lightning as L
 from models import CNN
 
+model_dict = {"CNN": CNN}
+
 class VelocityDecoder(L.LightningModule):
     def __init__(self, model_name, model_hparams, optimizer_name,
                  optimizer_hparams, misc_hparams):
@@ -64,7 +66,6 @@ class VelocityDecoder(L.LightningModule):
         # training_step defines the train loop.
         # it is independent of forward
         x, y = batch
-        x = x.view(-1, x.size(1)**2)
         preds = self.model(x)
         loss = self.loss_function(preds, y)
         acc = (preds == y).float().mean()
@@ -75,7 +76,9 @@ class VelocityDecoder(L.LightningModule):
     def validation_step(self, batch, batch_idx):
         # validation_step defines the validation loop.
         x, y = batch
-        x = x.view(-1, x.size(1)**2)
+        print(type(x))
+        print(f"x size {x.size()}")
+        print(f"y size {y.size()}")
         preds = self.model(x)
         loss = self.loss_function(preds, y)
         acc = (preds == y).float().mean()
@@ -85,7 +88,6 @@ class VelocityDecoder(L.LightningModule):
     
     def test_step(self, batch, batch_idx):
         x, y = batch
-        x = x.view(-1, x.size(1)**2)
         preds = self.model(x)
         loss = self.loss_function(preds, y)
         acc = (preds == y).float().mean()
@@ -95,6 +97,5 @@ class VelocityDecoder(L.LightningModule):
 
     def predict_step(self, batch, batch_idx, dataloader_idx=0):
         x, y = batch
-        x = x.view(-1, x.size(1)**2)
         y_hat = self.model(x)
         return y_hat, y
