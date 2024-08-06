@@ -10,8 +10,8 @@ rp_s = scpi.scpi(IP)
 print('Connected to ' + IP)
 
 wave_form = 'sine'
-freq = 200
-ampl = 0.9
+freq = 100
+ampl = 0.5
 
 # Reset Generation and Acquisition
 rp_s.tx_txt('GEN:RST')
@@ -49,7 +49,7 @@ while 1:
 # function for Data Acquisition
 data = rp_s.acq_data(1, convert=True)
 
-plt.plot(10*data)
+plt.plot(data)
 plt.ylabel('Amplitude [V]')
 plt.xlabel('Samples')
 plt.show()
