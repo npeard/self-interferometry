@@ -21,16 +21,39 @@ class VelocityDataset(Dataset):
         with h5py.File(self.h5_file, 'r') as f:
             self.length = len(f['Time (s)']) # num shots
 
-    def open_hdf5(self, num_groups=64, group_size=256):
+    def open_hdf5(self, group_size=256, step=1):
+        """Set up inputs and targets. For each shot, buffer is split into rolling data.
+        Inputs include grouped photodiode trace of 'group_size', spaced interval 'step' apart.
+        Targets include average velocity of each group. 
+        Input shape is [num_shots, num_groups, group_size] and target shape is [num_shots, num_groups, 1],
+        where num_groups = (buffer_len - group_size)/step + 1, given that buffer_len - group_size is a multiple of step. 
+        If the given 'group_size' and 'step' do not satisfy the above requirement, 
+        the data will not be cleanly grouped.
+
+        Args:
+            group_size (int, optional): Size of each group. buffer_len - group_size = 0 (mod step). Defaults to 256.
+            step (int, optional): Size of step between group starts. buffer_len - grou_size = 0 (mod step). Defaults to 1.
+        """
         # solves issue where hdf5 file opened in __init__ prevents multiple
         # workers: https://github.com/pytorch/pytorch/issues/11929
         self.file = h5py.File(self.h5_file, 'r')
-        grouped_pd = np.array(np.hsplit(self.file['PD (V)'], num_groups))  # [num_groups, num_shots, group_size]
-        self.inputs = np.transpose(grouped_pd, [1, 0, 2]) # [num_shots, num_groups, group_size]
-        grouped_velocities = np.array(np.hsplit(self.file['Speaker (Microns/s)'], num_groups)) # [num_groups, num_shots, group_size]
-        grouped_velocities = np.transpose(grouped_velocities, [1, 0, 2]) # [num_shots, num_groups, group_size]
-        grouped_velocities = np.average(grouped_velocities, axis=2) # store average velocity per group per shot: [num_shots, num_groups]
-        self.targets = np.expand_dims(grouped_velocities, axis=2) # [num_shots, num_groups, 1]
+        pds = self.file['PD (V)'] # [num_shots, buffer_size]
+        vels = self.file['Speaker (Microns/s)'] # [num_shots, buffer_size]
+        
+        grouped_pds = np.array(np.hsplit(self.file['PD (V)'], num_groups))  # [num_groups, num_shots, group_size]
+        self.inputs = np.transpose(grouped_pds, [1, 0, 2]) # [num_shots, num_groups, group_size]
+        grouped_vels = np.array(np.hsplit(self.file['Speaker (Microns/s)'], num_groups)) # [num_groups, num_shots, group_size]
+        grouped_vels = np.transpose(grouped_vels, [1, 0, 2]) # [num_shots, num_groups, group_size]
+        grouped_vels = np.average(grouped_vels, axis=2) # store average velocity per group per shot: [num_shots, num_groups]
+        self.targets = np.expand_dims(grouped_vels, axis=2) # [num_shots, num_groups, 1]
+
+        ## FOR ROLLING INPUT
+        # grouped_pds = np.array([pds[:, i:i+n] for i in range(0, len(pds[0])-n+1, m)])  # [num_groups, num_shots, group_size]
+        # self.inputs = np.transpose(grouped_pds, [1, 0, 2]) # [num_shots, num_groups, group_size]
+        # grouped_vels = np.array([vels[:, i:i+n] for i in range(0, len(vels[0])-n+1, m)]) # [num_groups, num_shots, group_size]
+        # grouped_vels = np.transpose(grouped_vels, [1, 0, 2]) # [num_shots, num_groups, group_size]
+        # grouped_vels = np.average(grouped_vels, axis=2) # store average velocity per group per shot: [num_shots, num_groups]
+        # self.targets = np.expand_dims(grouped_vels, axis=2) # [num_shots, num_groups, 1]
 
     def __len__(self):
         return self.length
@@ -152,13 +175,13 @@ class TrainingRunner:
 
                 self.train_model(model_name="CNN",
                                  model_hparams=model_config,
-                                 optimizer_name="Adam",
+                                 optimizer_name="SGD",
                                  optimizer_hparams=optimizer_config,
                                  misc_hparams=misc_config)
 
-    def load_model(self):
+    def load_model(self, model_name='CNN', model_tag):
         # Check whether pretrained model exists. If yes, load it and skip training
-        pretrained_filename = os.path.join(self.checkpoint_dir, "SMI", "f63rieqp",
+        pretrained_filename = os.path.join(self.checkpoint_dir, model_name, "SMI", model_tag,
                                             "checkpoints", "*" + ".ckpt")
         print(pretrained_filename)
         if os.path.isfile(glob.glob(pretrained_filename)[0]):

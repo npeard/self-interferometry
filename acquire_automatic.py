@@ -14,12 +14,13 @@ IP = 'rp-f0c04a.local'
 rp_s = scpi.scpi(IP)
 print('Connected to ' + IP)
 
-def run_one_shot(start_freq=1, end_freq=1000, decimation=8192, store_data=False, plot_data=False):
+def run_one_shot(start_freq=1, end_freq=1000, ampl=0.1, decimation=8192, store_data=False, plot_data=False, filename='data.h5py'):
     """Runs one shot of driving the speaker with a waveform and collecting the relevant data. 
 
     Args:
         start_freq (int, optional): the lower bound of the valid frequency range. Defaults to 1.
         end_freq (int, optional): the upper bound of the valid frequency range. Defaults to 1000.
+        ampl (float, optional): the amplitude of the generated wave. Defaults to 0.1. 
         decimation (int, optional): Decimation that determines sample rate, should be power of 2. Defaults to 8192.
         store_data (bool, optional): Whether to store data in h5py file. Defaults to False.
         plot_data (bool, optional): Whether to plot data after acquisition. Defaults to False.
@@ -33,7 +34,6 @@ def run_one_shot(start_freq=1, end_freq=1000, decimation=8192, store_data=False,
 
     wave_form = 'ARBITRARY'
     freq = 1 / burst_time
-    ampl = 0.1 # good range 0-0.6V
 
     t, y = util.bounded_frequency_waveform(start_freq, end_freq, length=N, sample_rate=smpl_rate)
     y = util.linear_convert(y) # convert range of waveform to [-1, 1] to properly set ampl
@@ -57,9 +57,9 @@ def run_one_shot(start_freq=1, end_freq=1000, decimation=8192, store_data=False,
     # Function for configuring Acquisition
     rp_s.acq_set(dec=decimation, trig_delay=0)
     rp_s.tx_txt('ACQ:START')
-    time.sleep(1)
+    time.sleep(0.5)
     rp_s.tx_txt('ACQ:TRig CH2_PE')
-    time.sleep(1)
+    # time.sleep(1)
 
     # Wait for trigger
     while 1:
@@ -111,7 +111,7 @@ def run_one_shot(start_freq=1, end_freq=1000, decimation=8192, store_data=False,
     if store_data:
         # Store data in h5py file
         path = "/Users/angelajia/Code/College/SMI/data/"
-        filename = "data.h5py"
+        # filename = "training_data.h5py"
         file_path = os.path.join(path, filename)
 
         entries = {
@@ -128,8 +128,12 @@ def run_one_shot(start_freq=1, end_freq=1000, decimation=8192, store_data=False,
     rp_s.tx_txt('GEN:RST')
     rp_s.tx_txt('ACQ:RST')
 
-num_shots = 200
+num_shots = 2000
+amplitude = 0
 for i in range(num_shots):
-    if i % 100 == 0:
-        print(i)
-    run_one_shot(1, 1000, decimation=256, store_data=True, plot_data=False)
+    amplitude = np.random.uniform(0.1, 0.6)
+    if i % 500 == 0:
+        print(f"{i}: ampl = {amplitude}")
+    run_one_shot(30, 1000, ampl=amplitude, decimation=256, store_data=True, plot_data=False, 
+                 filename='test_30to1kHz_2kshots_dec=256_randampl.h5py')
+    # print(i)
