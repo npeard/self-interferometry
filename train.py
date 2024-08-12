@@ -13,6 +13,8 @@ import matplotlib.pyplot as plt
 import lightning as L
 from lightning.pytorch.loggers import WandbLogger
 from itertools import product
+import datetime
+import time
 
 # Define a custom Dataset class
 class VelocityDataset(Dataset):
@@ -20,8 +22,10 @@ class VelocityDataset(Dataset):
         self.h5_file = h5_file
         with h5py.File(self.h5_file, 'r') as f:
             self.length = len(f['Time (s)']) # num shots
+        print(self.h5_file)
+        self.opened_flag = False
 
-    def open_hdf5(self, group_size=256, step=1):
+    def open_hdf5(self, group_size=256, step=1, num_groups=64):
         """Set up inputs and targets. For each shot, buffer is split into rolling data.
         Inputs include grouped photodiode trace of 'group_size', spaced interval 'step' apart.
         Targets include average velocity of each group. 
@@ -37,15 +41,24 @@ class VelocityDataset(Dataset):
         # solves issue where hdf5 file opened in __init__ prevents multiple
         # workers: https://github.com/pytorch/pytorch/issues/11929
         self.file = h5py.File(self.h5_file, 'r')
-        pds = self.file['PD (V)'] # [num_shots, buffer_size]
-        vels = self.file['Speaker (Microns/s)'] # [num_shots, buffer_size]
-        
-        grouped_pds = np.array(np.hsplit(self.file['PD (V)'], num_groups))  # [num_groups, num_shots, group_size]
-        self.inputs = np.transpose(grouped_pds, [1, 0, 2]) # [num_shots, num_groups, group_size]
-        grouped_vels = np.array(np.hsplit(self.file['Speaker (Microns/s)'], num_groups)) # [num_groups, num_shots, group_size]
-        grouped_vels = np.transpose(grouped_vels, [1, 0, 2]) # [num_shots, num_groups, group_size]
-        grouped_vels = np.average(grouped_vels, axis=2) # store average velocity per group per shot: [num_shots, num_groups]
-        self.targets = np.expand_dims(grouped_vels, axis=2) # [num_shots, num_groups, 1]
+        self.length = len(self.file['Time (s)']) # num shots
+        # print(torch.cuda.get_device_name(0))
+        pds = torch.Tensor(np.array(self.file['PD (V)'])) # [num_shots, buffer_size]
+        vels = torch.Tensor(np.array(self.file['Speaker (Microns/s)'])) # [num_shots, buffer_size]
+
+        grouped_pds = torch.stack(torch.split(pds, group_size, dim=1))
+        self.inputs = torch.transpose(grouped_pds, dim0=0, dim1=1)
+        grouped_vels = torch.stack(torch.split(vels, group_size, dim=1))
+        grouped_vels = torch.transpose(grouped_vels, dim0=0, dim1=1)
+        self.targets = torch.unsqueeze(torch.mean(grouped_vels, dim=2), dim=2)
+        # print(self.inputs.size()) # [2k, 64, 256]
+        # print(self.targets.size()) # [2k, 64, 1]
+        # grouped_pds = np.array(np.hsplit(self.file['PD (V)'], num_groups))  # [num_groups, num_shots, group_size]
+        # self.inputs = np.transpose(grouped_pds, [1, 0, 2]) # [num_shots, num_groups, group_size]
+        # grouped_vels = np.array(np.hsplit(self.file['Speaker (Microns/s)'], num_groups)) # [num_groups, num_shots, group_size]
+        # grouped_vels = np.transpose(grouped_vels, [1, 0, 2]) # [num_shots, num_groups, group_size]
+        # grouped_vels = np.average(grouped_vels, axis=2) # store average velocity per group per shot: [num_shots, num_groups]
+        # self.targets = np.expand_dims(grouped_vels, axis=2) # [num_shots, num_groups, 1]
 
         ## FOR ROLLING INPUT
         # grouped_pds = np.array([pds[:, i:i+n] for i in range(0, len(pds[0])-n+1, m)])  # [num_groups, num_shots, group_size]
@@ -59,9 +72,17 @@ class VelocityDataset(Dataset):
         return self.length
 
     def __getitem__(self, idx):
-        if not hasattr(self, self.h5_file):
+        # print("getitem entered")
+        if not self.opened_flag: #not hasattr(self, 'h5_file'):
             self.open_hdf5()
+            self.opened_flag = True
+            # print("open_hdf5 finished")
         return FloatTensor(self.inputs[idx]), FloatTensor(self.targets[idx])
+
+    # def __getitems__(self, indices: list):
+    #     if not hasattr(self, 'h5_file'):
+    #         self.open_hdf5()
+    #     return FloatTensor(self.inputs[indices]), FloatTensor(self.targets[indices])
 
 class TrainingRunner:
     def __init__(self, training_h5, validation_h5, testing_h5,
@@ -73,30 +94,32 @@ class TrainingRunner:
 
         # get dataloaders
         self.set_dataloaders()
-
+        print("dataloaders set:", datetime.datetime.now())
         # dimensions
         input_ref = next(iter(self.train_loader))
         output_ref = next(iter(self.train_loader))
+        # print("loaded next(iter", datetime.datetime.now())
         self.input_size = num_groups #input_ref[0].size(-1) #** 2
-        self.output_size = num_groups # output_ref[1].size(-1)
+        self.output_size = num_groups  # output_ref[1].size(-1)
         print(f"input ref {len(input_ref)} , {input_ref[0].size()}")
         print(f"output ref {len(output_ref)} , {output_ref[1].size()}")
-        print(f"train.py input_size {self.input_size}")
-        print(f"train.py output_size {self.output_size}")
+        # print(f"train.py input_size {self.input_size}")
+        # print(f"train.py output_size {self.output_size}")
 
         # directories
         self.checkpoint_dir = "./checkpoints"
+        print('TrainingRunner initialized', datetime.datetime.now())
         
     def get_custom_dataloader(self, h5_file, batch_size=128, shuffle=True,
                               velocity_only=True):
         # if velocity_only:
         dataset = VelocityDataset(h5_file)
-
+        print("dataset initialized")
         # We can use DataLoader to get batches of data
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle,
                                 num_workers=16, persistent_workers=True,
                                 pin_memory=True)
-
+        print("dataloader initialized")
         return dataloader
     
     def set_dataloaders(self, batch_size=128):
@@ -129,7 +152,7 @@ class TrainingRunner:
                                             verbose=True,
                                             mode="min")
         checkpoint_callback = ModelCheckpoint(save_weights_only=True,
-                                              mode="max", monitor="val_acc")
+                                              mode="min", monitor="val_loss")
         # Save the best checkpoint based on the maximum val_acc recorded.
         # Saves only weights and not optimizer
 
@@ -138,9 +161,9 @@ class TrainingRunner:
             default_root_dir=os.path.join(self.checkpoint_dir, save_name),
             accelerator="gpu",
             devices=[0],
-            max_epochs=180,
+            max_epochs=1000,
             callbacks=[early_stop_callback, checkpoint_callback],
-            check_val_every_n_epoch=1, #10,
+            check_val_every_n_epoch=10,
             logger=logger
         )
 
@@ -165,7 +188,7 @@ class TrainingRunner:
         return model, result
     
     def scan_hyperparams(self):
-            for lr in [1e-3]:#, 1e-2, 3e-2]:
+            for lr in [1e-4]:#[1e-3]: #, 1e-2, 3e-2]:
 
                 model_config = {"input_size": self.input_size,
                                 "output_size": self.output_size}
@@ -175,11 +198,11 @@ class TrainingRunner:
 
                 self.train_model(model_name="CNN",
                                  model_hparams=model_config,
-                                 optimizer_name="SGD",
+                                 optimizer_name="Adam",
                                  optimizer_hparams=optimizer_config,
                                  misc_hparams=misc_config)
 
-    def load_model(self, model_name='CNN', model_tag):
+    def load_model(self, model_tag, model_name='CNN'):
         # Check whether pretrained model exists. If yes, load it and skip training
         pretrained_filename = os.path.join(self.checkpoint_dir, model_name, "SMI", model_tag,
                                             "checkpoints", "*" + ".ckpt")

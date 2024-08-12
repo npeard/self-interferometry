@@ -76,9 +76,9 @@ class VelocityDecoder(L.LightningModule):
     def validation_step(self, batch, batch_idx):
         # validation_step defines the validation loop.
         x, y = batch
-        print(type(x))
-        print(f"x size {x.size()}")
-        print(f"y size {y.size()}")
+        # print(type(x))
+        # print(f"x size {x.size()}")
+        # print(f"y size {y.size()}")
         preds = self.model(x)
         loss = self.loss_function(preds, y)
         acc = (preds == y).float().mean()
