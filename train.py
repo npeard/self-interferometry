@@ -25,7 +25,7 @@ class VelocityDataset(Dataset):
         print(self.h5_file)
         self.opened_flag = False
 
-    def open_hdf5(self, group_size=256, step=1, num_groups=64):
+    def open_hdf5(self, rolling=True, group_size=256, step=128):
         """Set up inputs and targets. For each shot, buffer is split into rolling data.
         Inputs include grouped photodiode trace of 'group_size', spaced interval 'step' apart.
         Targets include average velocity of each group. 
@@ -41,32 +41,28 @@ class VelocityDataset(Dataset):
         # solves issue where hdf5 file opened in __init__ prevents multiple
         # workers: https://github.com/pytorch/pytorch/issues/11929
         self.file = h5py.File(self.h5_file, 'r')
-        self.length = len(self.file['Time (s)']) # num shots
         # print(torch.cuda.get_device_name(0))
         pds = torch.Tensor(np.array(self.file['PD (V)'])) # [num_shots, buffer_size]
         vels = torch.Tensor(np.array(self.file['Speaker (Microns/s)'])) # [num_shots, buffer_size]
 
-        grouped_pds = torch.stack(torch.split(pds, group_size, dim=1))
-        self.inputs = torch.transpose(grouped_pds, dim0=0, dim1=1)
-        grouped_vels = torch.stack(torch.split(vels, group_size, dim=1))
-        grouped_vels = torch.transpose(grouped_vels, dim0=0, dim1=1)
-        self.targets = torch.unsqueeze(torch.mean(grouped_vels, dim=2), dim=2)
-        # print(self.inputs.size()) # [2k, 64, 256]
-        # print(self.targets.size()) # [2k, 64, 1]
-        # grouped_pds = np.array(np.hsplit(self.file['PD (V)'], num_groups))  # [num_groups, num_shots, group_size]
-        # self.inputs = np.transpose(grouped_pds, [1, 0, 2]) # [num_shots, num_groups, group_size]
-        # grouped_vels = np.array(np.hsplit(self.file['Speaker (Microns/s)'], num_groups)) # [num_groups, num_shots, group_size]
-        # grouped_vels = np.transpose(grouped_vels, [1, 0, 2]) # [num_shots, num_groups, group_size]
-        # grouped_vels = np.average(grouped_vels, axis=2) # store average velocity per group per shot: [num_shots, num_groups]
-        # self.targets = np.expand_dims(grouped_vels, axis=2) # [num_shots, num_groups, 1]
+        if rolling:
+            # ROLLING INPUT INDICES
+            num_groups = (pds.shape[1] - group_size) // step + 1
+            start_idxs = torch.arange(num_groups) * step  # starting indices for each group
+            idxs = torch.arange(group_size)[:, None] + start_idxs
+            idxs = torch.transpose(idxs, dim0=0, dim1=1)
+            self.inputs = pds[:, idxs]
+            self.targets = torch.unsqueeze(torch.mean(vels[:, idxs], dim=2), dim=2)
+        else:
+            # STEP INPUT
+            grouped_pds = torch.stack(torch.split(pds, group_size, dim=1))
+            self.inputs = torch.transpose(grouped_pds, dim0=0, dim1=1)
+            grouped_vels = torch.stack(torch.split(vels, group_size, dim=1))
+            grouped_vels = torch.transpose(grouped_vels, dim0=0, dim1=1)
+            self.targets = torch.unsqueeze(torch.mean(grouped_vels, dim=2), dim=2)
 
-        ## FOR ROLLING INPUT
-        # grouped_pds = np.array([pds[:, i:i+n] for i in range(0, len(pds[0])-n+1, m)])  # [num_groups, num_shots, group_size]
-        # self.inputs = np.transpose(grouped_pds, [1, 0, 2]) # [num_shots, num_groups, group_size]
-        # grouped_vels = np.array([vels[:, i:i+n] for i in range(0, len(vels[0])-n+1, m)]) # [num_groups, num_shots, group_size]
-        # grouped_vels = np.transpose(grouped_vels, [1, 0, 2]) # [num_shots, num_groups, group_size]
-        # grouped_vels = np.average(grouped_vels, axis=2) # store average velocity per group per shot: [num_shots, num_groups]
-        # self.targets = np.expand_dims(grouped_vels, axis=2) # [num_shots, num_groups, 1]
+        # print(self.inputs.size())  # [2k, 64, 256]
+        # print(self.targets.size())  # [2k, 64, 1]
 
     def __len__(self):
         return self.length
@@ -80,13 +76,15 @@ class VelocityDataset(Dataset):
         return FloatTensor(self.inputs[idx]), FloatTensor(self.targets[idx])
 
     # def __getitems__(self, indices: list):
-    #     if not hasattr(self, 'h5_file'):
+    #     if not self.opened_flag:
     #         self.open_hdf5()
+    #         self.opened_flag = True
+    #         print("open_hdf5 in getitems")
     #     return FloatTensor(self.inputs[indices]), FloatTensor(self.targets[indices])
 
 class TrainingRunner:
     def __init__(self, training_h5, validation_h5, testing_h5,
-                 velocity_only=False, num_groups=64):
+                 velocity_only=True):
         self.training_h5 = training_h5
         self.validation_h5 = validation_h5
         self.testing_h5 = testing_h5
@@ -97,12 +95,11 @@ class TrainingRunner:
         print("dataloaders set:", datetime.datetime.now())
         # dimensions
         input_ref = next(iter(self.train_loader))
-        output_ref = next(iter(self.train_loader))
         # print("loaded next(iter", datetime.datetime.now())
-        self.input_size = num_groups #input_ref[0].size(-1) #** 2
-        self.output_size = num_groups  # output_ref[1].size(-1)
+        self.input_size = input_ref[0].shape[1]  # num_groups
+        self.output_size = input_ref[1].shape[1]  # num_groups
         print(f"input ref {len(input_ref)} , {input_ref[0].size()}")
-        print(f"output ref {len(output_ref)} , {output_ref[1].size()}")
+        print(f"output ref {len(input_ref)} , {input_ref[1].size()}")
         # print(f"train.py input_size {self.input_size}")
         # print(f"train.py output_size {self.output_size}")
 
@@ -161,7 +158,7 @@ class TrainingRunner:
             default_root_dir=os.path.join(self.checkpoint_dir, save_name),
             accelerator="gpu",
             devices=[0],
-            max_epochs=1000,
+            max_epochs=2000,
             callbacks=[early_stop_callback, checkpoint_callback],
             check_val_every_n_epoch=10,
             logger=logger

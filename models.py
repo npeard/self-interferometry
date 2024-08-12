@@ -19,7 +19,7 @@ class CNN(nn.Module):
             act_fn_by_name[activation], 
             nn.MaxPool1d(2),  # Lout = 26, given L = 53
             nn.Dropout(0.1), 
-            nn.Conv1d(64, 64, kernel_size=7),  # Lout = 20, given L = 26
+            nn.Conv1d(64, output_size, kernel_size=7),  # Lout = 20, given L = 26
             act_fn_by_name[activation], 
             nn.MaxPool1d(2)  # Lout = 10, given L = 20
         )
@@ -30,7 +30,7 @@ class CNN(nn.Module):
         )
         
     def forward(self, x):
-        out = self.conv_layers(x)  # expect out [128, 64, 10]
-        out = self.fc_layers(out)  # expect out [128, 64, 1]
+        out = self.conv_layers(x)  # expect out [128, num_groups, 10]
+        out = self.fc_layers(out)  # expect out [128, num_groups, 1]
         return out
         
