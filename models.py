@@ -3,7 +3,7 @@
 from torch import nn
 import torch
 
-act_fn_by_name = {'Tanh': nn.Tanh(), 'LeakyReLU': nn.LeakyReLU(), 'ReLU': nn.ReLU()}
+act_fn_by_name = {'LeakyReLU': nn.LeakyReLU(), 'ReLU': nn.ReLU()}
 
 class CNN(nn.Module):
     def __init__(self, input_size, output_size, activation='LeakyReLU'):

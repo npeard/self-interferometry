@@ -52,7 +52,7 @@ class VelocityDecoder(L.LightningModule):
 
         # We will reduce the learning rate by 0.1 after 100 and 150 epochs
         scheduler = optim.lr_scheduler.MultiStepLR(optimizer,
-                                                   milestones=[100, 150],
+                                                   milestones=[1000, 1500, 1800],
                                                    gamma=0.1)
         return [optimizer], [scheduler]
     
@@ -68,8 +68,8 @@ class VelocityDecoder(L.LightningModule):
         x, y = batch
         preds = self.model(x)
         loss = self.loss_function(preds, y)
-        # acc = (preds == y).float().mean()
-        # self.log("train_acc", acc, on_step=False, on_epoch=True)
+        acc = (preds == y).float().mean()
+        self.log("train_acc", acc, on_step=False, on_epoch=True)
         self.log("train_loss", loss, prog_bar=True)
         return loss
 
@@ -81,8 +81,8 @@ class VelocityDecoder(L.LightningModule):
         # print(f"y size {y.size()}")
         preds = self.model(x)
         loss = self.loss_function(preds, y)
-        # acc = (preds == y).float().mean()
-        # self.log("val_acc", acc, on_step=False, on_epoch=True)
+        acc = (preds == y).float().mean()
+        self.log("val_acc", acc, on_step=False, on_epoch=True)
         self.log("val_loss", loss, prog_bar=True)
         return loss
     
@@ -90,8 +90,8 @@ class VelocityDecoder(L.LightningModule):
         x, y = batch
         preds = self.model(x)
         loss = self.loss_function(preds, y)
-        # acc = (preds == y).float().mean()
-        # self.log("test_acc", acc, on_step=False, on_epoch=True)
+        acc = (preds == y).float().mean()
+        self.log("test_acc", acc, on_step=False, on_epoch=True)
         self.log("test_loss", loss, prog_bar=True)
         return loss
 

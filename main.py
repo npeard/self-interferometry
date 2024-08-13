@@ -18,8 +18,10 @@ if __name__ == '__main__':
         test_file = 'C:\\Users\\aj14\\Desktop\\SMI\\data\\test_30to1kHz_2kshots_dec=256_randampl.h5py'
 
         print('begin main', datetime.datetime.now())
-        runner = train.TrainingRunner(train_file, valid_file, test_file)
-        runner.scan_hyperparams()
+        step_list = [256, 128, 64]
+        for step in step_list:
+            runner = train.TrainingRunner(train_file, valid_file, test_file, step)
+            runner.scan_hyperparams()
 
     else:
         print("Error: Unsupported number of command-line arguments")

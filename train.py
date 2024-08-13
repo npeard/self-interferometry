@@ -18,8 +18,9 @@ import time
 
 # Define a custom Dataset class
 class VelocityDataset(Dataset):
-    def __init__(self, h5_file):
+    def __init__(self, h5_file, step):
         self.h5_file = h5_file
+        self.step = step
         with h5py.File(self.h5_file, 'r') as f:
             self.length = len(f['Time (s)']) # num shots
         print(self.h5_file)
@@ -70,7 +71,7 @@ class VelocityDataset(Dataset):
     def __getitem__(self, idx):
         # print("getitem entered")
         if not self.opened_flag: #not hasattr(self, 'h5_file'):
-            self.open_hdf5()
+            self.open_hdf5(step=self.step)
             self.opened_flag = True
             # print("open_hdf5 finished")
         return FloatTensor(self.inputs[idx]), FloatTensor(self.targets[idx])
@@ -83,12 +84,13 @@ class VelocityDataset(Dataset):
     #     return FloatTensor(self.inputs[indices]), FloatTensor(self.targets[indices])
 
 class TrainingRunner:
-    def __init__(self, training_h5, validation_h5, testing_h5,
+    def __init__(self, training_h5, validation_h5, testing_h5, step=256,
                  velocity_only=True):
         self.training_h5 = training_h5
         self.validation_h5 = validation_h5
         self.testing_h5 = testing_h5
         self.velocity_only = velocity_only
+        self.step = step
 
         # get dataloaders
         self.set_dataloaders()
@@ -110,21 +112,20 @@ class TrainingRunner:
     def get_custom_dataloader(self, h5_file, batch_size=128, shuffle=True,
                               velocity_only=True):
         # if velocity_only:
-        dataset = VelocityDataset(h5_file)
+        dataset = VelocityDataset(h5_file, self.step)
         print("dataset initialized")
         # We can use DataLoader to get batches of data
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle,
-                                num_workers=16, persistent_workers=True,
+                                num_workers=8, persistent_workers=True,
                                 pin_memory=True)
         print("dataloader initialized")
         return dataloader
     
     def set_dataloaders(self, batch_size=128):
         self.batch_size = batch_size
-        self.train_loader = self.get_custom_dataloader(self.training_h5, velocity_only=self.velocity_only, batch_size=self.batch_size)
-        self.valid_loader = self.get_custom_dataloader(self.validation_h5, velocity_only=self.velocity_only, batch_size=self.batch_size, shuffle=False)
-        self.test_loader = self.get_custom_dataloader(self.testing_h5, velocity_only=self.velocity_only, batch_size=self.batch_size, shuffle=False)
-
+        self.train_loader = self.get_custom_dataloader(self.training_h5, batch_size=self.batch_size)
+        self.valid_loader = self.get_custom_dataloader(self.validation_h5, batch_size=self.batch_size, shuffle=False)
+        self.test_loader = self.get_custom_dataloader(self.testing_h5, batch_size=self.batch_size, shuffle=False)
 
     def train_model(self, model_name, save_name=None, **kwargs):
         """Train model.
@@ -160,7 +161,7 @@ class TrainingRunner:
             devices=[0],
             max_epochs=2000,
             callbacks=[early_stop_callback, checkpoint_callback],
-            check_val_every_n_epoch=10,
+            check_val_every_n_epoch=20,
             logger=logger
         )
 
@@ -185,13 +186,16 @@ class TrainingRunner:
         return model, result
     
     def scan_hyperparams(self):
-            for lr in [1e-4]:#[1e-3]: #, 1e-2, 3e-2]:
+            lr_list = [1e-3, 1e-4]
+            act_list = ['LeakyReLU', 'ReLU']
+            optim_list = ['Adam', 'SGD']
+            for lr, activation, step in product(lr_list, act_list, step_list): #, 1e-2, 3e-2]:
 
                 model_config = {"input_size": self.input_size,
                                 "output_size": self.output_size}
                 optimizer_config = {"lr": lr}
                                     #"momentum": 0.9,}
-                misc_config = {"batch_size": self.batch_size}
+                misc_config = {"batch_size": self.batch_size, "step": self.step}
 
                 self.train_model(model_name="CNN",
                                  model_hparams=model_config,
