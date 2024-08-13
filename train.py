@@ -21,49 +21,46 @@ class VelocityDataset(Dataset):
     def __init__(self, h5_file, step):
         self.h5_file = h5_file
         self.step = step
-        with h5py.File(self.h5_file, 'r') as f:
-            self.length = len(f['Time (s)']) # num shots
         print(self.h5_file)
         self.opened_flag = False
 
-    def open_hdf5(self, rolling=True, group_size=256, step=128):
-        """Set up inputs and targets. For each shot, buffer is split into rolling data.
-        Inputs include grouped photodiode trace of 'group_size', spaced interval 'step' apart.
-        Targets include average velocity of each group. 
-        Input shape is [num_shots, num_groups, group_size] and target shape is [num_shots, num_groups, 1],
+    def open_hdf5(self, rolling=True, step, group_size=256):
+        """Set up inputs and targets. For each shot, buffer is split into groups of sequences.
+        Inputs include grouped photodiode trace of 'group_size', spaced interval 'step' apart for each buffer. 
+        Targets include average velocity of each group.
+        Input shape is [num_shots * num_groups, group_size] and target shape is [num_shots * num_groups, 1],
         where num_groups = (buffer_len - group_size)/step + 1, given that buffer_len - group_size is a multiple of step. 
         If the given 'group_size' and 'step' do not satisfy the above requirement, 
         the data will not be cleanly grouped.
 
         Args:
+            step (int): Size of step between group starts. buffer_len - grou_size = 0 (mod step).
             group_size (int, optional): Size of each group. buffer_len - group_size = 0 (mod step). Defaults to 256.
-            step (int, optional): Size of step between group starts. buffer_len - grou_size = 0 (mod step). Defaults to 1.
         """
         # solves issue where hdf5 file opened in __init__ prevents multiple
         # workers: https://github.com/pytorch/pytorch/issues/11929
         self.file = h5py.File(self.h5_file, 'r')
-        # print(torch.cuda.get_device_name(0))
-        pds = torch.Tensor(np.array(self.file['PD (V)'])) # [num_shots, buffer_size]
-        vels = torch.Tensor(np.array(self.file['Speaker (Microns/s)'])) # [num_shots, buffer_size]
+        pds = torch.Tensor(np.array(self.file['PD (V)']))  # [num_shots, buffer_size]
+        vels = torch.Tensor(np.array(self.file['Speaker (Microns/s)']))  # [num_shots, buffer_size]
 
         if rolling:
-            # ROLLING INPUT INDICES
+            # ROLLING INPUT INDICES 
             num_groups = (pds.shape[1] - group_size) // step + 1
             start_idxs = torch.arange(num_groups) * step  # starting indices for each group
             idxs = torch.arange(group_size)[:, None] + start_idxs
-            idxs = torch.transpose(idxs, dim0=0, dim1=1)
-            self.inputs = pds[:, idxs]
-            self.targets = torch.unsqueeze(torch.mean(vels[:, idxs], dim=2), dim=2)
+            idxs = torch.transpose(idxs, dim0=0, dim1=1)  # indices in shape [num_groups, group_size]
+            self.inputs = torch.cat(list(pds[:, idxs]), dim=0)  # [num_shots * num_groups, group_size]
+            grouped_vels = torch.cat(list(vels[:, idxs]), dim=0)  # [num_shots * num_groups, group_size]
+            self.targets = torch.unsqueeze(torch.mean(grouped_vels, dim=1), dim=1)  # [num_shots * num_groups, 1]
         else:
             # STEP INPUT
-            grouped_pds = torch.stack(torch.split(pds, group_size, dim=1))
-            self.inputs = torch.transpose(grouped_pds, dim0=0, dim1=1)
-            grouped_vels = torch.stack(torch.split(vels, group_size, dim=1))
-            grouped_vels = torch.transpose(grouped_vels, dim0=0, dim1=1)
-            self.targets = torch.unsqueeze(torch.mean(grouped_vels, dim=2), dim=2)
+            self.inputs = torch.cat(torch.split(pds, group_size, dim=1), dim=0)  # [num_shots * num_groups, group_size]
+            grouped_vels = torch.cat(torch.split(vels, group_size, dim=1), dim=0)
+            self.targets = torch.unsqueeze(torch.mean(grouped_vels, dim=1), dim=1)  # [num_shots * num_groups, 1]
 
-        # print(self.inputs.size())  # [2k, 64, 256]
-        # print(self.targets.size())  # [2k, 64, 1]
+        self.length = self.inputs.shape[0]  # total number of group_size length sequences = num_shots * num_groups
+        # print(self.inputs.size())  # [10k*64, 256]
+        # print(self.targets.size())  # [10k*64, 1]
 
     def __len__(self):
         return self.length
@@ -95,15 +92,14 @@ class TrainingRunner:
         # get dataloaders
         self.set_dataloaders()
         print("dataloaders set:", datetime.datetime.now())
-        # dimensions
         input_ref = next(iter(self.train_loader))
         # print("loaded next(iter", datetime.datetime.now())
-        self.input_size = input_ref[0].shape[1]  # num_groups
-        self.output_size = input_ref[1].shape[1]  # num_groups
+        self.input_size = input_ref[0].shape[1]  # group_size
+        self.output_size = input_ref[1].shape[1]  # 1
         print(f"input ref {len(input_ref)} , {input_ref[0].size()}")
         print(f"output ref {len(input_ref)} , {input_ref[1].size()}")
-        # print(f"train.py input_size {self.input_size}")
-        # print(f"train.py output_size {self.output_size}")
+        print(f"train.py input_size {self.input_size}")
+        print(f"train.py output_size {self.output_size}")
 
         # directories
         self.checkpoint_dir = "./checkpoints"
@@ -116,7 +112,7 @@ class TrainingRunner:
         print("dataset initialized")
         # We can use DataLoader to get batches of data
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle,
-                                num_workers=8, persistent_workers=True,
+                                num_workers=16, persistent_workers=True,
                                 pin_memory=True)
         print("dataloader initialized")
         return dataloader
@@ -186,22 +182,23 @@ class TrainingRunner:
         return model, result
     
     def scan_hyperparams(self):
-            lr_list = [1e-3, 1e-4]
-            act_list = ['LeakyReLU', 'ReLU']
-            optim_list = ['Adam', 'SGD']
-            for lr, activation, step in product(lr_list, act_list, step_list): #, 1e-2, 3e-2]:
+        lr_list = [1e-3, 1e-4]
+        act_list = ['LeakyReLU', 'ReLU']
+        optim_list = ['Adam', 'SGD']
+        for lr, activation, optim in product(lr_list, act_list, optim_list): #, 1e-2, 3e-2]:
+            model_config = {"input_size": self.input_size,
+                            "output_size": self.output_size,
+                            "activation": activation}
+            optimizer_config = {"lr": lr}
+                                #"momentum": 0.9,}
+            misc_config = {"batch_size": self.batch_size, "step": self.step}
 
-                model_config = {"input_size": self.input_size,
-                                "output_size": self.output_size}
-                optimizer_config = {"lr": lr}
-                                    #"momentum": 0.9,}
-                misc_config = {"batch_size": self.batch_size, "step": self.step}
+            self.train_model(model_name="CNN",
+                            model_hparams=model_config,
+                            optimizer_name=optim,
+                            optimizer_hparams=optimizer_config,
+                            misc_hparams=misc_config)
 
-                self.train_model(model_name="CNN",
-                                 model_hparams=model_config,
-                                 optimizer_name="Adam",
-                                 optimizer_hparams=optimizer_config,
-                                 misc_hparams=misc_config)
 
     def load_model(self, model_tag, model_name='CNN'):
         # Check whether pretrained model exists. If yes, load it and skip training

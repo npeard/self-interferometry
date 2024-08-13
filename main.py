@@ -18,7 +18,7 @@ if __name__ == '__main__':
         test_file = 'C:\\Users\\aj14\\Desktop\\SMI\\data\\test_30to1kHz_2kshots_dec=256_randampl.h5py'
 
         print('begin main', datetime.datetime.now())
-        step_list = [256, 128, 64]
+        step_list = [256, 128, 64] # step sizes for rolling input 
         for step in step_list:
             runner = train.TrainingRunner(train_file, valid_file, test_file, step)
             runner.scan_hyperparams()

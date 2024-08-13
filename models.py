@@ -6,10 +6,10 @@ import torch
 act_fn_by_name = {'LeakyReLU': nn.LeakyReLU(), 'ReLU': nn.ReLU()}
 
 class CNN(nn.Module):
-    def __init__(self, input_size, output_size, activation='LeakyReLU'):
+    def __init__(self, input_size, output_size, ch_in=1, activation='LeakyReLU'):
         super(CNN, self).__init__()
         self.conv_layers = nn.Sequential(
-            nn.Conv1d(input_size, 16, kernel_size=7),  # Lout = 250, given L = 256
+            nn.Conv1d(ch_in, 16, kernel_size=7),  # Lout = 250, given L = 256
             act_fn_by_name[activation], 
             nn.MaxPool1d(2),  # Lout = 125, given L = 250
             nn.Conv1d(16, 32, kernel_size=7),  # Lout = 119, given L = 125
@@ -26,11 +26,11 @@ class CNN(nn.Module):
         self.fc_layers = nn.Sequential(
             nn.Linear(10, 16),
             nn.ReLU(),
-            nn.Linear(16, 1)
+            nn.Linear(16, output_size)
         )
         
     def forward(self, x):
-        out = self.conv_layers(x)  # expect out [128, num_groups, 10]
-        out = self.fc_layers(out)  # expect out [128, num_groups, 1]
+        out = self.conv_layers(x)  # expect out [128*num_groups, 10]
+        out = self.fc_layers(out)  # expect out [128*num_groups, 1]
         return out
         
