@@ -70,7 +70,7 @@ class VelocityDecoder(L.LightningModule):
         loss = self.loss_function(preds, y)
         acc = (preds == y).float().mean()
         self.log("train_acc", acc, on_step=False, on_epoch=True)
-        self.log("train_loss", loss, on_step=True, prog_bar=True)
+        self.log("train_loss", loss, on_epoch=True, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
