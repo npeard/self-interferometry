@@ -52,7 +52,7 @@ class VelocityDecoder(L.LightningModule):
 
         # We will reduce the learning rate by 0.1 after 100 and 150 epochs
         scheduler = optim.lr_scheduler.MultiStepLR(optimizer,
-                                                   milestones=[1000, 1500, 1800],
+                                                   milestones=[100, 150, 200],
                                                    gamma=0.1)
         return [optimizer], [scheduler]
     
@@ -83,7 +83,7 @@ class VelocityDecoder(L.LightningModule):
         loss = self.loss_function(preds, y)
         acc = (preds == y).float().mean()
         self.log("val_acc", acc, on_step=False, on_epoch=True)
-        self.log("val_loss", loss, prog_bar=True)
+        self.log("val_loss", loss, prog_bar=False)
         return loss
     
     def test_step(self, batch, batch_idx):

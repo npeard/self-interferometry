@@ -56,8 +56,8 @@ class VelocityDataset(Dataset):
             start_idxs = torch.arange(num_groups) * step  # starting indices for each group
             idxs = torch.arange(group_size)[:, None] + start_idxs
             idxs = torch.transpose(idxs, dim0=0, dim1=1)  # indices in shape [num_groups, group_size]
-            self.inputs = torch.cat(list(pds[:, idxs]), dim=0)  # [num_shots * num_groups, group_size]
-            grouped_vels = torch.cat(list(vels[:, idxs]), dim=0)  # [num_shots * num_groups, group_size]
+            self.inputs = pds[:, idxs].reshape(-1, group_size)  # [num_shots * num_groups, group_size]
+            grouped_vels = vels[:, idxs].reshape(-1, group_size)  # [num_shots * num_groups, group_size]
             self.targets = torch.unsqueeze(torch.mean(grouped_vels, dim=1), dim=1)  # [num_shots * num_groups, 1]
         else:
             # STEP INPUT
@@ -72,8 +72,8 @@ class VelocityDataset(Dataset):
             assert False, 'ch > 1 not implemented'
 
         # total number of group_size length sequences = num_shots * num_groups
-        # print(self.inputs.size())  # [10k*64, 256]
-        # print(self.targets.size())  # [10k*64, 1]
+        # print("open_hdf5 input size", self.inputs.size())  # [self.length, 256]
+        # print("open_hdf5 target size", self.targets.size())  # [self.length, 1]
 
     def __len__(self):
         # print("__len__:", self.length)
@@ -106,7 +106,9 @@ class TrainingRunner:
         # get dataloaders
         self.set_dataloaders()
         print("dataloaders set:", datetime.datetime.now())
-        input_ref = next(iter(self.train_loader))
+        iter_train_loader = iter(self.train_loader)
+        print("loader len: ", len(iter_train_loader))
+        input_ref = next(iter_train_loader)
         # print("loaded next(iter", datetime.datetime.now())
         self.input_size = input_ref[0].shape[2]  # group_size
         self.output_size = input_ref[1].shape[2]  # 1
@@ -196,9 +198,9 @@ class TrainingRunner:
         return model, result
     
     def scan_hyperparams(self):
-        lr_list = [1e-3, 1e-4]
-        act_list = ['LeakyReLU', 'ReLU']
-        optim_list = ['Adam', 'SGD']
+        lr_list = [1e-3, 1e-4] # [1e-3, 1e-4, 1e-5]
+        act_list = ['LeakyReLU'] #, 'ReLU']
+        optim_list = ['Adam'] #, 'SGD']
         for lr, activation, optim in product(lr_list, act_list, optim_list): #, 1e-2, 3e-2]:
             model_config = {"input_size": self.input_size,
                             "output_size": self.output_size,
