@@ -2,7 +2,7 @@ import numpy as np
 from scipy.fftpack import fft, ifft, fftfreq
 import h5py
 
-def bounded_frequency_waveform(start_frequency, end_frequency, length, sample_rate):
+def bounded_frequency_waveform(start_frequency, end_frequency, length, sample_rate, use_freq, max_freq):
     """Generates a random waveform within the given frequency range of a given length. 
     
     Args:
@@ -17,7 +17,10 @@ def bounded_frequency_waveform(start_frequency, end_frequency, length, sample_ra
     # Create an evenly spaced time array
     t = np.linspace(0, 1.0, length, False)  # 1 second
     # Generate a random frequency spectrum between the start and end frequencies
-    freq = np.linspace(0, sample_rate/2, length//2, False)
+    if use_freq: 
+        freq = np.linspace(0, max_freq, length//2, False) # replaced sample_rate/2 with end_frequency
+    else:
+        freq = np.linspace(0, sample_rate/2, length//2, False)
     spectrum = np.random.uniform(0, 1, len(freq))
     spectrum = np.where((freq >= start_frequency) & (freq <= end_frequency), spectrum, 0)
     c = np.random.rayleigh(np.sqrt(spectrum*(freq[1]-freq[0])))
@@ -97,7 +100,7 @@ def phase(f):
     """
     return np.arctan2(f0/Q*f, f**2 - f0**2) + c
 
-def displacement_waveform(speaker_data, sample_rate):
+def displacement_waveform(speaker_data, sample_rate, use_freq, max_freq):
     """Calculates the corresponding displacement waveform based on the given voltage waveform
         using calibration. 
 
@@ -112,7 +115,10 @@ def displacement_waveform(speaker_data, sample_rate):
     """
     speaker_spectrum = fft(speaker_data)
     n = speaker_data.size
-    sample_spacing = 1/sample_rate 
+    if use_freq:
+        sample_spacing = 1/(2*max_freq)
+    else:
+        sample_spacing = 1/sample_rate 
     freq = fftfreq(n, d=sample_spacing) # units: cycles/s = Hz
     
     # Multiply signal by transfer func in freq domain, then return to time domain
@@ -121,7 +127,7 @@ def displacement_waveform(speaker_data, sample_rate):
 
     return y, converted_signal, freq
 
-def velocity_waveform(speaker_data, sample_rate):
+def velocity_waveform(speaker_data, sample_rate, use_freq, max_freq):
     """Calculates the corresponding velocity waveform based on the given voltage waveform
         using calibration. 
 
@@ -136,7 +142,10 @@ def velocity_waveform(speaker_data, sample_rate):
     """
     speaker_spectrum = fft(speaker_data)
     n = speaker_data.size
-    sample_spacing = 1/sample_rate 
+    if use_freq:
+        sample_spacing = 1/(2*max_freq)
+    else:
+        sample_spacing = 1/sample_rate 
     freq = fftfreq(n, d=sample_spacing) # units: cycles/s = Hz
     
     # Multiply signal by transfer func in freq domain, then return to time domain

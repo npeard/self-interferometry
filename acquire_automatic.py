@@ -14,7 +14,8 @@ IP = 'rp-f0c04a.local'
 rp_s = scpi.scpi(IP)
 print('Connected to ' + IP)
 
-def run_one_shot(start_freq=1, end_freq=1000, ampl=0.1, decimation=8192, store_data=False, plot_data=False, filename='data.h5py'):
+def run_one_shot(use_freq, max_freq, start_freq=1, end_freq=1000, ampl=0.1, decimation=8192, 
+                    store_data=False, plot_data=False, filename='data.h5py'):
     """Runs one shot of driving the speaker with a waveform and collecting the relevant data. 
 
     Args:
@@ -35,7 +36,8 @@ def run_one_shot(start_freq=1, end_freq=1000, ampl=0.1, decimation=8192, store_d
     wave_form = 'ARBITRARY'
     freq = 1 / burst_time
 
-    t, y = util.bounded_frequency_waveform(start_freq, end_freq, length=N, sample_rate=smpl_rate)
+    t, y = util.bounded_frequency_waveform(start_freq, end_freq, length=N, sample_rate=smpl_rate, 
+                                           use_freq=use_freq, max_freq=max_freq)
     y = util.linear_convert(y) # convert range of waveform to [-1, 1] to properly set ampl
     if plot_data:
         plt.plot(t, y)
@@ -57,9 +59,8 @@ def run_one_shot(start_freq=1, end_freq=1000, ampl=0.1, decimation=8192, store_d
     # Function for configuring Acquisition
     rp_s.acq_set(dec=decimation, trig_delay=0)
     rp_s.tx_txt('ACQ:START')
-    time.sleep(0.5)
+    time.sleep(1)
     rp_s.tx_txt('ACQ:TRig CH2_PE')
-    # time.sleep(1)
 
     # Wait for trigger
     while 1:
@@ -76,9 +77,9 @@ def run_one_shot(start_freq=1, end_freq=1000, ampl=0.1, decimation=8192, store_d
     # Read data and plot function for Data Acquisition
     pd_data = np.array(rp_s.acq_data(chan=1, convert=True)) # Volts
     speaker_data = np.array(rp_s.acq_data(chan=2, convert=True)) # Volts
-    velocity_data, converted_signal, freq = util.velocity_waveform(speaker_data, smpl_rate)
-    displ_data, _, _ = util.displacement_waveform(speaker_data, smpl_rate)
-    y_vel, y_converted, _ = util.velocity_waveform(ampl*y, smpl_rate)
+    velocity_data, converted_signal, freq = util.velocity_waveform(speaker_data, smpl_rate, use_freq, max_freq)
+    displ_data, _, _ = util.displacement_waveform(speaker_data, smpl_rate, use_freq, max_freq)
+    y_vel, y_converted, _ = util.velocity_waveform(ampl*y, smpl_rate, use_freq, max_freq)
     time_data = np.linspace(0, N-1, num=N) / smpl_rate
 
     if plot_data:
@@ -86,15 +87,15 @@ def run_one_shot(start_freq=1, end_freq=1000, ampl=0.1, decimation=8192, store_d
 
         ax[0].plot(time_data, pd_data, color='blue', label='Observed PD')
         ax[0].plot(time_data, speaker_data, color='black', label='Observed Drive')
-        ax[0].plot(time_data, ampl*y, label='Drive Output')
+        ax[0].plot(time_data, ampl*y, label='Drive Output', alpha=0.5)
         ax[0].legend()
         ax[0].set_ylabel('Amplitude (V)')
         ax[0].set_xlabel('Time (s)')
 
-        ax[1].plot(freq, np.abs(fft(speaker_data)), color='black', label='Observed Drive')
-        ax[1].plot(freq, np.abs(converted_signal), color='green', label='Expected Observed Vel')
-        ax[1].plot(freq, np.abs(fft(ampl*y)), color='blue', label='Expected Drive')
-        ax[1].plot(freq, np.abs(y_converted), color='orange', label='Expected Ideal Vel')
+        ax[1].plot(freq, np.abs(fft(speaker_data)), color='black', label='Observed Drive', marker='.')
+        ax[1].plot(freq, np.abs(converted_signal), color='green', label='Expected Observed Vel', marker='.')
+        ax[1].plot(freq, np.abs(fft(ampl*y)), color='blue', label='Expected Drive', marker='.')
+        ax[1].plot(freq, np.abs(y_converted), color='orange', label='Expected Ideal Vel', marker='.')
         ax[1].loglog()
         ax[1].set_xlabel('Frequency (Hz)')
         ax[1].set_ylabel('$|\^{V}|$')
@@ -130,10 +131,12 @@ def run_one_shot(start_freq=1, end_freq=1000, ampl=0.1, decimation=8192, store_d
 
 num_shots = 2000
 amplitude = 0
+end_freq = 1000
+max_freq = 10*end_freq
 for i in range(num_shots):
     amplitude = np.random.uniform(0.1, 0.6)
-    if i % 500 == 0:
+    if i % 400 == 0:
         print(f"{i}: ampl = {amplitude}")
-    run_one_shot(30, 1000, ampl=amplitude, decimation=256, store_data=True, plot_data=False, 
-                 filename='test_30to1kHz_2kshots_dec=256_randampl.h5py')
+    run_one_shot(True, max_freq, 30, end_freq, ampl=amplitude, decimation=256, store_data=True, plot_data=False, 
+                 filename='test_max10kHz_30to1kHz_2kshots_dec=256_randampl.h5py')
     # print(i)
