@@ -18,7 +18,7 @@ import time
 
 # Define a custom Dataset class
 class VelocityDataset(Dataset):
-    def __init__(self, h5_file, step, group_size=256):
+    def __init__(self, test_mode, h5_file, step, group_size=256):
         self.h5_file = h5_file
         self.step = step
         self.group_size = group_size
@@ -27,6 +27,7 @@ class VelocityDataset(Dataset):
             self.length = len(f['Time (s)']) * num_groups  # num shots
         print(self.h5_file)
         self.opened_flag = False
+        self.test_mode = test_mode
 
     def open_hdf5(self, rolling=True, step=256, group_size=256, ch_in = 1):
         """Set up inputs and targets. For each shot, buffer is split into groups of sequences.
@@ -49,22 +50,30 @@ class VelocityDataset(Dataset):
         self.file = h5py.File(self.h5_file, 'r')
         pds = torch.Tensor(np.array(self.file['PD (V)']))  # [num_shots, buffer_size]
         vels = torch.Tensor(np.array(self.file['Speaker (Microns/s)']))  # [num_shots, buffer_size]
-
+        
         if rolling:
             # ROLLING INPUT INDICES 
             num_groups = (pds.shape[1] - group_size) // step + 1
             start_idxs = torch.arange(num_groups) * step  # starting indices for each group
             idxs = torch.arange(group_size)[:, None] + start_idxs
             idxs = torch.transpose(idxs, dim0=0, dim1=1)  # indices in shape [num_groups, group_size]
-            self.inputs = pds[:, idxs].reshape(-1, group_size)  # [num_shots * num_groups, group_size]
-            grouped_vels = vels[:, idxs].reshape(-1, group_size)  # [num_shots * num_groups, group_size]
-            self.targets = torch.unsqueeze(torch.mean(grouped_vels, dim=1), dim=1)  # [num_shots * num_groups, 1]
+            if self.test_mode:
+                self.inputs = pds  # [num_shots, buffer_size]
+                grouped_vels = vels[:, idxs]  # [num_shots, num_groups, group_size]
+                self.targets = torch.mean(grouped_vels, dim=2)  # [num_shots, num_groups]
+            else:
+                self.inputs = pds[:, idxs].reshape(-1, group_size)  # [num_shots * num_groups, group_size]
+                grouped_vels = vels[:, idxs].reshape(-1, group_size)  # [num_shots * num_groups, group_size]
+                self.targets = torch.unsqueeze(torch.mean(grouped_vels, dim=1), dim=1)  # [num_shots * num_groups, 1]
         else:
             # STEP INPUT
-            self.inputs = torch.cat(torch.split(pds, group_size, dim=1), dim=0)  # [num_shots * num_groups, group_size]
-            grouped_vels = torch.cat(torch.split(vels, group_size, dim=1), dim=0)
-            self.targets = torch.unsqueeze(torch.mean(grouped_vels, dim=1), dim=1)  # [num_shots * num_groups, 1]
-
+            if self.test_mode:
+                assert False, 'test_mode not implemented for step input. use rolling step=256'
+            else:
+                self.inputs = torch.cat(torch.split(pds, group_size, dim=1), dim=0)  # [num_shots * num_groups, group_size]
+                grouped_vels = torch.cat(torch.split(vels, group_size, dim=1), dim=0)
+                self.targets = torch.unsqueeze(torch.mean(grouped_vels, dim=1), dim=1)  # [num_shots * num_groups, 1]
+                
         if ch_in == 1:
             self.inputs = torch.unsqueeze(self.inputs, dim=1)
             self.targets = torch.unsqueeze(self.targets, dim=1)
@@ -121,10 +130,10 @@ class TrainingRunner:
         self.checkpoint_dir = "./checkpoints"
         print('TrainingRunner initialized', datetime.datetime.now())
         
-    def get_custom_dataloader(self, h5_file, batch_size=128, shuffle=True,
+    def get_custom_dataloader(self, test_mode, h5_file, batch_size=128, shuffle=True,
                               velocity_only=True):
         # if velocity_only:
-        dataset = VelocityDataset(h5_file, self.step)
+        dataset = VelocityDataset(test_mode, h5_file, self.step)
         print("dataset initialized")
         # We can use DataLoader to get batches of data
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle,
@@ -135,9 +144,9 @@ class TrainingRunner:
     
     def set_dataloaders(self, batch_size=128):
         self.batch_size = batch_size
-        self.train_loader = self.get_custom_dataloader(self.training_h5, batch_size=self.batch_size)
-        self.valid_loader = self.get_custom_dataloader(self.validation_h5, batch_size=self.batch_size, shuffle=False)
-        self.test_loader = self.get_custom_dataloader(self.testing_h5, batch_size=self.batch_size, shuffle=False)
+        self.train_loader = self.get_custom_dataloader(False, self.training_h5, batch_size=self.batch_size)
+        self.valid_loader = self.get_custom_dataloader(False, self.validation_h5, batch_size=self.batch_size, shuffle=False)
+        self.test_loader = self.get_custom_dataloader(True, self.testing_h5, batch_size=self.batch_size, shuffle=False)
 
     def train_model(self, model_name, save_name=None, **kwargs):
         """Train model.

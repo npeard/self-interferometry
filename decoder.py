@@ -25,6 +25,8 @@ class VelocityDecoder(L.LightningModule):
         self.model = self.create_model(model_name, model_hparams)
         # Create loss module
         self.loss_function = nn.MSELoss()
+        
+        self.step = misc_hparams["step"]
 
         torch.set_float32_matmul_precision('medium')
         
@@ -87,15 +89,37 @@ class VelocityDecoder(L.LightningModule):
         return loss
     
     def test_step(self, batch, batch_idx):
-        x, y = batch
-        preds = self.model(x)
-        loss = self.loss_function(preds, y)
-        acc = (preds == y).float().mean()
-        self.log("test_acc", acc, on_step=False, on_epoch=True)
-        self.log("test_loss", loss, prog_bar=True)
+        x_tot, y_tot = batch  # [batch_size, 1, buffer_size], [batch_size, 1, num_groups]
+        num_groups = y.shape[2]
+        group_size = x.shape[2] - (num_groups - 1) * self.step
+        avg_loss = 0
+        avg_acc = 0 
+        for i in range(num_groups):
+            start_idx = i*self.step
+            x = x_tot[:, :, start_idx:start_idx+group_size]
+            y = y_tot[:, :, i]
+            preds = self.model(x)
+            avg_loss += self.loss_function(preds, y)
+            avg_acc += (preds == y).float().mean()
+        avg_loss /= num_groups
+        avg_acc /= num_groups
+        self.log("test_acc", avg_acc, on_step=False, on_epoch=True)
+        self.log("test_loss", avg_loss, prog_bar=True)
         return loss
 
-    def predict_step(self, batch, batch_idx, dataloader_idx=0):
-        x, y = batch
-        y_hat = self.model(x)
-        return y_hat, y
+    def predict_step(self, batch, batch_idx, test_mode=False, dataloader_idx=0):
+        x_tot, y_tot = batch 
+        if test_mode:
+             # x_tot, y_tot: [batch_size, 1, buffer_size], [batch_size, 1, num_groups]
+            num_groups = y_tot.shape[2]
+            group_size = x_tot.shape[2] - (num_groups - 1) * self.step
+            y_hat = []
+            for i in range(num_groups):
+                start_idx = i*self.step
+                x = x_tot[:, :, start_idx:start_idx+group_size]  # [batch_size, 1, group_size]
+                y = y_tot[:, :, i]  # [batch_size, 1, 1]
+                y_hat.append(model(x).flatten())
+            y_hat = torch.squeeze(torch.transpose(torch.stack(y_hat), dim0=0, dim1=1), dim=1)  # [batch_size, 1, num_groups]  
+        else:
+            y_hat = self.model(x_tot)
+        return y_hat, y_tot
