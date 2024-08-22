@@ -24,7 +24,10 @@ class VelocityDataset(Dataset):
         self.group_size = group_size
         with h5py.File(self.h5_file, 'r') as f:
             num_groups = (f['Time (s)'].shape[1] - group_size) // step + 1
-            self.length = len(f['Time (s)']) * num_groups  # num shots
+            if test_mode:
+                self.length = len(f['Time (s)'])  # in test_mode, length of dataset = num shots
+            else:
+                self.length = len(f['Time (s)']) * num_groups
         print(self.h5_file)
         self.opened_flag = False
         self.test_mode = test_mode
