@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
-import os, sys, glob
+import os
+import sys
+import glob
 import torch
 from torch.utils.data import Dataset, DataLoader
 import h5py
@@ -17,6 +19,8 @@ import datetime
 import time
 
 # Define a custom Dataset class
+
+
 class VelocityDataset(Dataset):
     def __init__(self, test_mode, h5_file, step, group_size=256):
         self.h5_file = h5_file
@@ -32,14 +36,14 @@ class VelocityDataset(Dataset):
         self.opened_flag = False
         self.test_mode = test_mode
 
-    def open_hdf5(self, rolling=True, step=256, group_size=256, ch_in = 1):
+    def open_hdf5(self, rolling=True, step=256, group_size=256, ch_in=1):
         """Set up inputs and targets. For each shot, buffer is split into groups of sequences.
-        Inputs include grouped photodiode trace of 'group_size', spaced interval 'step' apart for each buffer. 
+        Inputs include grouped photodiode trace of 'group_size', spaced interval 'step' apart for each buffer.
         Targets include average velocity of each group.
         Input shape is [num_shots * num_groups, ch_in, group_size]. Target shape is [num_shots * num_groups, ch_in, 1],
         where num_groups = (buffer_len - group_size)/step + 1, given that buffer_len - group_size is a multiple of step.
         Input and target shape made to fit (N, C_in, L_in) in PyTorch Conv1d doc.
-        If the given 'group_size' and 'step' do not satisfy the above requirement, 
+        If the given 'group_size' and 'step' do not satisfy the above requirement,
         the data will not be cleanly grouped.
 
         Args:
@@ -53,9 +57,9 @@ class VelocityDataset(Dataset):
         self.file = h5py.File(self.h5_file, 'r')
         pds = torch.Tensor(np.array(self.file['PD (V)']))  # [num_shots, buffer_size]
         vels = torch.Tensor(np.array(self.file['Speaker (Microns/s)']))  # [num_shots, buffer_size]
-        
+
         if rolling:
-            # ROLLING INPUT INDICES 
+            # ROLLING INPUT INDICES
             num_groups = (pds.shape[1] - group_size) // step + 1
             start_idxs = torch.arange(num_groups) * step  # starting indices for each group
             idxs = torch.arange(group_size)[:, None] + start_idxs
@@ -73,10 +77,11 @@ class VelocityDataset(Dataset):
             if self.test_mode:
                 assert False, 'test_mode not implemented for step input. use rolling step=256'
             else:
-                self.inputs = torch.cat(torch.split(pds, group_size, dim=1), dim=0)  # [num_shots * num_groups, group_size]
+                # [num_shots * num_groups, group_size]
+                self.inputs = torch.cat(torch.split(pds, group_size, dim=1), dim=0)
                 grouped_vels = torch.cat(torch.split(vels, group_size, dim=1), dim=0)
                 self.targets = torch.unsqueeze(torch.mean(grouped_vels, dim=1), dim=1)  # [num_shots * num_groups, 1]
-                
+
         if ch_in == 1:
             self.inputs = torch.unsqueeze(self.inputs, dim=1)
             self.targets = torch.unsqueeze(self.targets, dim=1)
@@ -93,7 +98,7 @@ class VelocityDataset(Dataset):
 
     def __getitem__(self, idx):
         # print("getitem entered")
-        if not self.opened_flag: #not hasattr(self, 'h5_file'):
+        if not self.opened_flag:  # not hasattr(self, 'h5_file'):
             self.open_hdf5(step=self.step)
             self.opened_flag = True
             # print("open_hdf5 finished")
@@ -105,6 +110,7 @@ class VelocityDataset(Dataset):
     #         self.opened_flag = True
     #         print("open_hdf5 in getitems")
     #     return FloatTensor(self.inputs[indices]), FloatTensor(self.targets[indices])
+
 
 class TrainingRunner:
     def __init__(self, training_h5, validation_h5, testing_h5, step=256,
@@ -132,7 +138,7 @@ class TrainingRunner:
         # directories
         self.checkpoint_dir = "./checkpoints"
         print('TrainingRunner initialized', datetime.datetime.now())
-        
+
     def get_custom_dataloader(self, test_mode, h5_file, batch_size=128, shuffle=True,
                               velocity_only=True):
         # if velocity_only:
@@ -144,11 +150,12 @@ class TrainingRunner:
                                 pin_memory=True)
         print("dataloader initialized")
         return dataloader
-    
+
     def set_dataloaders(self, batch_size=128):
         self.batch_size = batch_size
         self.train_loader = self.get_custom_dataloader(False, self.training_h5, batch_size=self.batch_size)
-        self.valid_loader = self.get_custom_dataloader(False, self.validation_h5, batch_size=self.batch_size, shuffle=False)
+        self.valid_loader = self.get_custom_dataloader(
+            False, self.validation_h5, batch_size=self.batch_size, shuffle=False)
         self.test_loader = self.get_custom_dataloader(True, self.testing_h5, batch_size=self.batch_size, shuffle=False)
 
     def train_model(self, model_name, save_name=None, **kwargs):
@@ -208,30 +215,29 @@ class TrainingRunner:
         logger.experiment.finish()
 
         return model, result
-    
+
     def scan_hyperparams(self):
-        lr_list = [1e-3, 1e-4] # [1e-3, 1e-4, 1e-5]
-        act_list = ['LeakyReLU'] #, 'ReLU']
-        optim_list = ['Adam'] #, 'SGD']
-        for lr, activation, optim in product(lr_list, act_list, optim_list): #, 1e-2, 3e-2]:
+        lr_list = [1e-3, 1e-4]  # [1e-3, 1e-4, 1e-5]
+        act_list = ['LeakyReLU']  # , 'ReLU']
+        optim_list = ['Adam']  # , 'SGD']
+        for lr, activation, optim in product(lr_list, act_list, optim_list):  # , 1e-2, 3e-2]:
             model_config = {"input_size": self.input_size,
                             "output_size": self.output_size,
                             "activation": activation}
             optimizer_config = {"lr": lr}
-                                #"momentum": 0.9,}
+            # "momentum": 0.9,}
             misc_config = {"batch_size": self.batch_size, "step": self.step}
 
             self.train_model(model_name="CNN",
-                            model_hparams=model_config,
-                            optimizer_name=optim,
-                            optimizer_hparams=optimizer_config,
-                            misc_hparams=misc_config)
-
+                             model_hparams=model_config,
+                             optimizer_name=optim,
+                             optimizer_hparams=optimizer_config,
+                             misc_hparams=misc_config)
 
     def load_model(self, model_tag, model_name='CNN'):
         # Check whether pretrained model exists. If yes, load it and skip training
         pretrained_filename = os.path.join(self.checkpoint_dir, model_name, "SMI", model_tag,
-                                            "checkpoints", "*" + ".ckpt")
+                                           "checkpoints", "*" + ".ckpt")
         print(pretrained_filename)
         if os.path.isfile(glob.glob(pretrained_filename)[0]):
             pretrained_filename = glob.glob(pretrained_filename)[0]
@@ -248,10 +254,10 @@ class TrainingRunner:
 
             # Test best model on validation and test set
             val_result = trainer.test(model, dataloaders=self.valid_loader,
-                                        verbose=False)
+                                      verbose=False)
             test_result = trainer.test(model, dataloaders=self.test_loader,
-                                        verbose=False)
+                                       verbose=False)
             result = {"test": test_result[0]["test_acc"],
-                        "val": val_result[0]["test_acc"]}
+                      "val": val_result[0]["test_acc"]}
 
             return model, result
