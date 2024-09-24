@@ -36,7 +36,7 @@ class VelocityDataset(Dataset):
         self.opened_flag = False
         self.test_mode = test_mode
 
-    def open_hdf5(self, rolling=True, step=256, group_size=256, ch_in=1):
+    def open_hdf5(self, rolling=True, step=256, group_size=256):
         """Set up inputs and targets. For each shot, buffer is split into groups of sequences.
         Inputs include grouped photodiode trace of 'group_size', spaced interval 'step' apart for each buffer.
         Targets include average velocity of each group.
@@ -55,22 +55,31 @@ class VelocityDataset(Dataset):
         # solves issue where hdf5 file opened in __init__ prevents multiple
         # workers: https://github.com/pytorch/pytorch/issues/11929
         self.file = h5py.File(self.h5_file, 'r')
-        pds = torch.Tensor(np.array(self.file['PD (V)']))  # [num_shots, buffer_size]
-        vels = torch.Tensor(np.array(self.file['Speaker (Microns/s)']))  # [num_shots, buffer_size]
-
+        signal = torch.Tensor(np.array(self.file['signal']))
+        # [num_shots, buffer_size, num_channels]
+        velocity = torch.Tensor(np.array(self.file['velocity']))
+        # [num_shots, buffer_size]
+        
+        num_channels = signal.shape[-1]
+        if num_channels == 1:
+            signal = torch.squeeze(signal, dim=-1)
+        else:
+            raise ValueError('num_channels must be 1')
+            pass
+ 
         if rolling:
             # ROLLING INPUT INDICES
-            num_groups = (pds.shape[1] - group_size) // step + 1
+            num_groups = (signal.shape[1] - group_size) // step + 1
             start_idxs = torch.arange(num_groups) * step  # starting indices for each group
             idxs = torch.arange(group_size)[:, None] + start_idxs
             idxs = torch.transpose(idxs, dim0=0, dim1=1)  # indices in shape [num_groups, group_size]
             if self.test_mode:
-                self.inputs = pds  # [num_shots, buffer_size]
-                grouped_vels = vels[:, idxs]  # [num_shots, num_groups, group_size]
+                self.inputs = signal  # [num_shots, buffer_size]
+                grouped_vels = velocity[:, idxs]  # [num_shots, num_groups, group_size]
                 self.targets = torch.mean(grouped_vels, dim=2)  # [num_shots, num_groups]
             else:
-                self.inputs = pds[:, idxs].reshape(-1, group_size)  # [num_shots * num_groups, group_size]
-                grouped_vels = vels[:, idxs].reshape(-1, group_size)  # [num_shots * num_groups, group_size]
+                self.inputs = signal[:, idxs].reshape(-1, group_size)  # [num_shots * num_groups, group_size]
+                grouped_vels = velocity[:, idxs].reshape(-1, group_size)  # [num_shots * num_groups, group_size]
                 self.targets = torch.unsqueeze(torch.mean(grouped_vels, dim=1), dim=1)  # [num_shots * num_groups, 1]
         else:
             # STEP INPUT
@@ -78,11 +87,11 @@ class VelocityDataset(Dataset):
                 assert False, 'test_mode not implemented for step input. use rolling step=256'
             else:
                 # [num_shots * num_groups, group_size]
-                self.inputs = torch.cat(torch.split(pds, group_size, dim=1), dim=0)
-                grouped_vels = torch.cat(torch.split(vels, group_size, dim=1), dim=0)
+                self.inputs = torch.cat(torch.split(signal, group_size, dim=1), dim=0)
+                grouped_vels = torch.cat(torch.split(velocity, group_size, dim=1), dim=0)
                 self.targets = torch.unsqueeze(torch.mean(grouped_vels, dim=1), dim=1)  # [num_shots * num_groups, 1]
 
-        if ch_in == 1:
+        if num_channels == 1:
             self.inputs = torch.unsqueeze(self.inputs, dim=1)
             self.targets = torch.unsqueeze(self.targets, dim=1)
         else:

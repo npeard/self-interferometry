@@ -70,7 +70,8 @@ def write_data(file_path, entries):
             else:
                 f.create_dataset(col_name,
                                  data=np.expand_dims(col_data, axis=0),
-                                 maxshape=(None, col_data.shape[0]),
+                                 maxshape=(None, col_data.shape[0],
+                                           col_data.shape[1]),
                                  chunks=True)
 
 
