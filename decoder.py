@@ -111,10 +111,11 @@ class VelocityDecoder(L.LightningModule):
         self.log("test_loss", loss, on_epoch=True, prog_bar=True)
         return loss
 
-    def predict_step(self, batch, batch_idx, test_mode=False, dataloader_idx=0):
+    def predict_step(self, batch, batch_idx, test_mode=True, dataloader_idx=0):
         x_tot, y_tot = batch
         if test_mode:
             # x_tot, y_tot: [batch_size, 1, buffer_size], [batch_size, 1, num_groups]
+            print(x_tot.shape, y_tot.shape)
             num_groups = y_tot.shape[2]
             group_size = x_tot.shape[2] - (num_groups - 1) * self.step
             y_hat = []
@@ -126,4 +127,4 @@ class VelocityDecoder(L.LightningModule):
                                     dim=1)  # [batch_size, 1, num_groups]
         else:
             y_hat = self.model(x_tot)
-        return y_hat, y_tot
+        return y_hat, y_tot, x_tot

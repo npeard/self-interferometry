@@ -9,7 +9,7 @@ import h5py
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 from lightning.pytorch.callbacks import ModelCheckpoint
 from decoder import VelocityDecoder
-from torch import FloatTensor
+from torch import FloatTensor, nn
 import numpy as np
 import matplotlib.pyplot as plt
 import lightning as L
@@ -78,6 +78,7 @@ class VelocityDataset(Dataset):
             idxs = torch.transpose(idxs, dim0=0, dim1=1)
             # indices in shape [num_groups, group_size]
             if self.test_mode:
+                print("test mode")
                 self.inputs = signal  # [num_shots, buffer_size, num_channels]
                 grouped_vels = velocity[:, idxs]
                 # [num_shots, num_groups, group_size]
@@ -111,6 +112,7 @@ class VelocityDataset(Dataset):
         if num_channels == 1:
             # self.inputs = torch.unsqueeze(self.inputs, dim=1)
             # self.targets = torch.unsqueeze(self.targets, dim=1)
+            print(self.inputs.shape, self.targets.shape)
             self.inputs = torch.reshape(self.inputs, (-1, 1, group_size))
             self.targets = torch.reshape(self.targets, (-1, 1, 1))
         else:
@@ -219,7 +221,7 @@ class TrainingRunner:
             accelerator="cpu",
             #devices=[0],
             max_epochs=800,
-            callbacks=[early_stop_callback, checkpoint_callback],
+            callbacks=[checkpoint_callback],
             check_val_every_n_epoch=5,
             logger=logger
         )
@@ -237,15 +239,15 @@ class TrainingRunner:
                                   verbose=False)
         test_result = trainer.test(model, dataloaders=self.test_loader,
                                    verbose=False)
-        result = {"test": test_result[0]["test_acc"],
-                  "val": val_result[0]["test_acc"]}
+        result = {"test": test_result[0]["test_loss"],
+                  "val": val_result[0]["test_loss"]}
 
         logger.experiment.finish()
 
         return model, result
 
     def scan_hyperparams(self):
-        lr_list = [1e-3]  # [1e-3, 1e-4, 1e-5]
+        lr_list = [1e-2]  # [1e-3, 1e-4, 1e-5]
         act_list = ['LeakyReLU']  # , 'ReLU']
         optim_list = ['Adam']  # , 'SGD']
         for lr, activation, optim in product(lr_list, act_list, optim_list):
@@ -262,31 +264,56 @@ class TrainingRunner:
                              optimizer_name=optim,
                              optimizer_hparams=optimizer_config,
                              misc_hparams=misc_config)
-
-    def load_model(self, model_tag, model_name='CNN'):
-        # Check whether pretrained model exists. If yes, load it and skip training
-        pretrained_filename = os.path.join(self.checkpoint_dir, model_name, "SMI", model_tag,
-                                           "checkpoints", "*" + ".ckpt")
-        print(pretrained_filename)
-        if os.path.isfile(glob.glob(pretrained_filename)[0]):
-            pretrained_filename = glob.glob(pretrained_filename)[0]
-            print(
-                f"Found pretrained model at {pretrained_filename}, loading...")
+    
+    def load_model(self, model_name="CNN", model_id="5nozki8z"):
+        # Check whether pretrained model exists. If yes, load it and skip
+        # training
+        print(self.checkpoint_dir)
+        pretrained_filename = os.path.join(
+            self.checkpoint_dir,
+            model_name,
+            "SMI",
+            model_id,
+            "checkpoints",
+            "*" + ".ckpt")
+        pretrained_filename = glob.glob(pretrained_filename)[0]
+        if os.path.isfile(pretrained_filename):
+            print(f"Found pretrained model at {
+            pretrained_filename}, loading...")
             # Automatically loads the model with the saved hyperparameters
-            model = VelocityDecoder.load_from_checkpoint(pretrained_filename)
+            model = VelocityDecoder.load_from_checkpoint(
+                pretrained_filename)
+            
+            return model
+        
+    def plot_predictions(self, model_name="CNN", model_id="i52c3rlz"):
 
-            # Create a PyTorch Lightning trainer with the generation callback
-            trainer = L.Trainer(
-                accelerator="gpu",
-                devices=[0]
-            )
+        model = self.load_model(model_name=model_name, model_id=model_id)
+        trainer = L.Trainer(
+            accelerator="cpu",
+            #devices=[0]
+        )
+        y = trainer.predict(model, dataloaders=self.test_loader)
 
-            # Test best model on validation and test set
-            val_result = trainer.test(model, dataloaders=self.valid_loader,
-                                      verbose=False)
-            test_result = trainer.test(model, dataloaders=self.test_loader,
-                                       verbose=False)
-            result = {"test": test_result[0]["test_acc"],
-                      "val": val_result[0]["test_acc"]}
+        print(y[0][0].numpy().shape)
+        print(y[0][2].numpy().shape)
+        # y[batch_idx][return_idx], return_idx 0...3: 0: Predictions, 1:
+        # Targets, 2: inputs, 3: encoded
+        print("MSE Loss: ", np.mean((y[0][0].numpy() - y[0][1].numpy())**2))
 
-            return model, result
+        for i in range(len(y[0][0].numpy()[:, 0])):
+            fig = plt.figure(figsize=(5, 10))
+            ax1, ax2 = fig.subplots(2, 1)
+            for channel in range(y[0][2].numpy().shape[1]):
+                ax1.plot(y[0][2].numpy()[i, channel, :], label="Input"+str(channel))
+            ax1.set_title("Inputs")
+            ax2.legend()
+
+            ax2.plot(y[0][1].numpy()[i, 0, :], label="Targets")
+            ax2.plot(y[0][0].numpy()[i, 0, :], label="Predictions")
+            ax2.set_title("MSE Loss: " + str(nn.MSELoss(reduction='sum')
+                          (y[0][0][i, :], y[0][1][i, :]).item()))
+            ax2.legend()
+
+            plt.tight_layout()
+            plt.show()

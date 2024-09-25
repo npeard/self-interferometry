@@ -109,7 +109,7 @@ def write_pretraining_data(num_shots, num_channels, file_path):
             util.write_data(file_path, entries)
     elif num_channels == 2:
         interferometer1 = MichelsonInterferometer(1.064, 5, np.pi / 4)
-        interferometer2 = MichelsonInterferometer(0.532, 5, 2 * np.pi / 4)
+        interferometer2 = MichelsonInterferometer(0.532, 5, 3 * np.pi / 4)
         for _ in tqdm(range(num_shots)):
             time, signal1, displacement, velocity = interferometer1.get_buffer()
             _, signal2, _, _ = interferometer2.get_buffer(displacement=displacement, time=time)
@@ -146,7 +146,8 @@ def plot_pretraining_data(file_path):
 
 
 if __name__ == '__main__':
-    np.random.seed(0x5EED + 3)
-    write_pretraining_data(100, 1, "/Users/nolanpeard/Desktop/test.h5")
+    np.random.seed(0x5EED + 4)
+    write_pretraining_data(10, 2,
+                           "/Users/nolanpeard/Desktop/SMI_sim/valid_double.h5")
     # plot_pretraining_data("/Users/nolanpeard/Desktop/test.h5")
     
