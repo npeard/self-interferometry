@@ -33,7 +33,7 @@ class VelocityDecoder(L.LightningModule):
 
         self.step = misc_hparams["step"]
 
-        torch.set_float32_matmul_precision('medium')
+        torch.set_float32_matmul_precision('high')
 
     def create_model(self, model_name, model_hparams):
         if model_name in model_dict:
@@ -57,10 +57,11 @@ class VelocityDecoder(L.LightningModule):
         else:
             assert False, f'Unknown optimizer: "{self.hparams.optimizer_name}"'
 
-        # We will reduce the learning rate by 0.1 after 100 and 150 epochs
+        # We will reduce the learning rate by factor of gamma after 100 and 150
+        # epochs
         scheduler = optim.lr_scheduler.MultiStepLR(optimizer,
                                                    milestones=[100, 150, 200],
-                                                   gamma=0.1)
+                                                   gamma=1)
         return [optimizer], [scheduler]
 
     def get_loss_function(self, loss_hparams):
@@ -75,8 +76,8 @@ class VelocityDecoder(L.LightningModule):
         x, y = batch
         preds = self.model(x)
         loss = self.loss_function(preds, y)
-        acc = (preds == y).float().mean()
-        self.log("train_acc", acc, on_step=False, on_epoch=True)
+        # acc = (preds == y).float().mean()
+        # self.log("train_acc", acc, on_step=False, on_epoch=True)
         self.log("train_loss", loss, on_epoch=True, prog_bar=True)
         return loss
 
@@ -88,9 +89,9 @@ class VelocityDecoder(L.LightningModule):
         # print(f"y size {y.size()}")
         preds = self.model(x)
         loss = self.loss_function(preds, y)
-        acc = (preds == y).float().mean()
-        self.log("val_acc", acc, on_step=False, on_epoch=True)
-        self.log("val_loss", loss, prog_bar=False)
+        # acc = (preds == y).float().mean()
+        # self.log("val_acc", acc, on_step=False, on_epoch=True)
+        self.log("val_loss", loss, on_epoch=True, prog_bar=True)
         return loss
 
     def test_step(self, batch, batch_idx):
@@ -105,9 +106,9 @@ class VelocityDecoder(L.LightningModule):
         preds = torch.unsqueeze(torch.transpose(torch.stack(preds), dim0=0, dim1=1),
                                 dim=1)  # [batch_size, 1, num_groups]
         loss = self.loss_function(preds, y_tot)
-        acc = (preds == y_tot).float().mean()
-        self.log("test_acc", acc, on_step=False, on_epoch=True)
-        self.log("test_loss", loss, prog_bar=True)
+        # acc = (preds == y_tot).float().mean()
+        # self.log("test_acc", acc, on_step=False, on_epoch=True)
+        self.log("test_loss", loss, on_epoch=True, prog_bar=True)
         return loss
 
     def predict_step(self, batch, batch_idx, test_mode=False, dataloader_idx=0):

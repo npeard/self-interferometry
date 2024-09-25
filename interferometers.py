@@ -74,10 +74,10 @@ class MichelsonInterferometer:
     def plot_buffer(self):
         time, signal, displacement, velocity = self.get_buffer(0, 1e3)
         
-        time = time[0:256]
-        signal = signal[0:256]
-        displacement = displacement[0:256]
-        velocity = velocity[0:256]
+        # time = time[0:256]
+        # signal = signal[0:256]
+        # displacement = displacement[0:256]
+        # velocity = velocity[0:256]
         
         fig, ax1 = plt.subplots(figsize=(18, 6))
         ax1.plot(time, signal, color='b')
@@ -99,7 +99,6 @@ def write_pretraining_data(num_shots, num_channels, file_path):
     if num_channels == 1:
         interferometer = MichelsonInterferometer(0.5, 5, np.pi / 4)
         for _ in tqdm(range(num_shots)):
-            interferometer.plot_buffer()
             _, signal, _, velocity = interferometer.get_buffer()
             signal = np.expand_dims(signal, axis=-1)
             velocity = np.expand_dims(velocity, axis=-1)
@@ -148,6 +147,6 @@ def plot_pretraining_data(file_path):
 
 if __name__ == '__main__':
     np.random.seed(0x5EED + 3)
-    write_pretraining_data(100, 2, "/Users/nolanpeard/Desktop/test.h5")
+    write_pretraining_data(100, 1, "/Users/nolanpeard/Desktop/test.h5")
     # plot_pretraining_data("/Users/nolanpeard/Desktop/test.h5")
     

@@ -252,7 +252,7 @@ class TrainingRunner:
             model_config = {"input_size": self.input_size,
                             "output_size": self.output_size,
                             "activation": activation,
-                            "in_channels": 2}
+                            "in_channels": 1}
             optimizer_config = {"lr": lr}
             # "momentum": 0.9,}
             misc_config = {"batch_size": self.batch_size, "step": self.step}
