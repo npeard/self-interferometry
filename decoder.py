@@ -116,12 +116,14 @@ class VelocityDecoder(L.LightningModule):
         if test_mode:
             # x_tot, y_tot: [batch_size, 1, buffer_size], [batch_size, 1, num_groups]
             print(x_tot.shape, y_tot.shape)
-            num_groups = y_tot.shape[2]
-            group_size = x_tot.shape[2] - (num_groups - 1) * self.step
+            num_groups = y_tot.shape[1]
+            group_size = x_tot.shape[1] - (num_groups - 1) * self.step
             y_hat = []
             for i in range(num_groups):
                 start_idx = i * self.step
-                x = x_tot[:, :, start_idx:start_idx + group_size]  # [batch_size, 1, group_size]
+                x = x_tot[:, start_idx:start_idx + group_size, :]
+                x = x.reshape(x.shape[0], x.shape[2], x.shape[1])
+                # [batch_size, group_size, num_channels]
                 y_hat.append(self.model(x).flatten())
             y_hat = torch.unsqueeze(torch.transpose(torch.stack(y_hat), dim0=0, dim1=1),
                                     dim=1)  # [batch_size, 1, num_groups]

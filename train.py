@@ -109,15 +109,16 @@ class VelocityDataset(Dataset):
                                                           dim=1), dim=1)
                 # [num_shots * num_groups, 1]
 
-        if num_channels == 1:
-            # self.inputs = torch.unsqueeze(self.inputs, dim=1)
-            # self.targets = torch.unsqueeze(self.targets, dim=1)
-            print(self.inputs.shape, self.targets.shape)
-            self.inputs = torch.reshape(self.inputs, (-1, 1, group_size))
-            self.targets = torch.reshape(self.targets, (-1, 1, 1))
-        else:
-            self.inputs = torch.reshape(self.inputs, (-1, num_channels, group_size))
-            self.targets = torch.reshape(self.targets, (-1, 1, 1))
+        if not self.test_mode:
+            if num_channels == 1:
+                # self.inputs = torch.unsqueeze(self.inputs, dim=1)
+                # self.targets = torch.unsqueeze(self.targets, dim=1)
+                print(self.inputs.shape, self.targets.shape)
+                self.inputs = torch.reshape(self.inputs, (-1, 1, group_size))
+                self.targets = torch.reshape(self.targets, (-1, 1, 1))
+            else:
+                self.inputs = torch.reshape(self.inputs, (-1, num_channels, group_size))
+                self.targets = torch.reshape(self.targets, (-1, 1, 1))
 
         # total number of group_size length sequences = num_shots * num_groups
         # print("open_hdf5 input size", self.inputs.size())  # [self.length, 256]
@@ -296,6 +297,7 @@ class TrainingRunner:
         y = trainer.predict(model, dataloaders=self.test_loader)
 
         print(y[0][0].numpy().shape)
+        print(y[0][1].numpy().shape)
         print(y[0][2].numpy().shape)
         # y[batch_idx][return_idx], return_idx 0...3: 0: Predictions, 1:
         # Targets, 2: inputs, 3: encoded
@@ -304,12 +306,13 @@ class TrainingRunner:
         for i in range(len(y[0][0].numpy()[:, 0])):
             fig = plt.figure(figsize=(5, 10))
             ax1, ax2 = fig.subplots(2, 1)
-            for channel in range(y[0][2].numpy().shape[1]):
-                ax1.plot(y[0][2].numpy()[i, channel, :], label="Input"+str(channel))
+            for channel in range(y[0][2].numpy().shape[2]):
+                ax1.plot(y[0][2].numpy()[i, :, channel], label="Input"+str(
+                    channel))
             ax1.set_title("Inputs")
             ax2.legend()
 
-            ax2.plot(y[0][1].numpy()[i, 0, :], label="Targets")
+            ax2.plot(y[0][1].numpy()[i, :], label="Targets")
             ax2.plot(y[0][0].numpy()[i, 0, :], label="Predictions")
             ax2.set_title("MSE Loss: " + str(nn.MSELoss(reduction='sum')
                           (y[0][0][i, :], y[0][1][i, :]).item()))

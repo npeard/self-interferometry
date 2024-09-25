@@ -17,9 +17,9 @@ if __name__ == '__main__':
         # train_file = 'C:\\Users\\aj14\\Desktop\\SMI\\data\\training_max10kHz_30to1kHz_10kshots_dec=256_randampl.h5py'
         # test_file = 'C:\\Users\\aj14\\Desktop\\SMI\\data\\test_max10kHz_30to1kHz_2kshots_dec=256_randampl.h5py'
         
-        train_file = "/Users/nolanpeard/Desktop/SMI_sim/train_single.h5"
-        valid_file = "/Users/nolanpeard/Desktop/SMI_sim/valid_single.h5"
-        test_file = "/Users/nolanpeard/Desktop/SMI_sim/test_single.h5"
+        train_file = "/Users/nolanpeard/Desktop/SMI_sim/train_double.h5"
+        valid_file = "/Users/nolanpeard/Desktop/SMI_sim/valid_double.h5"
+        test_file = "/Users/nolanpeard/Desktop/SMI_sim/test_double.h5"
 
         print('begin main', datetime.datetime.now())
         # step_list = [256]#, 128, 64, 32] # step sizes for rolling input
@@ -30,7 +30,8 @@ if __name__ == '__main__':
         
         runner = train.TrainingRunner(train_file, valid_file, test_file,
                                       step=256)
-        runner.plot_predictions(model_name="CNN", model_id="tdwhpu2l")
+        #runner.plot_predictions(model_name="CNN", model_id="tdwhpu2l")
+        runner.plot_predictions(model_name="CNN", model_id="e8vpuie1")
 
     else:
         print("Error: Unsupported number of command-line arguments")
