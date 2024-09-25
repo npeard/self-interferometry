@@ -96,6 +96,9 @@ def write_pretraining_data(num_shots, num_channels, file_path):
             _, signal, _, velocity = interferometer.get_buffer()
             signal = np.expand_dims(signal, axis=-1)
             velocity = np.expand_dims(velocity, axis=-1)
+            # Want to end up with these shapes in h5 file:
+            # signal: (num_shots, buffer_size, 1)
+            # velocity: (num_shots, buffer_size, 1)
             entries = {"signal": signal, "velocity": velocity}
             util.write_data(file_path, entries)
     elif num_channels == 2:
@@ -107,8 +110,12 @@ def write_pretraining_data(num_shots, num_channels, file_path):
             _, signal2, _, _ = interferometer2.get_buffer()
             signal = np.stack((signal1, signal2), axis=-1)
             velocity = np.expand_dims(velocity, axis=-1)
-            print(signal.shape)
+            # Want to end up with these shapes in h5 file:
+            # signal: (num_shots, buffer_size, num_channels)
+            # velocity: (num_shots, buffer_size, 1)
             entries = {"signal": signal, "velocity": velocity}
+            print(signal.shape)
+            print(velocity.shape)
             util.write_data(file_path, entries)
 
 

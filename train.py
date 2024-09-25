@@ -26,15 +26,21 @@ class VelocityDataset(Dataset):
         self.h5_file = h5_file
         self.step = step
         self.group_size = group_size
-        with h5py.File(self.h5_file, 'r') as f:
-            num_groups = (f['Time (s)'].shape[1] - group_size) // step + 1
-            if test_mode:
-                self.length = len(f['Time (s)'])  # in test_mode, length of dataset = num shots
-            else:
-                self.length = len(f['Time (s)']) * num_groups
+        self.length = self.get_length(h5_file, step, group_size, test_mode)
         print(self.h5_file)
         self.opened_flag = False
         self.test_mode = test_mode
+        
+    def get_length(self, h5_file, step, group_size, test_mode):
+        with h5py.File(self.h5_file, 'r') as f:
+            num_groups = (f['signal'].shape[1] - group_size) // step + 1
+            if test_mode:
+                length = len(f['signal'])
+                # in test_mode, length of dataset = num shots
+            else:
+                length = len(f['signal']) * num_groups
+                
+            return length
 
     def open_hdf5(self, rolling=True, step=256, group_size=256):
         """Set up inputs and targets. For each shot, buffer is split into groups of sequences.
@@ -58,44 +64,60 @@ class VelocityDataset(Dataset):
         signal = torch.Tensor(np.array(self.file['signal']))
         # [num_shots, buffer_size, num_channels]
         velocity = torch.Tensor(np.array(self.file['velocity']))
-        # [num_shots, buffer_size]
+        # [num_shots, buffer_size, 1]
         
         num_channels = signal.shape[-1]
-        if num_channels == 1:
-            signal = torch.squeeze(signal, dim=-1)
-        else:
-            raise ValueError('num_channels must be 1')
-            pass
+        velocity = velocity.squeeze(dim=-1)
  
         if rolling:
             # ROLLING INPUT INDICES
             num_groups = (signal.shape[1] - group_size) // step + 1
-            start_idxs = torch.arange(num_groups) * step  # starting indices for each group
+            start_idxs = torch.arange(num_groups) * step
+            # starting indices for each group
             idxs = torch.arange(group_size)[:, None] + start_idxs
-            idxs = torch.transpose(idxs, dim0=0, dim1=1)  # indices in shape [num_groups, group_size]
+            idxs = torch.transpose(idxs, dim0=0, dim1=1)
+            # indices in shape [num_groups, group_size]
             if self.test_mode:
-                self.inputs = signal  # [num_shots, buffer_size]
-                grouped_vels = velocity[:, idxs]  # [num_shots, num_groups, group_size]
-                self.targets = torch.mean(grouped_vels, dim=2)  # [num_shots, num_groups]
+                self.inputs = signal  # [num_shots, buffer_size, num_channels]
+                grouped_vels = velocity[:, idxs]
+                # [num_shots, num_groups, group_size]
+                self.targets = torch.mean(grouped_vels, dim=2)
+                # [num_shots, num_groups]
             else:
-                self.inputs = signal[:, idxs].reshape(-1, group_size)  # [num_shots * num_groups, group_size]
-                grouped_vels = velocity[:, idxs].reshape(-1, group_size)  # [num_shots * num_groups, group_size]
-                self.targets = torch.unsqueeze(torch.mean(grouped_vels, dim=1), dim=1)  # [num_shots * num_groups, 1]
+                self.inputs = signal[:, idxs, :].reshape(-1, group_size,
+                                                         num_channels)
+                # [num_shots * num_groups, group_size, num_channels]
+                grouped_vels = velocity[:, idxs].reshape(-1, group_size)
+                # [num_shots * num_groups, group_size]
+                self.targets = torch.unsqueeze(torch.mean(grouped_vels, dim=1),
+                                               dim=1)
+                # [num_shots * num_groups, 1]
         else:
             # STEP INPUT
             if self.test_mode:
-                assert False, 'test_mode not implemented for step input. use rolling step=256'
+                raise NotImplementedError("test_mode not implemented for step "
+                                          "input. use rolling step=256")
             else:
+                self.inputs = torch.cat(torch.split(signal, group_size,
+                                                    dim=1), dim=0)
+                # [num_shots * num_groups, group_size, num_channels]
+                grouped_vels = torch.cat(torch.split(velocity, group_size,
+                                                     dim=1), dim=0)
                 # [num_shots * num_groups, group_size]
-                self.inputs = torch.cat(torch.split(signal, group_size, dim=1), dim=0)
-                grouped_vels = torch.cat(torch.split(velocity, group_size, dim=1), dim=0)
-                self.targets = torch.unsqueeze(torch.mean(grouped_vels, dim=1), dim=1)  # [num_shots * num_groups, 1]
+                self.targets = torch.unsqueeze(torch.mean(grouped_vels,
+                                                          dim=1), dim=1)
+                # [num_shots * num_groups, 1]
 
         if num_channels == 1:
-            self.inputs = torch.unsqueeze(self.inputs, dim=1)
-            self.targets = torch.unsqueeze(self.targets, dim=1)
+            # self.inputs = torch.unsqueeze(self.inputs, dim=1)
+            # self.targets = torch.unsqueeze(self.targets, dim=1)
+            self.inputs = torch.reshape(self.inputs, (-1, 1, group_size))
+            self.targets = torch.reshape(self.targets, (-1, 1, 1))
         else:
-            assert False, 'ch > 1 not implemented'
+            self.inputs = torch.reshape(self.inputs, (-1, num_channels, group_size))
+            self.targets = torch.reshape(self.targets, (-1, 1, 1))
+            print(self.inputs.shape)
+            print(self.targets.shape)
 
         # total number of group_size length sequences = num_shots * num_groups
         # print("open_hdf5 input size", self.inputs.size())  # [self.length, 256]
@@ -148,14 +170,13 @@ class TrainingRunner:
         self.checkpoint_dir = "./checkpoints"
         print('TrainingRunner initialized', datetime.datetime.now())
 
-    def get_custom_dataloader(self, test_mode, h5_file, batch_size=128, shuffle=True,
-                              velocity_only=True):
-        # if velocity_only:
+    def get_custom_dataloader(self, test_mode, h5_file, batch_size=128, shuffle=True):
+        
         dataset = VelocityDataset(test_mode, h5_file, self.step)
         print("dataset initialized")
         # We can use DataLoader to get batches of data
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle,
-                                num_workers=16, persistent_workers=True,
+                                num_workers=1, persistent_workers=True,
                                 pin_memory=True)
         print("dataloader initialized")
         return dataloader
@@ -197,8 +218,8 @@ class TrainingRunner:
         # Create a PyTorch Lightning trainer with the generation callback
         trainer = L.Trainer(
             default_root_dir=os.path.join(self.checkpoint_dir, save_name),
-            accelerator="gpu",
-            devices=[0],
+            accelerator="cpu",
+            #devices=[0],
             max_epochs=800,
             callbacks=[early_stop_callback, checkpoint_callback],
             check_val_every_n_epoch=5,
@@ -229,10 +250,11 @@ class TrainingRunner:
         lr_list = [1e-3, 1e-4]  # [1e-3, 1e-4, 1e-5]
         act_list = ['LeakyReLU']  # , 'ReLU']
         optim_list = ['Adam']  # , 'SGD']
-        for lr, activation, optim in product(lr_list, act_list, optim_list):  # , 1e-2, 3e-2]:
+        for lr, activation, optim in product(lr_list, act_list, optim_list):
             model_config = {"input_size": self.input_size,
                             "output_size": self.output_size,
-                            "activation": activation}
+                            "activation": activation,
+                            "in_channels": 2}
             optimizer_config = {"lr": lr}
             # "momentum": 0.9,}
             misc_config = {"batch_size": self.batch_size, "step": self.step}

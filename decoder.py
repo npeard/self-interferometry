@@ -25,7 +25,9 @@ class VelocityDecoder(L.LightningModule):
         self.save_hyperparameters()
         # Create model
         self.model = self.create_model(model_name, model_hparams)
-        print(summary(self.model, input_size=(misc_hparams['batch_size'], 1, 256)))
+        print(summary(self.model, input_size=(misc_hparams['batch_size'],
+                                              model_hparams['in_channels'],
+                                              256)))
         # Create loss module
         self.loss_function = nn.MSELoss()
 
