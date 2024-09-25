@@ -116,8 +116,6 @@ class VelocityDataset(Dataset):
         else:
             self.inputs = torch.reshape(self.inputs, (-1, num_channels, group_size))
             self.targets = torch.reshape(self.targets, (-1, 1, 1))
-            print(self.inputs.shape)
-            print(self.targets.shape)
 
         # total number of group_size length sequences = num_shots * num_groups
         # print("open_hdf5 input size", self.inputs.size())  # [self.length, 256]
@@ -247,7 +245,7 @@ class TrainingRunner:
         return model, result
 
     def scan_hyperparams(self):
-        lr_list = [1e-3, 1e-4]  # [1e-3, 1e-4, 1e-5]
+        lr_list = [1e-3]  # [1e-3, 1e-4, 1e-5]
         act_list = ['LeakyReLU']  # , 'ReLU']
         optim_list = ['Adam']  # , 'SGD']
         for lr, activation, optim in product(lr_list, act_list, optim_list):

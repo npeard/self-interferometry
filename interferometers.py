@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import util
 from tqdm import tqdm
+import h5py
 
 
 class MichelsonInterferometer:
@@ -32,7 +33,8 @@ class MichelsonInterferometer:
         self.time = time
     
     def get_interferometer_output(self, start_frequency, end_frequency,
-                                  measurement_noise_level, length, sample_rate):
+                                  measurement_noise_level, length,
+                                  sample_rate, displacement, time):
         E0 = 1 + measurement_noise_level * util.bounded_frequency_waveform(1e3,
                                                                           1e6,
                                                                   length, sample_rate)[1]
@@ -40,9 +42,11 @@ class MichelsonInterferometer:
                                                                           1e6,
                                                                     length, sample_rate)[1]
         
-        if self.displacement is None:
+        if displacement is None:
             self.time, self.displacement = self.get_displacement(start_frequency,
                                                  end_frequency, length, sample_rate)
+        else:
+            self.set_displacement(displacement, time)
     
         interference = np.cos(2 * np.pi / self.wavelength * self.displacement
                               + self.phase)
@@ -51,9 +55,12 @@ class MichelsonInterferometer:
         
         return signal
     
-    def get_buffer(self, start_frequency=0, end_frequency=1e3):
+    def get_buffer(self, start_frequency=0, end_frequency=1e3,
+                   displacement=None, time=None):
         self.signal = self.get_interferometer_output(start_frequency,
-                                                     end_frequency, 0.3, 8192, 1e6)
+                                                     end_frequency, 0.3,
+                                                     8192, 1e6, displacement,
+                                                     time)
         
         self.velocity = np.diff(self.displacement)
         self.velocity = np.insert(self.velocity, 0, self.velocity[0])
@@ -102,23 +109,45 @@ def write_pretraining_data(num_shots, num_channels, file_path):
             entries = {"signal": signal, "velocity": velocity}
             util.write_data(file_path, entries)
     elif num_channels == 2:
-        interferometer1 = MichelsonInterferometer(0.5, 5, np.pi / 4)
-        interferometer2 = MichelsonInterferometer(0.3, 5, 2 * np.pi / 4)
+        interferometer1 = MichelsonInterferometer(1.064, 5, np.pi / 4)
+        interferometer2 = MichelsonInterferometer(0.532, 5, 2 * np.pi / 4)
         for _ in tqdm(range(num_shots)):
             time, signal1, displacement, velocity = interferometer1.get_buffer()
-            interferometer2.set_displacement(displacement, time)
-            _, signal2, _, _ = interferometer2.get_buffer()
+            _, signal2, _, _ = interferometer2.get_buffer(displacement=displacement, time=time)
             signal = np.stack((signal1, signal2), axis=-1)
             velocity = np.expand_dims(velocity, axis=-1)
             # Want to end up with these shapes in h5 file:
             # signal: (num_shots, buffer_size, num_channels)
             # velocity: (num_shots, buffer_size, 1)
             entries = {"signal": signal, "velocity": velocity}
-            print(signal.shape)
-            print(velocity.shape)
+            # print(signal.shape)
+            # print(velocity.shape)
             util.write_data(file_path, entries)
+            
+def plot_pretraining_data(file_path):
+    with h5py.File(file_path, 'r') as f:
+        signal = np.array(f['signal'])
+        velocity = np.array(f['velocity'])
+        print(signal.shape)
+        print(velocity.shape)
+        for shot_idx in range(signal.shape[0]):
+            fig, ax1 = plt.subplots(figsize=(18, 6))
+            ax1.plot(signal[shot_idx, :, 0], color='b', label='Signal 1')
+            ax1.plot(signal[shot_idx, :, 1], color='g', label='Signal 2')
+            ax1.set_xlabel('Time (s)')
+            ax1.set_ylabel('Signal (V)', color='b')
+            ax1.tick_params('y', colors='b')
+            
+            ax2 = ax1.twinx()
+            ax2.plot(velocity[shot_idx, :, 0], color='r')
+            ax2.set_ylabel('Velocity (microns/second)', color='r')
+            
+            plt.tight_layout()
+            plt.show()
 
 
 if __name__ == '__main__':
-    write_pretraining_data(2, 2, "/Users/nolanpeard/Desktop/test.h5")
+    np.random.seed(0x5EED + 3)
+    write_pretraining_data(100, 2, "/Users/nolanpeard/Desktop/test.h5")
+    # plot_pretraining_data("/Users/nolanpeard/Desktop/test.h5")
     
