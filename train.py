@@ -23,11 +23,11 @@ class VelocityDataset(Dataset):
         self.step = step
         self.group_size = group_size
         with h5py.File(self.h5_file, 'r') as f:
-            num_groups = (f['Time (s)'].shape[1] - group_size) // step + 1
+            num_groups = (f['PD (V)'].shape[1] - group_size) // step + 1
             if test_mode:
-                self.length = len(f['Time (s)'])  # in test_mode, length of dataset = num shots
+                self.length = len(f['PD (V)'])  # in test_mode, length of dataset = num shots
             else:
-                self.length = len(f['Time (s)']) * num_groups
+                self.length = len(f['PD (V)']) * num_groups
         print(self.h5_file)
         self.opened_flag = False
         self.test_mode = test_mode
@@ -210,7 +210,7 @@ class TrainingRunner:
         return model, result
     
     def scan_hyperparams(self):
-        lr_list = [1e-3, 1e-4] # [1e-3, 1e-4, 1e-5]
+        lr_list = [1e-3, 1e-4]# [1e-3, 1e-4, 1e-5] # [1e-3, 1e-4, 1e-5]
         act_list = ['LeakyReLU'] #, 'ReLU']
         optim_list = ['Adam'] #, 'SGD']
         for lr, activation, optim in product(lr_list, act_list, optim_list): #, 1e-2, 3e-2]:
