@@ -149,6 +149,7 @@ class TrainingRunner:
         self.batch_size = batch_size
         self.train_loader = self.get_custom_dataloader(False, self.training_h5, batch_size=self.batch_size)
         self.valid_loader = self.get_custom_dataloader(False, self.validation_h5, batch_size=self.batch_size, shuffle=False)
+        self.valid_loader_testmode = self.get_custom_dataloader(True, self.validation_h5, batch_size=self.batch_size, shuffle=False)
         self.test_loader = self.get_custom_dataloader(True, self.testing_h5, batch_size=self.batch_size, shuffle=False)
 
     def train_model(self, model_name, save_name=None, **kwargs):
