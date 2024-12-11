@@ -12,12 +12,12 @@ rp_s = scpi.scpi(IP)
 print('Connected to ' + IP)
 
 wave_form = "SINE"
-freq = 1000
+freq = 120
 ampl = 0.1
 
 N = 16384 # Number of samples in buffer
 SMPL_RATE_DEC1 = 125e6 # sample rate for decimation=1 in Samples/s (Hz)
-decimation = 32
+decimation = 256# 32
 smpl_rate = SMPL_RATE_DEC1//decimation
 
 # Reset Generation and Acquisition
