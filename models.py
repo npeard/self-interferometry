@@ -26,7 +26,7 @@ class CNN(nn.Module):
         )
         self.fc_layers = nn.Sequential(
             nn.Linear(640, 16),
-            nn.ReLU(),
+            act_fn_by_name[activation],
             nn.Linear(16, output_size)
         )
         

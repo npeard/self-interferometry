@@ -24,7 +24,7 @@ class VelocityDecoder(L.LightningModule):
         self.save_hyperparameters()
         # Create model
         self.model = self.create_model(model_name, model_hparams)
-        print(summary(self.model, input_size=(misc_hparams['batch_size'], 1, 256)))
+        # print(summary(self.model, input_size=(misc_hparams['batch_size'], 1, 256)))
         # Create loss module
         self.loss_function = nn.MSELoss()
         
@@ -56,7 +56,7 @@ class VelocityDecoder(L.LightningModule):
 
         # We will reduce the learning rate by 0.1 after 100 and 150 epochs
         scheduler = optim.lr_scheduler.MultiStepLR(optimizer,
-                                                   milestones=[100, 150, 200],
+                                                   milestones=[50, 100, 150], #changed from [100, 150, 200]
                                                    gamma=0.1)
         return [optimizer], [scheduler]
     
