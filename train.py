@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 
-import os, sys, glob
+import os
+import sys
+import glob
 import torch
 from torch.utils.data import Dataset, DataLoader
 import h5py
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 from lightning.pytorch.callbacks import ModelCheckpoint
 from decoder import VelocityDecoder
-from torch import FloatTensor
+from torch import FloatTensor, nn
 import numpy as np
 import matplotlib.pyplot as plt
 import lightning as L
@@ -17,29 +19,37 @@ import datetime
 import time
 
 # Define a custom Dataset class
+
+
 class VelocityDataset(Dataset):
     def __init__(self, test_mode, h5_file, step, group_size=256):
         self.h5_file = h5_file
         self.step = step
         self.group_size = group_size
-        with h5py.File(self.h5_file, 'r') as f:
-            num_groups = (f['PD (V)'].shape[1] - group_size) // step + 1
-            if test_mode:
-                self.length = len(f['PD (V)'])  # in test_mode, length of dataset = num shots
-            else:
-                self.length = len(f['PD (V)']) * num_groups
+        self.length = self.get_length(h5_file, step, group_size, test_mode)
         print(self.h5_file)
         self.opened_flag = False
         self.test_mode = test_mode
+        
+    def get_length(self, h5_file, step, group_size, test_mode):
+        with h5py.File(self.h5_file, 'r') as f:
+            num_groups = (f['signal'].shape[1] - group_size) // step + 1
+            if test_mode:
+                length = len(f['signal'])
+                # in test_mode, length of dataset = num shots
+            else:
+                length = len(f['signal']) * num_groups
+                
+            return length
 
-    def open_hdf5(self, rolling=True, step=256, group_size=256, ch_in = 1):
+    def open_hdf5(self, rolling=True, step=256, group_size=256):
         """Set up inputs and targets. For each shot, buffer is split into groups of sequences.
-        Inputs include grouped photodiode trace of 'group_size', spaced interval 'step' apart for each buffer. 
+        Inputs include grouped photodiode trace of 'group_size', spaced interval 'step' apart for each buffer.
         Targets include average velocity of each group.
         Input shape is [num_shots * num_groups, ch_in, group_size]. Target shape is [num_shots * num_groups, ch_in, 1],
         where num_groups = (buffer_len - group_size)/step + 1, given that buffer_len - group_size is a multiple of step.
         Input and target shape made to fit (N, C_in, L_in) in PyTorch Conv1d doc.
-        If the given 'group_size' and 'step' do not satisfy the above requirement, 
+        If the given 'group_size' and 'step' do not satisfy the above requirement,
         the data will not be cleanly grouped.
 
         Args:
@@ -51,37 +61,64 @@ class VelocityDataset(Dataset):
         # solves issue where hdf5 file opened in __init__ prevents multiple
         # workers: https://github.com/pytorch/pytorch/issues/11929
         self.file = h5py.File(self.h5_file, 'r')
-        pds = torch.Tensor(np.array(self.file['PD (V)']))  # [num_shots, buffer_size]
-        vels = torch.Tensor(np.array(self.file['Speaker (Microns/s)']))  # [num_shots, buffer_size]
+        signal = torch.Tensor(np.array(self.file['signal']))
+        # [num_shots, buffer_size, num_channels]
+        velocity = torch.Tensor(np.array(self.file['velocity']))
+        # [num_shots, buffer_size, 1]
         
+        num_channels = signal.shape[-1]
+        velocity = velocity.squeeze(dim=-1)
+ 
         if rolling:
-            # ROLLING INPUT INDICES 
-            num_groups = (pds.shape[1] - group_size) // step + 1
-            start_idxs = torch.arange(num_groups) * step  # starting indices for each group
+            # ROLLING INPUT INDICES
+            num_groups = (signal.shape[1] - group_size) // step + 1
+            start_idxs = torch.arange(num_groups) * step
+            # starting indices for each group
             idxs = torch.arange(group_size)[:, None] + start_idxs
-            idxs = torch.transpose(idxs, dim0=0, dim1=1)  # indices in shape [num_groups, group_size]
+            idxs = torch.transpose(idxs, dim0=0, dim1=1)
+            # indices in shape [num_groups, group_size]
             if self.test_mode:
-                self.inputs = pds  # [num_shots, buffer_size]
-                grouped_vels = vels[:, idxs]  # [num_shots, num_groups, group_size]
-                self.targets = torch.mean(grouped_vels, dim=2)  # [num_shots, num_groups]
+                print("test mode")
+                self.inputs = signal  # [num_shots, buffer_size, num_channels]
+                grouped_vels = velocity[:, idxs]
+                # [num_shots, num_groups, group_size]
+                self.targets = torch.mean(grouped_vels, dim=2)
+                # [num_shots, num_groups]
             else:
-                self.inputs = pds[:, idxs].reshape(-1, group_size)  # [num_shots * num_groups, group_size]
-                grouped_vels = vels[:, idxs].reshape(-1, group_size)  # [num_shots * num_groups, group_size]
-                self.targets = torch.unsqueeze(torch.mean(grouped_vels, dim=1), dim=1)  # [num_shots * num_groups, 1]
+                self.inputs = signal[:, idxs, :].reshape(-1, group_size,
+                                                         num_channels)
+                # [num_shots * num_groups, group_size, num_channels]
+                grouped_vels = velocity[:, idxs].reshape(-1, group_size)
+                # [num_shots * num_groups, group_size]
+                self.targets = torch.unsqueeze(torch.mean(grouped_vels, dim=1),
+                                               dim=1)
+                # [num_shots * num_groups, 1]
         else:
             # STEP INPUT
             if self.test_mode:
-                assert False, 'test_mode not implemented for step input. use rolling step=256'
+                raise NotImplementedError("test_mode not implemented for step "
+                                          "input. use rolling step=256")
             else:
-                self.inputs = torch.cat(torch.split(pds, group_size, dim=1), dim=0)  # [num_shots * num_groups, group_size]
-                grouped_vels = torch.cat(torch.split(vels, group_size, dim=1), dim=0)
-                self.targets = torch.unsqueeze(torch.mean(grouped_vels, dim=1), dim=1)  # [num_shots * num_groups, 1]
-                
-        if ch_in == 1:
-            self.inputs = torch.unsqueeze(self.inputs, dim=1)
-            self.targets = torch.unsqueeze(self.targets, dim=1)
-        else:
-            assert False, 'ch > 1 not implemented'
+                self.inputs = torch.cat(torch.split(signal, group_size,
+                                                    dim=1), dim=0)
+                # [num_shots * num_groups, group_size, num_channels]
+                grouped_vels = torch.cat(torch.split(velocity, group_size,
+                                                     dim=1), dim=0)
+                # [num_shots * num_groups, group_size]
+                self.targets = torch.unsqueeze(torch.mean(grouped_vels,
+                                                          dim=1), dim=1)
+                # [num_shots * num_groups, 1]
+
+        if not self.test_mode:
+            if num_channels == 1:
+                # self.inputs = torch.unsqueeze(self.inputs, dim=1)
+                # self.targets = torch.unsqueeze(self.targets, dim=1)
+                print(self.inputs.shape, self.targets.shape)
+                self.inputs = torch.reshape(self.inputs, (-1, 1, group_size))
+                self.targets = torch.reshape(self.targets, (-1, 1, 1))
+            else:
+                self.inputs = torch.reshape(self.inputs, (-1, num_channels, group_size))
+                self.targets = torch.reshape(self.targets, (-1, 1, 1))
 
         # total number of group_size length sequences = num_shots * num_groups
         # print("open_hdf5 input size", self.inputs.size())  # [self.length, 256]
@@ -93,7 +130,7 @@ class VelocityDataset(Dataset):
 
     def __getitem__(self, idx):
         # print("getitem entered")
-        if not self.opened_flag: #not hasattr(self, 'h5_file'):
+        if not self.opened_flag:  # not hasattr(self, 'h5_file'):
             self.open_hdf5(step=self.step)
             self.opened_flag = True
             # print("open_hdf5 finished")
@@ -105,6 +142,7 @@ class VelocityDataset(Dataset):
     #         self.opened_flag = True
     #         print("open_hdf5 in getitems")
     #     return FloatTensor(self.inputs[indices]), FloatTensor(self.targets[indices])
+
 
 class TrainingRunner:
     def __init__(self, training_h5, validation_h5, testing_h5, step=256,
@@ -132,24 +170,25 @@ class TrainingRunner:
         # directories
         self.checkpoint_dir = "./checkpoints"
         print('TrainingRunner initialized', datetime.datetime.now())
+
+    def get_custom_dataloader(self, test_mode, h5_file, batch_size=128, shuffle=True):
         
-    def get_custom_dataloader(self, test_mode, h5_file, batch_size=128, shuffle=True,
-                              velocity_only=True):
-        # if velocity_only:
         dataset = VelocityDataset(test_mode, h5_file, self.step)
         print("dataset initialized")
         # We can use DataLoader to get batches of data
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle,
-                                num_workers=16, persistent_workers=True,
+                                num_workers=1, persistent_workers=True,
                                 pin_memory=True)
         print("dataloader initialized")
         return dataloader
-    
+
     def set_dataloaders(self, batch_size=128):
         self.batch_size = batch_size
         self.train_loader = self.get_custom_dataloader(False, self.training_h5, batch_size=self.batch_size)
-        self.valid_loader = self.get_custom_dataloader(False, self.validation_h5, batch_size=self.batch_size, shuffle=False)
-        self.valid_loader_testmode = self.get_custom_dataloader(True, self.validation_h5, batch_size=self.batch_size, shuffle=False)
+        self.valid_loader = self.get_custom_dataloader(
+            False, self.validation_h5, batch_size=self.batch_size, shuffle=False)
+        self.valid_loader_testmode = self.get_custom_dataloader(
+            True, self.validation_h5, batch_size=self.batch_size, shuffle=False)
         self.test_loader = self.get_custom_dataloader(True, self.testing_h5, batch_size=self.batch_size, shuffle=False)
 
     def train_model(self, model_name, save_name=None, **kwargs):
@@ -182,10 +221,10 @@ class TrainingRunner:
         # Create a PyTorch Lightning trainer with the generation callback
         trainer = L.Trainer(
             default_root_dir=os.path.join(self.checkpoint_dir, save_name),
-            accelerator="gpu",
-            devices=[0],
+            accelerator="cpu",
+            #devices=[0],
             max_epochs=800,
-            callbacks=[early_stop_callback, checkpoint_callback],
+            callbacks=[checkpoint_callback],
             check_val_every_n_epoch=5,
             logger=logger
         )
@@ -203,56 +242,83 @@ class TrainingRunner:
                                   verbose=False)
         test_result = trainer.test(model, dataloaders=self.test_loader,
                                    verbose=False)
-        result = {"test": test_result[0]["test_acc"],
-                  "val": val_result[0]["test_acc"]}
+        result = {"test": test_result[0]["test_loss"],
+                  "val": val_result[0]["test_loss"]}
 
         logger.experiment.finish()
 
         return model, result
-    
+
     def scan_hyperparams(self):
-        lr_list = [1e-3, 1e-4]# [1e-3, 1e-4, 1e-5] # [1e-3, 1e-4, 1e-5]
-        act_list = ['LeakyReLU'] #, 'ReLU']
-        optim_list = ['Adam'] #, 'SGD']
-        for lr, activation, optim in product(lr_list, act_list, optim_list): #, 1e-2, 3e-2]:
+        lr_list = [1e-2]  # [1e-3, 1e-4, 1e-5]
+        act_list = ['LeakyReLU']  # , 'ReLU']
+        optim_list = ['Adam']  # , 'SGD']
+        for lr, activation, optim in product(lr_list, act_list, optim_list):
             model_config = {"input_size": self.input_size,
                             "output_size": self.output_size,
-                            "activation": activation}
+                            "activation": activation,
+                            "in_channels": 1}
             optimizer_config = {"lr": lr}
-                                #"momentum": 0.9,}
+            # "momentum": 0.9,}
             misc_config = {"batch_size": self.batch_size, "step": self.step}
 
             self.train_model(model_name="CNN",
-                            model_hparams=model_config,
-                            optimizer_name=optim,
-                            optimizer_hparams=optimizer_config,
-                            misc_hparams=misc_config)
-
-
-    def load_model(self, model_tag, model_name='CNN'):
-        # Check whether pretrained model exists. If yes, load it and skip training
-        pretrained_filename = os.path.join(self.checkpoint_dir, model_name, "SMI", model_tag,
-                                            "checkpoints", "*" + ".ckpt")
-        print(pretrained_filename)
-        if os.path.isfile(glob.glob(pretrained_filename)[0]):
-            pretrained_filename = glob.glob(pretrained_filename)[0]
-            print(
-                f"Found pretrained model at {pretrained_filename}, loading...")
+                             model_hparams=model_config,
+                             optimizer_name=optim,
+                             optimizer_hparams=optimizer_config,
+                             misc_hparams=misc_config)
+    
+    def load_model(self, model_name="CNN", model_id="5nozki8z"):
+        # Check whether pretrained model exists. If yes, load it and skip
+        # training
+        print(self.checkpoint_dir)
+        pretrained_filename = os.path.join(
+            self.checkpoint_dir,
+            model_name,
+            "SMI",
+            model_id,
+            "checkpoints",
+            "*" + ".ckpt")
+        pretrained_filename = glob.glob(pretrained_filename)[0]
+        if os.path.isfile(pretrained_filename):
+            print(f"Found pretrained model at {
+            pretrained_filename}, loading...")
             # Automatically loads the model with the saved hyperparameters
-            model = VelocityDecoder.load_from_checkpoint(pretrained_filename)
+            model = VelocityDecoder.load_from_checkpoint(
+                pretrained_filename)
+            
+            return model
+        
+    def plot_predictions(self, model_name="CNN", model_id="i52c3rlz"):
 
-            # Create a PyTorch Lightning trainer with the generation callback
-            trainer = L.Trainer(
-                accelerator="gpu",
-                devices=[0]
-            )
+        model = self.load_model(model_name=model_name, model_id=model_id)
+        trainer = L.Trainer(
+            accelerator="cpu",
+            #devices=[0]
+        )
+        y = trainer.predict(model, dataloaders=self.test_loader)
 
-            # Test best model on validation and test set
-            val_result = trainer.test(model, dataloaders=self.valid_loader,
-                                        verbose=False)
-            test_result = trainer.test(model, dataloaders=self.test_loader,
-                                        verbose=False)
-            result = {"test": test_result[0]["test_acc"],
-                        "val": val_result[0]["test_acc"]}
+        print(y[0][0].numpy().shape)
+        print(y[0][1].numpy().shape)
+        print(y[0][2].numpy().shape)
+        # y[batch_idx][return_idx], return_idx 0...3: 0: Predictions, 1:
+        # Targets, 2: inputs, 3: encoded
+        print("MSE Loss: ", np.mean((y[0][0].numpy() - y[0][1].numpy())**2))
 
-            return model, result
+        for i in range(len(y[0][0].numpy()[:, 0])):
+            fig = plt.figure(figsize=(5, 10))
+            ax1, ax2 = fig.subplots(2, 1)
+            for channel in range(y[0][2].numpy().shape[2]):
+                ax1.plot(y[0][2].numpy()[i, :, channel], label="Input"+str(
+                    channel))
+            ax1.set_title("Inputs")
+            ax2.legend()
+
+            ax2.plot(y[0][1].numpy()[i, :], label="Targets")
+            ax2.plot(y[0][0].numpy()[i, 0, :], label="Predictions")
+            ax2.set_title("MSE Loss: " + str(nn.MSELoss(reduction='sum')
+                          (y[0][0][i, :], y[0][1][i, :]).item()))
+            ax2.legend()
+
+            plt.tight_layout()
+            plt.show()
