@@ -60,8 +60,8 @@ class VelocityDecoder(L.LightningModule):
         # We will reduce the learning rate by factor of gamma after 100 and 150
         # epochs
         scheduler = optim.lr_scheduler.MultiStepLR(optimizer,
-                                                   milestones=[100, 150, 200],
-                                                   gamma=1)
+                                                   milestones=[50, 100, 150], #changed from [100, 150, 200]
+                                                   gamma=1) 
         return [optimizer], [scheduler]
 
     def get_loss_function(self, loss_hparams):
