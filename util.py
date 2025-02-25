@@ -2,7 +2,33 @@ import numpy as np
 from numpy.fft import fft, ifft, fftfreq
 import h5py
 
-def bounded_frequency_waveform(start_frequency, end_frequency, length, sample_rate):
+def bounded_specific_frequencies(start_freq, end_freq, length, sample_rate, valid_freqs, invert):
+    # Create an evenly spaced time array
+    t = np.linspace(0, 1.0, length, False)  # 1 second
+    # Generate a random frequency spectrum between the start and end frequencies
+    freq = np.linspace(0, sample_rate/2, length//2, False)
+    
+    # Mask for all frequencies within 0.5 of any valid_freq
+    valid_freqs = np.array(valid_freqs)[:, np.newaxis]
+    valid_mask = np.any(np.abs(freq - valid_freqs) <= 0.5, axis=0)
+
+    spectrum = np.random.uniform(0.0, 1.0, len(freq))
+    spectrum = np.where((freq >= start_freq) & (freq <= end_freq) & valid_mask, spectrum, 0)
+    c = np.random.rayleigh(np.sqrt(spectrum*(freq[1]-freq[0])))
+    # See Phys. Rev. A 107, 042611 (2023) ref 28 for why we use the Rayleigh distribution here
+    # Unless we use this distribution, the random noise will not be Gaussian distributed
+    phi = np.random.uniform(-np.pi, np.pi, len(freq))
+    # Use the inverse Fourier transform to convert the frequency domain signal back to the time domain
+    # Also include a zero phase component
+    spectrum = spectrum * c * np.exp(1j*phi)
+    if invert:
+        spectrum = np.divide(spectrum, A(freq) * np.exp(1j*phase(freq)))
+    spectrum = np.hstack([spectrum, np.zeros_like(spectrum)])
+    y = np.real(ifft(spectrum, norm="ortho"))
+    y = np.fft.fftshift(y)
+    return t, y
+
+def bounded_frequency_waveform(start_frequency, end_frequency, length, sample_rate, invert):
     """Generates a random waveform within the given frequency range of a given length.
     Args:
         start_frequency (float): the lower bound of the valid frequency range
@@ -68,8 +94,8 @@ def write_data(file_path, entries):
             else:
                 f.create_dataset(col_name,
                                  data=np.expand_dims(col_data, axis=0),
-                                 maxshape=(None, col_data.shape[0],
-                                           col_data.shape[1]),
+                                 maxshape=(None, col_data.shape[0]),
+ #                                          col_data.shape[1]),
                                  chunks=True)
 
                 

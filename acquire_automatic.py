@@ -21,7 +21,7 @@ print('Connected to ' + IP)
 #     "text.usetex": True
 # })
 
-def run_one_shot(start_freq=1, end_freq=1000, ampl=0.1, gen_dec=8192, acq_dec=256, num_acq=1, 
+def run_one_shot(start_freq=1, end_freq=1000, ampl=0.1, gen_dec=8192, acq_dec=256,  
                     store_data=False, plot_data=False, filename='data.h5py'):
     """Runs one shot of driving the speaker with a waveform and collecting the relevant data. 
 
@@ -43,8 +43,11 @@ def run_one_shot(start_freq=1, end_freq=1000, ampl=0.1, gen_dec=8192, acq_dec=25
 
     wave_form = 'ARBITRARY'
     freq = 1 / burst_time
+    
+    valid_freqs = fftfreq(N, d=1/acq_smpl_rate)
 
-    t, y = util.bounded_frequency_waveform(start_freq, end_freq, length=N, sample_rate=gen_smpl_rate, invert=True)
+    t, y = util.bounded_specific_frequencies(start_freq, end_freq, N, gen_smpl_rate, valid_freqs, True)
+    # t, y = util.bounded_frequency_waveform(start_freq, end_freq, length=N, sample_rate=gen_smpl_rate, invert=True)
     y = util.linear_convert(y) # convert range of waveform to [-1, 1] to properly set ampl
 
     if plot_data:
@@ -88,18 +91,12 @@ def run_one_shot(start_freq=1, end_freq=1000, ampl=0.1, gen_dec=8192, acq_dec=25
         if rp_s.rx_txt() == '1':
             # print("filled", datetime.now().time())
             break
+        
     ##### Analysis #####
     # Read data and plot function for Data Acquisition
     pds = np.array(rp_s.acq_data(chan=1, convert=True))
     speaker = np.array(rp_s.acq_data(chan=2, convert=True))
-    acq_time_data = np.linspace(0, N-1, num=N) / acq_smpl_rate
-        
-    if plot_data:
-        pd_data = pds 
-        speaker_data = speaker
-        # pd_data.append(pds) # Volts
-        # speaker_data.append(speaker) # Volts
-        # vel_data.append(vels)
+    vel_data, vel_converted, freqs = util.velocity_waveform(speaker, acq_smpl_rate)
     
     if store_data:
         # Store data in h5py file
@@ -108,26 +105,18 @@ def run_one_shot(start_freq=1, end_freq=1000, ampl=0.1, gen_dec=8192, acq_dec=25
         file_path = os.path.join(path, filename)
         entries = {
                 'Speaker (V)': speaker,
-                'Speaker (Microns/s)': vels,
+                'Speaker (Microns/s)': vel_data,
                 'PD (V)': pds
                 }
         util.write_data(file_path, entries)
             
     if plot_data:
-        gen_time_data = np.linspace(0, N-1, num=N) / gen_smpl_rate
-        # pd_data = np.concatenate(pd_data)
-        # speaker_data = np.concatenate(speaker_data)
-        # vel_data = np.concatenate(vel_data)
-        y_vel, y_converted, _ = util.velocity_waveform(ampl*y, gen_smpl_rate)
-        avg_speaker = np.mean(np.reshape(speaker, (-1, 32)), axis=1)
-        print(avg_speaker.shape)
-        vel_data, vel_converted, freqs= util.velocity_waveform(avg_speaker, acq_smpl_rate)
+        acq_time_data = np.linspace(0, N-1, num=N) / acq_smpl_rate
 
         fig, ax = plt.subplots(nrows=4)
 
-        ax[0].plot(pd_data, color='blue', label='Observed PD')# , marker='.')
-        ax[0].plot(speaker_data, color='black', label='Observed Drive') #, marker='.')
-        # ax[0].plot(time_data, ampl*y, label='Drive Output', alpha=0.5)
+        ax[0].plot(pds, color='blue', label='Observed PD')# , marker='.')
+        ax[0].plot(speaker, color='black', label='Observed Drive') #, marker='.')
         ax[0].legend()
         ax[0].set_ylabel('Amplitude (V)')
         ax[0].set_xlabel('Samples')
@@ -135,19 +124,8 @@ def run_one_shot(start_freq=1, end_freq=1000, ampl=0.1, gen_dec=8192, acq_dec=25
         #ax[1].set_title(r'$\tilde{F}^{-1}(VelTransferFunc(f) * \tilde{F}(Voltage Time Series)(f) )$')
         ax[1].set_title("Vel for acq_dec=256")
         ax[1].plot(vel_data)
-        ax[1].set_xlabel('Samples')
         ax[1].set_ylabel('Expected Vel (Microns/s)')
-        
-        # ax[3].set_title("Vel for gen_dec=8192")
-        # ax[3].plot(gen_time_data, y_vel, label='Drive Output', alpha=0.7)
-        # ax[3].set_ylabel('Expected Vel (Microns/s)')
-        # ax[3].set_xlabel('Time (s)')
-        # ax[1].legend()
-        
-        # ax[2].set_title("Generated Speaker Voltage (gen_dec=8192)")
-        # ax[2].plot(gen_time_data, ampl*y)
-        # ax[2].set_xlabel('Time (s)')
-        # ax[2].set_ylabel('Amplitude (V)')
+        ax[1].set_xlabel('Samples')
         
         ax[2].plot(fftfreq(speaker.shape[0], d=1/acq_smpl_rate), np.abs(fft(speaker, norm='ortho')), marker='.')
         ax[3].plot(freqs, np.abs(vel_converted), marker='.')
@@ -159,20 +137,20 @@ def run_one_shot(start_freq=1, end_freq=1000, ampl=0.1, gen_dec=8192, acq_dec=25
     rp_s.tx_txt('ACQ:RST')
 
 
-filenames = ['test_1to1kHz_misaligned_invertspectra_trigdelay8192_sleep100ms_2kx1shots_randampl.h5py',
-              'val_1to1kHz_misaligned_invertspectra_trigdelay8192_sleep100ms_2kx1shots_randampl.h5py']
-shots = [1, 0]
+filenames = ['021725_test_acqfreqs_mixedtones_2kshots_randampl.h5py']
+shots = [2000]
 amplitude = 0
-acq_num = 1
+acq_spacing = 29.81 # for acq_dec=256
 print("start", datetime.now().time())
 for (file, num_shots) in zip(filenames, shots):
     print(file)
     print(num_shots)
     for i in range(num_shots):
-        amplitude = 0.1 # np.random.uniform(0.1, 0.6)
-        if i % 500 == 0:
+        amplitude = np.random.uniform(0.1, 0.6) # 0.1
+        if i % 200 == 0:
             print("\t", datetime.now().time())
-            print(f"\t{i*acq_num}: ampl = {amplitude}")
-        run_one_shot(100, 101, ampl=amplitude, gen_dec=8192, acq_dec=256, num_acq=acq_num, store_data=False, plot_data=True, 
+        # lower = np.random.uniform(0, 970)
+        # upper = lower + acq_spacing
+        run_one_shot(1, 1000, ampl=amplitude, gen_dec=8192, acq_dec=256, store_data=True, plot_data=False, 
                     filename=file)
     print("end", datetime.now().time())
