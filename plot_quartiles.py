@@ -20,9 +20,6 @@ if __name__ == '__main__':
         smpl_rate = SMPL_RATE_DEC1 / decimation
         time_data = np.linspace(0, N - 1, num=N) / smpl_rate
 
-        # valid_file = 'C:\\Users\\aj14\\Desktop\\SMI\\data\\valid_1to1kHz_misaligned_invertspectra_trigdelay8192_sleep100ms_2kx1shots_randampl.h5py'
-        # test_file = 'C:\\Users\\aj14\\Desktop\\SMI\\data\\test_1to1kHz_misaligned_invertspectra_trigdelay8192_sleep100ms_2kx1shots_randampl.h5py'
-        # train_file = 'C:\\Users\\aj14\\Desktop\\SMI\\data\\train_1to1kHz_misaligned_invertspectra_trigdelay8192_sleep100ms_10kx1shots_randampl.h5py'
         valid_file = 'C:\\Users\\aj14\\Desktop\\SMI\\data\\val_1to1kHz_invertspectra_trigdelay8192_sleep100ms_2kx1shots_dec=256_8192_randampl.h5py'
         test_file = 'C:\\Users\\aj14\\Desktop\\SMI\\data\\test_1to1kHz_invertspectra_trigdelay8192_sleep100ms_2kx1shots_dec=256_8192_randampl.h5py'
         train_file = 'C:\\Users\\aj14\\Desktop\\SMI\\data\\train_1to1kHz_invertspectra_trigdelay8192_sleep100ms_10kx1shots_dec=256_8192_randampl.h5py'

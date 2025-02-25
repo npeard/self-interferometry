@@ -24,14 +24,19 @@ print('Connected to ' + IP)
 def run_one_shot(start_freq=1, end_freq=1000, ampl=0.1, gen_dec=8192, acq_dec=256,  
                     store_data=False, plot_data=False, filename='data.h5py'):
     """Runs one shot of driving the speaker with a waveform and collecting the relevant data. 
+    Samples only frequencies accessible at acquisition sample rate. 
 
     Args:
         start_freq (int, optional): the lower bound of the valid frequency range. Defaults to 1.
         end_freq (int, optional): the upper bound of the valid frequency range. Defaults to 1000.
         ampl (float, optional): the amplitude of the generated wave. Defaults to 0.1. 
-        decimation (int, optional): Decimation that determines sample rate, should be power of 2. Defaults to 8192.
+        gen_dec (int, optional): Decimation that determines generation sample rate, should be 
+        power of 2. Defaults to 8192.
+        acq_dec (int, optional): Decimation that determines acquisition sample rate, should be 
+        power of 2. Defaults to 256.
         store_data (bool, optional): Whether to store data in h5py file. Defaults to False.
         plot_data (bool, optional): Whether to plot data after acquisition. Defaults to False.
+        filename (string, optional): Name of file to store data. 
     """
     ##### Create Waveform #####
 
@@ -47,7 +52,6 @@ def run_one_shot(start_freq=1, end_freq=1000, ampl=0.1, gen_dec=8192, acq_dec=25
     valid_freqs = fftfreq(N, d=1/acq_smpl_rate)
 
     t, y = util.bounded_specific_frequencies(start_freq, end_freq, N, gen_smpl_rate, valid_freqs, True)
-    # t, y = util.bounded_frequency_waveform(start_freq, end_freq, length=N, sample_rate=gen_smpl_rate, invert=True)
     y = util.linear_convert(y) # convert range of waveform to [-1, 1] to properly set ampl
 
     if plot_data:
@@ -101,7 +105,6 @@ def run_one_shot(start_freq=1, end_freq=1000, ampl=0.1, gen_dec=8192, acq_dec=25
     if store_data:
         # Store data in h5py file
         path = "/Users/angelajia/Code/College/SMI/data/"
-        # filename = "training_data.h5py"
         file_path = os.path.join(path, filename)
         entries = {
                 'Speaker (V)': speaker,
@@ -121,7 +124,6 @@ def run_one_shot(start_freq=1, end_freq=1000, ampl=0.1, gen_dec=8192, acq_dec=25
         ax[0].set_ylabel('Amplitude (V)')
         ax[0].set_xlabel('Samples')
         
-        #ax[1].set_title(r'$\tilde{F}^{-1}(VelTransferFunc(f) * \tilde{F}(Voltage Time Series)(f) )$')
         ax[1].set_title("Vel for acq_dec=256")
         ax[1].plot(vel_data)
         ax[1].set_ylabel('Expected Vel (Microns/s)')

@@ -3,6 +3,20 @@ from numpy.fft import fft, ifft, fftfreq
 import h5py
 
 def bounded_specific_frequencies(start_freq, end_freq, length, sample_rate, valid_freqs, invert):
+    """Generates a random waveform within the given frequency range of a given length
+    using only frequencies from valid_freqs 
+    
+    Args:
+        start_frequency (float): the lower bound of the valid frequency range
+        end_frequency (float): the upper bound of the valid frequency range
+        length (int): the number of values to generate
+        sample_rate (float): the rate at which to sample values
+        valid_freqs(list(float)): frequencies to sample from
+        invert (bool): whether or not to invert spectra by frequency response
+
+    Returns:
+        [1darr, 1darr]: the array of time points and amplitude points in time domain
+    """
     # Create an evenly spaced time array
     t = np.linspace(0, 1.0, length, False)  # 1 second
     # Generate a random frequency spectrum between the start and end frequencies
@@ -35,6 +49,7 @@ def bounded_frequency_waveform(start_frequency, end_frequency, length, sample_ra
         end_frequency (float): the upper bound of the valid frequency range
         length (int): the number of values to generate
         sample_rate (float): the rate at which to sample values
+        invert (bool): whether or not to invert spectra by frequency response
 
     Returns:
         [1darr, 1darr]: the array of time points and amplitude points in time domain
