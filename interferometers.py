@@ -19,7 +19,7 @@ class MichelsonInterferometer:
     def get_displacement(self, start_frequency, end_frequency, length, sample_rate):
         # Get a random displacement in time, resets each time it is called
         time, displacement = util.bounded_frequency_waveform(start_frequency,
-                                                end_frequency, length, sample_rate)
+                                                end_frequency, length, sample_rate, False)
         
         # scale max displacement to the desired amplitude
         displacement = displacement/np.max(np.abs(displacement)) * self.displacement_amplitude
@@ -37,10 +37,10 @@ class MichelsonInterferometer:
                                   sample_rate, displacement, time):
         E0 = 1 + measurement_noise_level * util.bounded_frequency_waveform(1e3,
                                                                           1e6,
-                                                                  length, sample_rate)[1]
+                                                                  length, sample_rate, False)[1]
         ER = 0.1 + measurement_noise_level * util.bounded_frequency_waveform(1e3,
                                                                           1e6,
-                                                                    length, sample_rate)[1]
+                                                                    length, sample_rate, False)[1]
         
         if displacement is None:
             self.time, self.displacement = self.get_displacement(start_frequency,
@@ -147,7 +147,7 @@ def plot_pretraining_data(file_path):
 
 if __name__ == '__main__':
     np.random.seed(0x5EED + 4)
-    write_pretraining_data(10, 2,
-                           "/Users/nolanpeard/Desktop/SMI_sim/valid_double.h5")
+    write_pretraining_data(1000, 2,
+                           "/Users/aj14/Desktop/SMI/data/train.h5py")
     # plot_pretraining_data("/Users/nolanpeard/Desktop/test.h5")
     

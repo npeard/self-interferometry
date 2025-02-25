@@ -20,15 +20,12 @@ if __name__ == '__main__':
         smpl_rate = SMPL_RATE_DEC1 / decimation
         time_data = np.linspace(0, N - 1, num=N) / smpl_rate
 
-        # valid_file = 'C:\\Users\\aj14\\Desktop\\SMI\\data\\valid_1to1kHz_misaligned_invertspectra_trigdelay8192_sleep100ms_2kx1shots_randampl.h5py'
-        # test_file = 'C:\\Users\\aj14\\Desktop\\SMI\\data\\test_1to1kHz_misaligned_invertspectra_trigdelay8192_sleep100ms_2kx1shots_randampl.h5py'
-        # train_file = 'C:\\Users\\aj14\\Desktop\\SMI\\data\\train_1to1kHz_misaligned_invertspectra_trigdelay8192_sleep100ms_10kx1shots_randampl.h5py'
-        valid_file = 'C:\\Users\\aj14\\Desktop\\SMI\\data\\val_1to1kHz_invertspectra_trigdelay8192_sleep100ms_2kx1shots_dec=256_8192_randampl.h5py'
-        test_file = 'C:\\Users\\aj14\\Desktop\\SMI\\data\\test_1to1kHz_invertspectra_trigdelay8192_sleep100ms_2kx1shots_dec=256_8192_randampl.h5py'
-        train_file = 'C:\\Users\\aj14\\Desktop\\SMI\\data\\train_1to1kHz_invertspectra_trigdelay8192_sleep100ms_10kx1shots_dec=256_8192_randampl.h5py'
+        valid_file = 'C:\\Users\\aj14\\Desktop\\SMI\\data\\021725_valid_acqfreqs_mixedtones_2kshots_randampl.h5py'
+        test_file = 'C:\\Users\\aj14\\Desktop\\SMI\\data\\021725_test_acqfreqs_mixedtones_2kshots_randampl.h5py'
+        train_file = 'C:\\Users\\aj14\\Desktop\\SMI\\data\\021725_train_acqfreqs_mixedtones_10kshots_randampl.h5py'
 
-        model_tag = "z4dscrhq" #"qn4eo8zu"#"z4dscrhq"
-        step = 64
+        model_tag = "849tnvok" #"qn4eo8zu"#"z4dscrhq"
+        step = 128
         group_size = 256
 
         runner = train.TrainingRunner(train_file, valid_file, test_file, step=step)
@@ -49,7 +46,7 @@ if __name__ == '__main__':
             truths = torch.empty(0)
             input_segments = torch.empty(0)
 
-            num_batches = 10  # ceil[2k/128]
+            num_batches = 16  # ceil[2k/128]
             for i in range(num_batches):
                 print(i)
                 batch = next(iter_loader)
