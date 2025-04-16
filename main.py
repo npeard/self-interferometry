@@ -1,36 +1,102 @@
+import argparse
+import random
 import numpy as np
-import sys
-import torch
+import time
+from pathlib import Path
+from biphase_gpt.training import TrainingConfig, ModelTrainer
+from biphase_gpt.datasets import create_train_val_test_datasets
 
-import train
-import decoder
-import models
+def parse_args():
+    parser = argparse.ArgumentParser(description='Train a new model or test from checkpoint')
+    parser.add_argument(
+        '--config',
+        type=str,
+        default="./biphase_gpt/configs/nanogpt_config.yaml",
+        help='Path to YAML config file. Required for training, optional for testing.'
+    )
+    parser.add_argument(
+        '--checkpoint',
+        type=str,
+        help='Path to checkpoint for testing. If provided, will run in test mode.'
+    )
+    parser.add_argument(
+        '--regenerate_datasets',
+        action='store_true',
+        help='Regenerate training, validation, and test datasets'
+    )
+    return parser.parse_args()
 
-import datetime
+def setup_random_seed(seed=None):
+    """Set random seed for reproducibility."""
+    if seed is None:
+        # Generate a random seed between 0 and 2^32 - 1
+        seed = random.randint(0, 2**32 - 1)
+    
+    random.seed(seed)
+    np.random.seed(seed)
+    return seed
+
+def main():
+    args = parse_args()
+    
+    # For testing mode (checkpoint provided), config is not necessary
+    if args.checkpoint:
+        print("Loading from checkpoint for quick plotting...")
+        print(args.checkpoint)
+        model_trainer = ModelTrainer(TrainingConfig({},{},{},{}), experiment_name="checkpoint_eval")
+        model_trainer.plot_predictions_from_checkpoint(checkpoint_path=args.checkpoint)
+        return
+    
+    # For training mode, load config
+    if not args.config:
+        raise ValueError("Config file is required for training mode")
+    
+    config = TrainingConfig.from_yaml(args.config)
+    
+    # Set random seed from time
+    seed = setup_random_seed(int(time.time()))
+    
+    # Convert single config to list for unified processing
+    configs = config if isinstance(config, list) else [config]
+    base_config = configs[0]  # Use first config for dataset generation
+    
+    # Regenerate datasets if requested (using base config)
+    if args.regenerate_datasets:
+        print(f"\nRegenerating datasets with random seed: {seed}")
+        create_train_val_test_datasets(
+            output_dir=base_config.data_config['data_dir'],
+            **base_config.data_config.get('dataset_params', {})
+        )
+        print("Dataset regeneration complete!\n")
+    
+    # Train with each configuration
+    for idx, train_config in enumerate(configs):
+        print(f"\nStarting training run {idx + 1}/{len(configs)}")
+        # Create trainer
+        trainer = ModelTrainer(
+            config=train_config,
+            experiment_name=train_config.training_config.get('experiment_name'),
+            checkpoint_dir=train_config.training_config.get('checkpoint_dir')
+        )
+
+        # Start training
+        trainer.train()
+        trainer.test()
+        # Close the wandb logger if it was configured
+        if trainer.config.training_config.get('use_logging', False):
+            trainer.trainer.loggers[0].experiment.finish()
 
 if __name__ == '__main__':
-    np.random.seed(0x5EED+3)
-    if len(sys.argv) == 1:
-        """Run functions in this scratch area. 
-        """
-        valid_file = 'C:\\Users\\aj14\\Desktop\\SMI\\data\\valid.h5py'
-        test_file = 'C:\\Users\\aj14\\Desktop\\SMI\\data\\test.h5py'
-        train_file = 'C:\\Users\\aj14\\Desktop\\SMI\\data\\train.h5py'
-        
-        # train_file = "/Users/nolanpeard/Desktop/SMI_sim/train_double.h5"
-        # valid_file = "/Users/nolanpeard/Desktop/SMI_sim/valid_double.h5"
-        # test_file = "/Users/nolanpeard/Desktop/SMI_sim/test_double.h5"
+# Training new model:
+# python main.py --config path/to/config.yaml
 
-        # print('begin main', datetime.datetime.now())
-        step_list = [256]  # [256, 128] #, 64, 32]  # step sizes for rolling input
-        for step in step_list:
-            runner = train.TrainingRunner(train_file, valid_file, test_file, step)
-            runner.scan_hyperparams()
+# Testing from checkpoint:
+# python main.py --checkpoint path/to/checkpoint.ckpt
 
-        # runner = train.TrainingRunner(train_file, valid_file, test_file,
-        #                               step=256)
-        #runner.plot_predictions(model_name="CNN", model_id="tdwhpu2l")
-        # runner.plot_predictions(model_name="CNN", model_id="e8vpuie1")
+# Fine-tuning from checkpoint:
+# python main.py --config path/to/config.yaml --checkpoint path/to/checkpoint.ckpt
 
-    else:
-        print("Error: Unsupported number of command-line arguments")
+# Regenerating datasets:
+# python main.py --config path/to/config.yaml --regenerate_datasets
+
+    main()
