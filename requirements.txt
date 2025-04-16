@@ -1,0 +1,8 @@
+pytest>=7.0.0
+numpy
+matplotlib
+numba
+torch
+lightning
+h5py
+tqdm
