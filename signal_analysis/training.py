@@ -41,8 +41,8 @@ class TrainingConfig:
             self._set_checkpoint_defaults()
         else:
             print("TrainingConfig in training mode...")
-            print("Creating GPTConfig...")
-            self.gpt_config = self._create_gpt_config()
+            print("Creating CNNConfig...")
+            self.cnn_config = self._create_cnn_config()
 
     def _set_checkpoint_defaults(self):
         """Set default values for running checkpoints. Check points do not
@@ -64,20 +64,13 @@ class TrainingConfig:
             "num_pix": 21
         })
 
-    def _create_gpt_config(self) -> GPTConfig:
-        """Create GPTConfig from model configuration"""
-        num_pix = self.data_config.get("dataset_params", {}).get("num_pix", 21)
-        Phi_dim = num_pix // 2 + 1
-        Phi_dim -= 1 # for removal of zero-valued row/column with no information
-        return GPTConfig(
-            in_seq_len=Phi_dim**2,
-            out_seq_len=num_pix,
-            n_layer=self.model_config.get("n_layer", 1),
-            n_head=self.model_config.get("n_head", 4),
-            n_embd=self.model_config.get("n_embd", 128),
-            dropout=self.model_config.get("dropout", 0.1),
-            bias=self.model_config.get("bias", False),
-            is_causal=self.model_config.get("is_causal", True)
+    def _create_cnn_config(self) -> CNNConfig:
+        """Create CNNConfig from model configuration"""
+        return CNNConfig(
+            input_size=256,
+            output_size=1,
+            activation='LeakyReLU',
+            in_channels=1
         )
 
     @classmethod
@@ -238,46 +231,29 @@ class ModelTrainer:
         val_path = resolve_path(data_dir, self.config.data_config.get('val_file'))
         test_path = resolve_path(data_dir, self.config.data_config.get('test_file'))
 
-        # unpack diagonally or square
-        if unpack_diagonals is None:
-            # unpack_diagonals should only not be None during prediction where
-            # we need to setup the test data loader with correct unpacking
-            print("getting unpack_diagonals from config YAML...")
-            unpack_diagonals = self.config.loss_config.get('unpack_diagonals', False)
-        print(f"Unpacking diagonals in setup_data: {unpack_diagonals}")
-
-        if unpack_orders is None:
-            # unpack_orders should only not be None during prediction where
-            # we need to setup the test data loader with correct unpacking
-            print("getting unpack_orders from config YAML...")
-            unpack_orders = self.config.loss_config.get('unpack_orders', False)
-        print(f"Unpacking orders in setup_data: {unpack_orders}")
-
         self.train_loader, self.val_loader, self.test_loader = create_data_loaders(
             train_path=train_path,
             val_path=val_path,
             test_path=test_path,
             batch_size=self.config.training_config['batch_size'],
             num_workers=self.config.data_config['num_workers'],
-            unpack_diagonals=unpack_diagonals,
-            unpack_orders=unpack_orders
         )
 
     def create_model(self) -> BaseLightningModule:
         """Create model instance based on config"""
         model_type = self.config.model_config.get('type')
-        if model_type == 'GPT':
-            print('Creating GPT model...')
-            return GPT(self.config.gpt_config)
+        if model_type == 'CNN':
+            print('Creating CNN model...')
+            return CNN(self.config.cnn_config)
         else:
             raise ValueError(f"Unknown model type: {model_type}")
 
     def create_lightning_module(self) -> BaseLightningModule:
         """Create lightning module based on model type"""
-        if isinstance(self.model, GPT):
-            return GPTDecoder(
-                model_type='GPT',
-                model_hparams=asdict(self.config.gpt_config),
+        if isinstance(self.model, CNN):
+            return CNNDecoder(
+                model_type='CNN',
+                model_hparams=asdict(self.config.cnn_config),
                 optimizer_name=self.config.training_config['optimizer'],
                 optimizer_hparams={
                     # TODO: why is this loaded as a string?

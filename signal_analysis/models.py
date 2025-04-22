@@ -2,6 +2,7 @@
 
 from torch import nn
 import torch
+from dataclasses import dataclass
 
 act_fn_by_name = {'LeakyReLU': nn.LeakyReLU(), 'ReLU': nn.ReLU()}
 

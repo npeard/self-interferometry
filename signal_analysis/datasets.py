@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from fluo.speckle1d import Fluorescence1D
 
 
-class BaseH5Dataset(Dataset):
+class H5Dataset(Dataset):
     """Base class for HDF5 datasets.
 
     Args:
@@ -56,19 +56,6 @@ class BaseH5Dataset(Dataset):
             raise ValueError(f"Input key '{self.input_key}' not found in file")
         if self.target_key not in f:
             raise ValueError(f"Target key '{self.target_key}' not found in file")
-
-        # Check that zero-valued edges of inputs have been removed already
-        input_element = f[self.input_key][0]
-        # Get edge elements and validate their sum
-        edges = [input_element[0, ...],  # first in dim 0
-                input_element[:, 0, ...]]  # first in dim 1
-        if input_element.ndim > 2:
-            edges.extend(input_element[..., 0])  # first in dim 2
-        if input_element.ndim > 3:
-            edges.extend(input_element[..., 0, :])  # first in dim 3
-        edge_sum = sum(edge.sum() for edge in edges)
-        if edge_sum < 0.1:
-            raise ValueError(f"Sum of edge elements {edge_sum:.3f} less than threshold 0.1\r\nDid you remember to remove the zero-valued edges?")
 
     def _get_dataset_length(self, f: h5py.File) -> int:
         """Get the length of the dataset."""
@@ -128,144 +115,6 @@ class BaseH5Dataset(Dataset):
         self._cache_keys.append(key)
 
 
-class AbsPhiDataset(BaseH5Dataset):
-    """Dataset for pre-computed abs(Phi) matrices with optional diagonal unpacking.
-    The corresponding phase that generated abs(Phi) is stored as a target."""
-
-    def __init__(
-        self,
-        file_path: str,
-        input_key: str = "absPhi",
-        target_key: str = "phase",
-        unpack_diagonals: bool = False,
-        unpack_orders: bool = False,
-        **kwargs
-    ):
-        super().__init__(
-            file_path,
-            input_key,
-            target_key,
-            **kwargs
-        )
-        self.unpack_diagonals = unpack_diagonals
-        self.unpack_orders = unpack_orders
-
-    @staticmethod
-    def unpack_by_diagonals(x: torch.Tensor) -> torch.Tensor:
-        """Unpack a 2D tensor by diagonals from top-right to bottom-left."""
-        # First flip left-right
-        x = torch.fliplr(x)
-
-        # Get dimensions
-        n = x.size(-1)
-        assert x.size(-1) == x.size(-2), "Input tensor must be square"
-
-        # Extract diagonals from offset n-1 to -(n-1)
-        diagonals = [torch.diagonal(x, offset=offset) for offset in range(n-1, -(n), -1)]
-
-        # Concatenate all diagonals into single tensor
-        return torch.cat(diagonals)
-
-    @staticmethod
-    def unpack_by_orders(x: torch.Tensor) -> torch.Tensor:
-        """Unpack a 2D tensor by orders along the diagonal. Singles, doubles, triples, etc.,
-        orders of the difference equation as in Shoulga et al."""
-        orders = []
-        for n in range(x.size(0)):
-            # Get column (including diagonal)
-            col = x[n:, n]
-            # Get row (excluding diagonal to avoid double counting)
-            row = x[n, n+1:]
-            orders.append(torch.cat([col, row]))
-        return torch.cat(orders)
-
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        inputs, targets = super().__getitem__(idx)
-
-        if self.unpack_diagonals:
-            inputs = self.unpack_by_diagonals(inputs)
-        elif self.unpack_orders:
-            inputs = self.unpack_by_orders(inputs)
-        else:
-            inputs = inputs.flatten()  # Flatten
-
-        return inputs, targets
-
-
-class PreTrainingDataset(BaseH5Dataset):
-    """Dataset for computing Phi matrices on the fly from phases.
-
-    This dataset loads only phase data from the HDF5 file and computes
-    the corresponding Phi matrices during training using Fluorescence1D.
-    """
-
-    def __init__(
-        self,
-        file_path: str,
-        input_key: str = "absPhi",
-        target_key: str = "phase",
-        unpack_diagonals: bool = False,
-        unpack_orders: bool = False,
-        **kwargs
-    ):
-        """Initialize the dataset.
-
-        Args:
-            file_path: Path to HDF5 file containing phase data
-            transform: Optional transform to apply to computed Phi matrices
-            target_transform: Optional transform to apply to phase data
-            cache_size: Number of items to cache (0 for no caching)
-            flatten_output: If True, flatten the Phi matrices before returning
-        """
-        super().__init__(
-            file_path=file_path,
-            input_key="absPhi",
-            target_key="phase",
-            **kwargs
-        )
-
-        # Get num_pix from HDF5 file attributes
-        with h5py.File(file_path, 'r') as f:
-            self.num_pix = f.attrs['num_pix']
-
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Get a single item from the dataset.
-
-        Returns:
-            Tuple[torch.Tensor, torch.Tensor]: (Phi matrix, phase array)
-            If flatten_output is True, the Phi matrix will be flattened.
-        """
-        # Check cache first
-        if idx in self._cache:
-            inputs, targets = self._cache[idx]
-        else:
-            # Lazy loading of HDF5 file
-            self.open_hdf5()
-
-            # Get phase data
-            phase = self.targets[idx]
-
-            # Compute Phi matrix on the fly using only the relevant part of phase
-            inputs = Fluorescence1D.compute_Phi_from_phase(phase)
-            inputs = np.abs(inputs[1:, 1:])  # Remove zero-valued edges
-
-            # Apply transforms if specified
-            if self.transform is not None:
-                inputs = self.transform(inputs)
-            if self.target_transform is not None:
-                phase = self.target_transform(phase)
-
-            # Add to cache
-            if self.cache_size > 0:
-                self._add_to_cache(idx, (inputs, phase))
-
-        # Convert to tensors
-        inputs = torch.FloatTensor(inputs).flatten()
-        targets = torch.FloatTensor(phase)
-
-        return inputs, targets
-
-
 def create_data_loaders(
     train_path: str,
     val_path: str,
@@ -287,9 +136,9 @@ def create_data_loaders(
     Returns:
         Tuple of (train_loader, val_loader, test_loader)
     """
-    train_dataset = AbsPhiDataset(train_path, **dataset_kwargs)
-    val_dataset = AbsPhiDataset(val_path, **dataset_kwargs)
-    test_dataset = AbsPhiDataset(test_path, **dataset_kwargs)
+    train_dataset = H5Dataset(train_path, **dataset_kwargs)
+    val_dataset = H5Dataset(val_path, **dataset_kwargs)
+    test_dataset = H5Dataset(test_path, **dataset_kwargs)
 
     # Only using pretraining dataset for now
     # train_dataset = PreTrainingDataset(train_path, **dataset_kwargs)
@@ -353,8 +202,6 @@ def generate_pretraining_data(
         f.attrs['num_pix'] = num_pix
 
         # Create datasets with chunking and compression
-        Phi_dim = (num_pix//2 + 1)
-        Phi_dim -= 1 # for removal of zero-valued row/column with no information
         f.create_dataset(
             'absPhi',
             shape=(num_samples, Phi_dim, Phi_dim),

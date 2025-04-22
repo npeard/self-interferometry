@@ -9,28 +9,18 @@ import h5py
 
 class MichelsonInterferometer:
     def __init__(self, wavelength, displacement_amplitude, phase):
-        self.wavelength = wavelength # in microns
-        self.displacement_amplitude = displacement_amplitude # in microns
+        self.wavelength = wavelength # in meters
         self.phase = phase # in radians, stands for random position offset
-        self.displacement = None # in microns
-        self.velocity = None # in microns/s
-        self.time = None # in seconds
 
-    def get_displacement(self, start_frequency, end_frequency, length, sample_rate):
+    def get_displacement(self, start_frequency, end_frequency, num_samples, sample_rate, displacement_amplitude):
         # Get a random displacement in time, resets each time it is called
         time, displacement = util.bounded_frequency_waveform(start_frequency,
-                                                end_frequency, length, sample_rate, False)
+                                                end_frequency, num_samples, sample_rate, False)
         
         # scale max displacement to the desired amplitude
-        displacement = displacement/np.max(np.abs(displacement)) * self.displacement_amplitude
+        displacement = displacement/np.max(np.abs(displacement)) * displacement_amplitude
         
         return time, displacement
-    
-    def set_displacement(self, displacement, time):
-        # TODO: add checks and tests here, that the displacement is in right
-        #  range, sampling, etc.
-        self.displacement = displacement
-        self.time = time
     
     def get_interferometer_output(self, start_frequency, end_frequency,
                                   measurement_noise_level, length,

@@ -9,7 +9,7 @@ import numpy as np
 from numpy.fft import fft, fftfreq
 # from scipy.fft import fft # use numpy 
 import math
-import util
+import signal_analysis.util as util
 from timeit import timeit
 from datetime import datetime
 from scipy.signal import butter, filtfilt
