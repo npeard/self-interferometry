@@ -104,7 +104,7 @@ def run_one_shot(start_freq=1, end_freq=1000, ampl=0.1, gen_dec=8192, acq_dec=25
     
     if store_data:
         # Store data in h5py file
-        path = "/Users/angelajia/Code/College/SMI/data/"
+        path = "/Users/nolanpeard/Documents/Projects/self-interferometry/signal_analysis/data"
         file_path = os.path.join(path, filename)
         entries = {
                 'Speaker (V)': speaker,

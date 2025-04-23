@@ -133,3 +133,4 @@ dmypy.json
 data/*
 checkpoints/*
 lightning_logs/*
+signal_analysis/data/*
