@@ -532,24 +532,30 @@ class RedPitayaManager:
             
         return str(file_path)
     
-    def setup_plot(self, num_rows: int = 4):
+    def setup_plot(self, num_rows=4):
         """
-        Set up a plot for displaying acquisition data.
+        Set up the plot with a 2-column layout.
         
         Args:
-            num_rows: Number of subplot rows
+            num_rows: Number of rows in the plot (should be 4 for the 4 channels)
         """
         if not self.plot_enabled:
             return
             
-        self.fig, self.axes = plt.subplots(nrows=num_rows, figsize=(10, 8))
-        if num_rows == 1:
-            self.axes = [self.axes]  # Make it iterable
-    
+        # Close any existing plot
+        if self.fig is not None:
+            plt.close(self.fig)
+            
+        # Create a new figure with 2 columns: raw signals and FFTs
+        self.fig, self.axes = plt.subplots(num_rows, 2, figsize=(12, 8), sharex='col')
+        
+        # Set up the figure
+        plt.tight_layout()
+        
     def update_plot(self, data: Dict[str, np.ndarray], vel_data: np.ndarray = None, 
                    vel_fft: np.ndarray = None, freqs: np.ndarray = None):
         """
-        Update the plot with new data.
+        Update the plot with new data using a 2-column layout.
         
         Args:
             data: Dictionary of channel data
@@ -562,106 +568,106 @@ class RedPitayaManager:
             
         # First, remove any existing twin axes to start fresh
         for ax in self.fig.axes[:]:
-            if ax not in self.axes:
+            if ax not in self.axes.flatten():
                 self.fig.delaxes(ax)
                 
         # Clear all main axes
-        for ax in self.axes:
+        for ax in self.axes.flatten():
             ax.clear()
             
-        # Plot channel data in first subplot
+        # Calculate time data
         acq_smpl_rate = self.SAMPLE_RATE_DEC1 // self.settings["acq_dec"]
         time_data = np.linspace(0, (self.BUFFER_SIZE-1)/acq_smpl_rate, self.BUFFER_SIZE)
         
         # Filter to only include raw channel data (not processed data)
         channel_data = {k: v for k, v in data.items() if "Channel" in k}
         
-        colors = ['blue', 'black', 'red', 'green', 'purple', 'orange', 'brown', 'pink']
-        for i, (name, channel_data) in enumerate(channel_data.items()):
-            # Only label Channel 2 of RP1 as Speaker Drive Voltage
-            if name == "RP1 Channel 2":
-                label = "Speaker Drive Voltage"
-            else:
-                label = name
-                
-            self.axes[0].plot(time_data, channel_data, color=colors[i % len(colors)], label=label)
-            
-        self.axes[0].legend()
-        self.axes[0].set_ylabel('Amplitude (V)')
-        self.axes[0].set_xlabel('Time (s)')
+        # Define channel order
+        channel_order = [
+            "RP1 Channel 1",  # Speaker Drive Voltage
+            "RP1 Channel 2",
+            "RP2 Channel 1",
+            "RP2 Channel 2"
+        ]
         
-        # Plot velocity data if available
-        if vel_data is not None and len(self.axes) > 1:
-            self.axes[1].plot(time_data, vel_data)
-            self.axes[1].set_ylabel('Velocity (Microns/s)')
-            self.axes[1].set_xlabel('Time (s)')
-            self.axes[1].set_title("Velocity")
+        # Colors for each channel
+        colors = ['blue', 'red', 'green', 'purple']
+        
+        # Calculate FFT frequencies once
+        if freqs is None and len(channel_data) > 0:
+            # Get the length of any channel data
+            any_data = next(iter(channel_data.values()))
+            n = len(any_data)
+            freqs = np.fft.fftfreq(n, 1/acq_smpl_rate)
             
-        # Plot FFTs if available
-        if len(self.axes) > 2 and freqs is not None:
-            # Only plot positive frequencies
+        # Only plot positive frequencies for FFT
+        pos_idx = None
+        pos_freqs = None
+        if freqs is not None:
             pos_idx = freqs >= 0
             pos_freqs = freqs[pos_idx]
-            
-            # Plot speaker FFT
-            primary_device = self.device_names[0] if self.device_names else None
-            if primary_device and f"{primary_device} Channel 2" in data:
-                speaker_data = data[f"{primary_device} Channel 2"]
-                speaker_fft_complex = fft(speaker_data, norm='ortho')
-                speaker_fft_mag = np.abs(speaker_fft_complex)
-                speaker_fft_phase = np.angle(speaker_fft_complex, deg=True)  # Phase in degrees
+        
+        # Plot each channel and its FFT
+        for i, channel_name in enumerate(channel_order):
+            if channel_name in channel_data and i < len(self.axes):
+                # Get the channel data
+                channel_values = channel_data[channel_name]
                 
-                # Create twin axis for phase
-                ax_phase = self.axes[2].twinx()
+                # Create appropriate label
+                if channel_name == "RP1 Channel 1":
+                    label = "Speaker Drive Voltage"
+                else:
+                    label = channel_name
                 
-                # Plot magnitude on primary y-axis (log scale)
-                mag_line = self.axes[2].semilogy(pos_freqs, speaker_fft_mag[pos_idx], 'b-', label='Magnitude')
-                self.axes[2].set_ylabel('Magnitude (log scale)', color='blue')
-                self.axes[2].tick_params(axis='y', labelcolor='blue')
+                # Plot the raw data in the left column
+                self.axes[i, 0].plot(time_data, channel_values, color=colors[i % len(colors)])
+                self.axes[i, 0].set_ylabel('Amplitude (V)', color=colors[i % len(colors)])
+                self.axes[i, 0].tick_params(axis='y', labelcolor=colors[i % len(colors)])
+                self.axes[i, 0].set_title(label)
                 
-                # Plot phase on secondary y-axis with alpha=0.3
-                phase_line = ax_phase.plot(pos_freqs, speaker_fft_phase[pos_idx], 'r-', label='Phase', alpha=0.3)
-                ax_phase.set_ylabel('Phase (degrees)', color='red')
-                ax_phase.tick_params(axis='y', labelcolor='red')
-                ax_phase.set_ylim(-180, 180)
+                # Add velocity twin axis for the speaker drive voltage
+                if channel_name == "RP1 Channel 1" and vel_data is not None:
+                    ax_vel = self.axes[i, 0].twinx()
+                    ax_vel.plot(time_data, vel_data, 'k-', alpha=0.7)
+                    ax_vel.set_ylabel('Velocity (Microns/s)', color='black')
+                    ax_vel.tick_params(axis='y', labelcolor='black')
                 
-                # Create combined legend
-                lines = [mag_line[0], phase_line[0]]
-                labels = ['Magnitude', 'Phase']  # Use explicit labels
-                self.axes[2].legend(lines, labels, loc='upper right')
-                
-                self.axes[2].set_xlabel('Frequency (Hz)')
-                self.axes[2].set_title(f"{primary_device} Speaker FFT")
-                self.axes[2].grid(True, which="both", ls="-")
-                
-            # Plot velocity FFT
-            if vel_fft is not None and len(self.axes) > 3:
-                vel_fft_mag = np.abs(vel_fft)
-                vel_fft_phase = np.angle(vel_fft, deg=True)  # Phase in degrees
-                
-                # Create twin axis for phase
-                ax_phase = self.axes[3].twinx()
-                
-                # Plot magnitude on primary y-axis (log scale)
-                mag_line = self.axes[3].semilogy(pos_freqs, vel_fft_mag[pos_idx], 'b-', label='Magnitude')
-                self.axes[3].set_ylabel('Magnitude (log scale)', color='blue')
-                self.axes[3].tick_params(axis='y', labelcolor='blue')
-                
-                # Plot phase on secondary y-axis with alpha=0.3
-                phase_line = ax_phase.plot(pos_freqs, vel_fft_phase[pos_idx], 'r-', label='Phase', alpha=0.3)
-                ax_phase.set_ylabel('Phase (degrees)', color='red')
-                ax_phase.tick_params(axis='y', labelcolor='red')
-                ax_phase.set_ylim(-180, 180)
-                
-                # Create combined legend
-                lines = [mag_line[0], phase_line[0]]
-                labels = ['Magnitude', 'Phase']  # Use explicit labels
-                self.axes[3].legend(lines, labels, loc='upper right')
-                
-                self.axes[3].set_xlabel('Frequency (Hz)')
-                self.axes[3].set_title(f"{primary_device} Velocity FFT")
-                self.axes[3].grid(True, which="both", ls="-")
-                
+                # Plot the FFT in the right column
+                if freqs is not None and pos_idx is not None:
+                    # Calculate FFT
+                    channel_fft_complex = fft(channel_values, norm='ortho')
+                    channel_fft_mag = np.abs(channel_fft_complex)
+                    channel_fft_phase = np.angle(channel_fft_complex, deg=True)
+                    
+                    # Create twin axis for phase
+                    ax_phase = self.axes[i, 1].twinx()
+                    
+                    # Plot magnitude on primary y-axis (log scale)
+                    self.axes[i, 1].semilogy(pos_freqs, channel_fft_mag[pos_idx], 
+                                           color=colors[i % len(colors)], label='Magnitude')
+                    self.axes[i, 1].set_ylabel('Magnitude (log)', color=colors[i % len(colors)])
+                    self.axes[i, 1].tick_params(axis='y', labelcolor=colors[i % len(colors)])
+                    
+                    # Plot phase on secondary y-axis with alpha=0.3
+                    ax_phase.plot(pos_freqs, channel_fft_phase[pos_idx], 'r-', 
+                                label='Phase', alpha=0.3)
+                    ax_phase.set_ylabel('Phase (°)', color='red')
+                    ax_phase.tick_params(axis='y', labelcolor='red')
+                    ax_phase.set_ylim(-180, 180)
+                    
+                    # Set title for FFT plot
+                    self.axes[i, 1].set_title(f"{label} FFT")
+                    
+                    # Add grid to FFT plot
+                    self.axes[i, 1].grid(True, which="both", ls="-", alpha=0.5)
+        
+        # Set common x-axis labels
+        for i in range(len(self.axes)):
+            # Only add x-axis label to bottom plots
+            if i == len(self.axes) - 1:
+                self.axes[i, 0].set_xlabel('Time (s)')
+                self.axes[i, 1].set_xlabel('Frequency (Hz)')
+        
         plt.tight_layout()
         plt.draw()
         plt.pause(0.001)  # Small pause to update the plot
@@ -693,7 +699,8 @@ class RedPitayaManager:
                     store_data: bool = False, 
                     plot_data: bool = True,
                     filename: str = None,
-                    timeout: int = 5) -> Dict[str, np.ndarray]:
+                    timeout: int = 5,
+                    block_plot: bool = True) -> Dict[str, np.ndarray]:
         """
         Run one complete acquisition cycle.
         
@@ -708,6 +715,7 @@ class RedPitayaManager:
             plot_data: Whether to plot data
             filename: Filename to save data to
             timeout: Timeout in seconds for waiting for triggers
+            block_plot: Whether to block the plot, default True
             
         Returns:
             Dictionary of acquired data
@@ -765,15 +773,14 @@ class RedPitayaManager:
         for device, name in zip(secondary_devices, secondary_names):
             device.tx_txt('ACQ:START')
             time.sleep(0.2)
-            # Use NOW trigger for simplicity and reliability
-            device.tx_txt('ACQ:TRig NOW')
-            print(f"Acquisition started on {name} with trigger NOW")
+            device.tx_txt('ACQ:TRig EXT_NE')
+            print(f"Acquisition started on {name} with trigger EXT_NE")
         
         # Start acquisition on primary device
         primary_device.tx_txt('ACQ:START')
         time.sleep(0.2)
-        primary_device.tx_txt('ACQ:TRig NOW')
-        print(f"Acquisition started on {primary_name} with trigger NOW")
+        primary_device.tx_txt('ACQ:TRig CH1_PE')
+        print(f"Acquisition started on {primary_name} with trigger CH2_PE")
         
         # Enable output on primary device
         self.enable_output(device_idx=device_idx)
@@ -909,9 +916,9 @@ class RedPitayaManager:
         # Create a complete data dictionary for saving
         save_data = data.copy()
         
-        # Process velocity data for primary device's Channel 2 (speaker drive)
-        speaker_key = f"{primary_name} Channel 2"
-        if speaker_key in data:  # Assuming Channel 2 is the speaker drive
+        # Process velocity data for primary device's Channel 1 (speaker drive)
+        speaker_key = f"{primary_name} Channel 1"
+        if speaker_key in data:  # Channel 1 is now the speaker drive
             vel_data, vel_fft, freqs = self.process_velocity_data(data[speaker_key])
             
             # Store velocity data
@@ -927,13 +934,11 @@ class RedPitayaManager:
         
         # Plot data if requested
         if plot_data and data:  # Only plot if we have data
-            # Determine number of rows based on data available
-            num_rows = 2  # At minimum, show raw data and velocity
-            if freqs is not None:
-                num_rows = 4  # Add FFT plots if frequency data is available
+            # Use 4 rows for the 4 channels
+            num_rows = 4
                 
             # Only set up the plot if it doesn't exist yet
-            if self.fig is None or len(self.axes) != num_rows:
+            if self.fig is None or self.axes.shape != (num_rows, 2):
                 self.setup_plot(num_rows=num_rows)
             
             # Use the primary device's velocity data for plotting if available
@@ -944,7 +949,7 @@ class RedPitayaManager:
             self.update_plot(data, primary_vel_data, primary_vel_fft, freqs)
             
             # Show the plot without blocking
-            self.show_plot(block=False)
+            self.show_plot(block=block_plot)
         
         return save_data
     
@@ -1007,7 +1012,8 @@ class RedPitayaManager:
                     amplitude=amplitude,
                     store_data=store_data,
                     plot_data=plot_data,
-                    filename=filename
+                    filename=filename,
+                    block_plot=False
                 )
                 
                 all_data.append(shot_data)
