@@ -115,6 +115,7 @@ def write_data(file_path, entries):
 
                 
 # Constants from calibration_rp using RPRPData.csv
+# TODO: put these in a dataclass with a note of the speaker part number
 f0 = 257.20857316296724
 Q = 15.804110908084784
 k = 33.42493417407945

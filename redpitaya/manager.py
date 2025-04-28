@@ -12,7 +12,7 @@ import matplotlib.ticker as ticker
 from datetime import datetime
 from numpy.fft import fft, fftfreq
 from scipy.signal import butter, filtfilt
-import redpitaya_scpi as scpi
+import scpi
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional, Union, Any
 import random  # Add import for random module
