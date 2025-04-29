@@ -113,38 +113,32 @@ class Waveform:
         
         # Combine spectrum and phases
         complex_spectrum = self.spectrum * np.exp(1j * self.phases)
-        
-        # Complete the spectrum for ifft (make it symmetric)
+        # Positive frequencies only, TODO: is this right?
         full_spectrum = np.hstack([complex_spectrum, np.zeros_like(complex_spectrum)])
         
         # Convert to time domain
         y = np.real(ifft(full_spectrum, norm="ortho"))
         y = np.fft.fftshift(y)
         
-        # Normalize to [-1, 1] range
-        if np.max(np.abs(y)) > 0:
-            # Normalize to [-1, 1] range with random scaling inside those bounds
-            normalization_factor = np.max(np.abs(y)) * np.random.uniform(1,10)
-            y = y / normalization_factor
-            
-            # Recompute the spectrum and phase after normalization
-            # First, shift back to match the original order
-            y_unshifted = np.fft.ifftshift(y)
-            
-            # Compute the FFT to get the normalized spectrum
-            normalized_spectrum = fft(y_unshifted, norm="ortho")
-            
-            # Extract the first half (positive frequencies)
-            normalized_complex_spectrum = normalized_spectrum[:len(self.freq)]
-            
-            # Extract amplitude and phase
-            normalized_amplitude = np.abs(normalized_complex_spectrum)
-            normalized_phase = np.angle(normalized_complex_spectrum)
-            
-            return self.t, y, normalized_amplitude, normalized_phase
+        # Normalize to [-1, 1] range with random scaling inside those bounds
+        normalization_factor = np.max(np.abs(y)) * np.random.uniform(1,10)
+        y = y / normalization_factor
         
-        # If no normalization was needed, return the original spectrum and phases
-        return self.t, y, self.spectrum, self.phases
+        # Recompute the spectrum and phase after normalization
+        # First, shift back to match the original order
+        y_unshifted = np.fft.ifftshift(y)
+        
+        # Compute the FFT to get the normalized spectrum
+        normalized_spectrum = fft(y_unshifted, norm="ortho")
+        
+        # Extract the first half (positive frequencies)
+        normalized_complex_spectrum = normalized_spectrum[:len(self.freq)]
+        
+        # Extract amplitude and phase
+        normalized_amplitude = np.abs(normalized_complex_spectrum)
+        normalized_phase = np.angle(normalized_complex_spectrum)
+        
+        return self.t, y, normalized_amplitude, normalized_phase
     
     def get_valid_frequencies(self) -> np.ndarray:
         """

@@ -51,7 +51,7 @@ def plot_waveforms(
     coil_driver: CoilDriver,
     start_freq: float = 10,
     end_freq: float = 1000,
-    figsize: Tuple[int, int] = (15, 12)
+    figsize: Tuple[int, int] = (15, 10)
 ) -> None:
     """
     Generate and plot waveforms and their FFTs.
@@ -67,7 +67,8 @@ def plot_waveforms(
     waveform.set_frequency_range(start_freq, end_freq)
     
     # Generate a random waveform
-    t, voltage, spectrum, phases = waveform.sample()
+    t, voltage, voltage_spectral_mod, voltage_spectral_phase = waveform.sample()
+    voltage_spectrum = voltage_spectral_mod * np.exp(1j * 2*np.pi*voltage_spectral_phase)
     
     # Calculate sample rate from time array
     sample_rate = 1 / (t[1] - t[0])
@@ -76,8 +77,8 @@ def plot_waveforms(
     freqs_fft, voltage_mag, voltage_phase = calculate_fft(voltage, sample_rate)
     
     # Get the displacement and velocity waveforms using the coil driver
-    displacement, displacement_spectrum, _ = coil_driver.get_displacement(voltage, sample_rate)
-    velocity, velocity_spectrum, freq_cal = coil_driver.get_velocity(voltage, sample_rate)
+    displacement, displacement_spectrum, displacement_freqs = coil_driver.get_displacement(voltage, sample_rate)
+    velocity, velocity_spectrum, velocity_freqs = coil_driver.get_velocity(voltage, sample_rate)
     
     # Calculate FFTs of displacement and velocity
     _, displacement_mag, displacement_phase = calculate_fft(displacement, sample_rate)
@@ -86,15 +87,29 @@ def plot_waveforms(
     # Calculate expected displacement and velocity spectra from the original spectrum
     # Get the amplitude transfer functions
     amplitude_transfer = coil_driver._calculate_amplitude_transfer(np.abs(waveform.freq))
+    # For negative frequencies, we need to conjugate the phase
+    phase_transfer = np.where(
+        waveform.freq < 0,
+        np.exp(-1j * coil_driver._calculate_phase_transfer(-waveform.freq)),
+        np.exp(1j * coil_driver._calculate_phase_transfer(waveform.freq))
+    )
     
     # Apply transfer functions to the original spectrum
-    expected_displacement_spectrum = spectrum * amplitude_transfer
-    expected_velocity_spectrum = spectrum * amplitude_transfer * waveform.freq
+    expected_displacement_spectrum = voltage_spectrum * amplitude_transfer * phase_transfer
+    expected_displacement_spectral_mod = np.abs(expected_displacement_spectrum)
+    expected_velocity_spectrum = voltage_spectrum * amplitude_transfer * phase_transfer * waveform.freq * 2 * np.pi*1j
+    expected_velocity_spectral_mod = np.abs(expected_velocity_spectrum)
     
     # Create a dense frequency array for plotting the analytic transfer functions
     dense_freq = np.linspace(start_freq, end_freq, 1000)
     dense_amplitude_transfer = coil_driver._calculate_amplitude_transfer(dense_freq)
     dense_phase_transfer = coil_driver._calculate_phase_transfer(dense_freq)
+    displacement_transfer = dense_amplitude_transfer * np.exp(1j * 2*np.pi* dense_phase_transfer)
+    velocity_transfer = displacement_transfer * dense_freq * 2 * np.pi * 1j
+    displacement_transfer_mod = np.abs(displacement_transfer)
+    displacement_transfer_phase = np.angle(displacement_transfer)
+    velocity_transfer_mod = np.abs(velocity_transfer)
+    velocity_transfer_phase = np.angle(velocity_transfer)
     
     # Create a figure with a 3x2 grid
     fig = plt.figure(figsize=figsize)
@@ -130,7 +145,7 @@ def plot_waveforms(
     # Frequency domain - Magnitude
     ax2 = axes[0][1]
     ax2.plot(freqs_fft, voltage_mag, 'b--', label='FFT Magnitude')
-    ax2.plot(waveform.freq, spectrum, 'b-', alpha=0.3, label='Original Spectrum')
+    ax2.plot(waveform.freq, voltage_spectral_mod, 'b-', alpha=0.3, label='Original Spectrum')
     ax2.set_title('Voltage Spectrum')
     ax2.set_ylabel('Magnitude')
     ax2.set_xlim(0, end_freq * 1.2)
@@ -151,11 +166,10 @@ def plot_waveforms(
     
     # Plot magnitude on left y-axis
     ax4.plot(freqs_fft, displacement_mag, 'b--', label='FFT Magnitude')
-    ax4.plot(waveform.freq, expected_displacement_spectrum, 'b-', alpha=0.3, label='Expected Spectrum')
+    ax4.plot(waveform.freq, expected_displacement_spectral_mod, 'b-', alpha=0.3, label='Expected Spectrum')
     
-    # Scale transfer function to match the magnitude range for better visibility
-    transfer_scale = np.max(displacement_mag) / np.max(dense_amplitude_transfer) if np.max(dense_amplitude_transfer) > 0 else 1
-    ax4.plot(dense_freq, dense_amplitude_transfer * transfer_scale, 'g-', label='Transfer Function (scaled)')
+    # Plot transfer function on left y-axis
+    ax4.plot(dense_freq, displacement_transfer_mod, 'g-', label='Transfer Function')
     
     ax4.set_title('Displacement Spectrum & Transfer Function')
     ax4.set_ylabel('Magnitude', color='b')
@@ -164,7 +178,7 @@ def plot_waveforms(
     ax4.grid(True, alpha=0.3)
     
     # Plot phase on right y-axis
-    ax4_twin.plot(dense_freq, dense_phase_transfer, 'r-', label='Phase Transfer')
+    ax4_twin.plot(dense_freq, displacement_transfer_phase, 'r-', alpha=0.3, label='Phase Transfer')
     ax4_twin.set_ylabel('Phase (rad)', color='r')
     ax4_twin.tick_params(axis='y', labelcolor='r')
     ax4_twin.set_ylim(-np.pi, np.pi)
@@ -189,14 +203,10 @@ def plot_waveforms(
     
     # Plot magnitude on left y-axis
     ax6.plot(freqs_fft, velocity_mag, 'b--', label='FFT Magnitude')
-    ax6.plot(waveform.freq, expected_velocity_spectrum, 'b-', alpha=0.3, label='Expected Spectrum')
+    ax6.plot(waveform.freq, expected_velocity_spectral_mod, 'b-', alpha=0.3, label='Expected Spectrum')
     
-    # For velocity, we multiply by 2*pi*f
-    velocity_transfer = dense_amplitude_transfer * 2 * np.pi * dense_freq
-    
-    # Scale transfer function to match the magnitude range for better visibility
-    transfer_scale = np.max(velocity_mag) / np.max(velocity_transfer) if np.max(velocity_transfer) > 0 else 1
-    ax6.plot(dense_freq, velocity_transfer * transfer_scale, 'g-', label='Transfer Function (scaled)')
+    # For velocity, we do multiply by 2*pi*1j*frequency, angular frequency in FFT
+    ax6.plot(dense_freq, velocity_transfer_mod, 'g-', label='Transfer Function')
     
     ax6.set_title('Velocity Spectrum & Transfer Function')
     ax6.set_xlabel('Frequency (Hz)')
@@ -206,10 +216,7 @@ def plot_waveforms(
     ax6.grid(True, alpha=0.3)
     
     # Plot phase on right y-axis
-    # For velocity, we add π/2 to the phase due to the derivative
-    velocity_phase_transfer = dense_phase_transfer + np.pi/2
-    velocity_phase_transfer = np.mod(velocity_phase_transfer + np.pi, 2 * np.pi) - np.pi  # Wrap to [-π, π]
-    ax6_twin.plot(dense_freq, velocity_phase_transfer, 'r-', label='Phase Transfer')
+    ax6_twin.plot(dense_freq, velocity_transfer_phase, 'r-', alpha=0.3, label='Phase Transfer')
     ax6_twin.set_ylabel('Phase (rad)', color='r')
     ax6_twin.tick_params(axis='y', labelcolor='r')
     ax6_twin.set_ylim(-np.pi, np.pi)

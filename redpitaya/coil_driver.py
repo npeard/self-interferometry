@@ -171,7 +171,7 @@ class CoilDriver:
         )
         
         # For velocity, we multiply by i*omega = i*2*pi*f in frequency domain
-        velocity_spectrum = 1j * freq * voltage_spectrum * amplitude_transfer * phase_transfer
+        velocity_spectrum = 1j * 2 * np.pi * freq * voltage_spectrum * amplitude_transfer * phase_transfer
         
         # Convert back to time domain
         velocity_waveform = np.real(ifft(velocity_spectrum, norm="ortho"))
