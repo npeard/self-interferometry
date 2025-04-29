@@ -84,17 +84,19 @@ class Waveform:
                             spectrum, 0)
         
         # Generate random Rayleigh distributed amplitudes
-        # TODO: check the sampling here, generate a test case to check for Gaussianity 
-        c = np.random.rayleigh(np.sqrt(spectrum * (self.freq[1] - self.freq[0])))
-        # See Phys. Rev. A 107, 042611 (2023) ref 28 for why we use the Rayleigh distribution here
-        # Unless we use this distribution, the random noise will not be Gaussian distributed
+        rayleigh_spectrum = np.random.rayleigh(np.sqrt(spectrum * (self.freq[1] - self.freq[0])))
+        # See Phys. Rev. A 107, 042611 (2023) and https://doi.org/10.1016/0141-1187(84)90050-6
+        # for why we use the Rayleigh distribution here
+        # If we want Gaussian distributed a_n, b_n in a Fourier series for cosine and sine components,
+        # each with variance_n = S(f_n)*\Delta f_n, then c_n = sqrt(a_n**2 + b_n**2) is Rayleigh distributed
+        # with variance_n = S(f_n)*\Delta f_n
+        # np.random.rayleigh(scale) expects a scale parameter = sqrt(variance) as input
         
         # Generate random phases
         phi = np.random.uniform(-np.pi, np.pi, len(self.freq))
         
         # Store the spectrum and phases
-        self.spectrum = spectrum * c
-        self.phases = phi
+        self.spectrum = rayleigh_spectrum * np.exp(1j * phi)
     
     def sample(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
@@ -111,10 +113,8 @@ class Waveform:
         # Randomize the spectrum and phases
         self._randomize_spectrum()
         
-        # Combine spectrum and phases
-        complex_spectrum = self.spectrum * np.exp(1j * self.phases)
         # Positive frequencies only, TODO: is this right?
-        full_spectrum = np.hstack([complex_spectrum, np.zeros_like(complex_spectrum)])
+        full_spectrum = np.hstack([self.spectrum, np.zeros_like(self.spectrum)])
         
         # Convert to time domain
         y = np.real(ifft(full_spectrum, norm="ortho"))

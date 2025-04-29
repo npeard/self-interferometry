@@ -105,9 +105,9 @@ def plot_waveforms(
     dense_amplitude_transfer = coil_driver._calculate_amplitude_transfer(dense_freq)
     dense_phase_transfer = coil_driver._calculate_phase_transfer(dense_freq)
     displacement_transfer = dense_amplitude_transfer * np.exp(1j * 2*np.pi* dense_phase_transfer)
-    velocity_transfer = displacement_transfer * dense_freq * 2 * np.pi * 1j
     displacement_transfer_mod = np.abs(displacement_transfer)
     displacement_transfer_phase = np.angle(displacement_transfer)
+    velocity_transfer = displacement_transfer * dense_freq * 2 * np.pi * 1j
     velocity_transfer_mod = np.abs(velocity_transfer)
     velocity_transfer_phase = np.angle(velocity_transfer)
     
@@ -236,6 +236,91 @@ def plot_waveforms(
     return fig
 
 
+def plot_waveform_histograms(
+    waveform: Waveform,
+    start_freq: float = 10,
+    end_freq: float = 1000,
+    num_samples: int = 100,
+    figsize: Tuple[int, int] = (12, 10)
+) -> None:
+    """
+    Generate multiple waveform samples and plot histograms of the time-domain values
+    and a 2D histogram of the complex-valued reconstructed signals.
+    
+    Args:
+        waveform: Waveform generator
+        start_freq: Start frequency in Hz
+        end_freq: End frequency in Hz
+        num_samples: Number of waveform samples to generate
+        figsize: Figure size (width, height) in inches
+    """
+    # Update frequency range
+    waveform.set_frequency_range(start_freq, end_freq)
+    
+    # Initialize arrays to store all voltage samples and reconstructed complex signals
+    all_voltages = []
+    all_complex_values = []
+    
+    # Generate multiple waveform samples
+    for i in range(num_samples):
+        # Generate a random waveform
+        t, voltage, voltage_spectral_mod, voltage_spectral_phase = waveform.sample()
+        
+        # Store the time-domain voltage values
+        all_voltages.extend(voltage)
+        
+        # Construct complex spectrum
+        complex_spectrum = voltage_spectral_mod * np.exp(1j * 2 * np.pi * voltage_spectral_phase)
+        
+        # Complete the spectrum for ifft (make it symmetric)
+        # Only positive frequencies are returned by waveform.sample()
+        full_spectrum = np.hstack([2*complex_spectrum, np.zeros_like(complex_spectrum)])
+        
+        # Convert to time domain without taking real part
+        reconstructed_complex = np.fft.ifft(full_spectrum, norm="ortho")
+        reconstructed_complex = np.fft.fftshift(reconstructed_complex)
+        
+        # Store the complex-valued reconstructed signals
+        all_complex_values.extend(reconstructed_complex)
+    
+    # Convert to numpy arrays
+    all_voltages = np.array(all_voltages)
+    all_complex_values = np.array(all_complex_values)
+    
+    # Create a figure with subplots
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+    
+    # Plot histogram of time-domain voltage values
+    ax1.hist(all_voltages, bins=100, alpha=0.7, color='blue')
+    ax1.set_title('Histogram of Time-Domain Voltage Values')
+    ax1.set_xlabel('Voltage (V)')
+    ax1.set_ylabel('Frequency')
+    ax1.grid(True, alpha=0.3)
+    
+    # Plot 2D histogram of complex-valued reconstructed signals
+    h = ax2.hist2d(
+        np.real(all_complex_values), 
+        np.imag(all_complex_values), 
+        bins=50, 
+        cmap='viridis', 
+        norm=plt.matplotlib.colors.LogNorm()
+    )
+    ax2.set_title('2D Histogram of Complex-Valued Reconstructed Signals')
+    ax2.set_xlabel('Real Part')
+    ax2.set_ylabel('Imaginary Part')
+    ax2.grid(True, alpha=0.3)
+    ax2.set_aspect('equal')
+    
+    # Add colorbar
+    cbar = plt.colorbar(h[3], ax=ax2)
+    cbar.set_label('Count')
+    
+    plt.suptitle('Waveform Sample Statistics', fontsize=16)
+    plt.tight_layout()
+    
+    return fig
+
+
 if __name__ == "__main__":
     # Create a waveform generator
     waveform = Waveform(
@@ -249,7 +334,10 @@ if __name__ == "__main__":
     coil_driver = CoilDriver()
     
     # Generate and plot waveforms
-    fig = plot_waveforms(waveform, coil_driver)
+    fig1 = plot_waveforms(waveform, coil_driver)
     
-    # Show the plot
+    # Generate and plot waveform histograms
+    fig2 = plot_waveform_histograms(waveform, num_samples=100)
+    
+    # Show the plots
     plt.show()
