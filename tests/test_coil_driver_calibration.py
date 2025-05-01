@@ -13,7 +13,7 @@ import numpy as np
 
 from redpitaya.waveform import Waveform
 from redpitaya.coil_driver import CoilDriver
-from tests.plot_waveforms import calculate_fft
+from plot_waveforms import calculate_fft
 
 
 def test_displacement_velocity_consistency():

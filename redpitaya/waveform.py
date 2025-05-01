@@ -114,13 +114,41 @@ class Waveform:
         amplitudes = np.abs(self.spectrum)
         self.spectrum = amplitudes * np.exp(1j * phi)
     
-    def sample(self, randomize_phase_only=False) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    def _random_single_tone_spectrum(self):
+        """
+        Generate a spectrum containing a single tone at a randomly selected frequency.
+        This is called internally by sample() if random_single_tone=True.
+        """
+        # Create an empty spectrum
+        spectrum = np.zeros(len(self.freq), dtype=complex)
+        
+        # Randomly select one of the valid frequencies
+        if len(self.valid_freqs) > 0:
+            selected_freq = np.random.choice(self.valid_freqs[self.valid_freqs > 0])
+        else:
+            # If no valid frequencies, use the middle of the range
+            selected_freq = (self.start_freq + self.end_freq) / 2
+        
+        # Find the index in the frequency array closest to the selected frequency
+        freq_idx = np.argmin(np.abs(self.freq - selected_freq))
+        
+        # Generate a random phase
+        phi = np.random.uniform(0, 2*np.pi)
+        
+        # Set the amplitude at the selected frequency to 1 with the random phase
+        spectrum[freq_idx] = 1.0 * np.exp(1j * phi)
+        
+        # Store the spectrum
+        self.spectrum = spectrum
+    
+    def sample(self, randomize_phase_only=False, random_single_tone=False) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
         Generate a sample waveform using the current configuration.
         Randomizes the spectrum and phases each time it's called.
         
         Args:
             randomize_phase_only: If True, only randomize the phases while keeping the spectrum amplitudes the same
+            random_single_tone: If True, generate a single tone at a randomly selected valid frequency
     
         Returns:
             Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]: 
@@ -129,8 +157,10 @@ class Waveform:
                 - Spectrum (amplitude)
                 - Spectral phases (phase)
         """
-        # Randomize the spectrum and/or phases
-        if randomize_phase_only:
+        # Generate appropriate spectrum based on parameters
+        if random_single_tone:
+            self._random_single_tone_spectrum()
+        elif randomize_phase_only:
             self._randomize_phase()
         else:
             self._randomize_spectrum()

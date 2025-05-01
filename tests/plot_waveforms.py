@@ -68,7 +68,7 @@ def plot_waveforms(
     waveform.set_frequency_range(start_freq, end_freq)
     
     # Generate a random waveform
-    t, voltage, voltage_spectral_mod, voltage_spectral_phase = waveform.sample()
+    t, voltage, voltage_spectral_mod, voltage_spectral_phase = waveform.sample(random_single_tone=True)
     voltage_spectrum = voltage_spectral_mod * np.exp(1j * voltage_spectral_phase)
     
     # Calculate sample rate from time array
@@ -372,7 +372,7 @@ if __name__ == "__main__":
     fig1 = plot_waveforms(waveform, coil_driver)
     
     # Generate and plot waveform histograms
-    fig2 = plot_waveform_histograms(waveform, num_samples=10000)
+    #fig2 = plot_waveform_histograms(waveform, num_samples=10000)
     
     # Show the plots
     plt.show()

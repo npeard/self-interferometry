@@ -10,7 +10,7 @@ import pytest
 import numpy as np
 
 from redpitaya.waveform import Waveform
-from tests.plot_waveforms import calculate_fft
+from plot_waveforms import calculate_fft
 
 
 def test_waveform_sample_spectrum_consistency():
