@@ -83,7 +83,7 @@ class Waveform:
                             valid_mask, 
                             spectrum, 0)
         
-        # Generate random Rayleigh distributed amplitudes
+        # Generate random Rayleigh distributed power spectrum
         rayleigh_spectrum = np.random.rayleigh(np.sqrt(spectrum * (self.freq[1] - self.freq[0])))
         # See Phys. Rev. A 107, 042611 (2023) and https://doi.org/10.1016/0141-1187(84)90050-6
         # for why we use the Rayleigh distribution here
@@ -93,16 +93,35 @@ class Waveform:
         # np.random.rayleigh(scale) expects a scale parameter = sqrt(variance) as input
         
         # Generate random phases
-        phi = np.random.uniform(-np.pi, np.pi, len(self.freq))
+        phi = np.random.uniform(0, 2*np.pi, len(self.freq))
         
         # Store the spectrum and phases
-        self.spectrum = rayleigh_spectrum * np.exp(1j * phi)
+        self.spectrum = np.sqrt(rayleigh_spectrum) * np.exp(1j * phi)
     
-    def sample(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    def _randomize_phase(self):
+        """
+        Randomize only the phases for the waveform, keeping the spectrum amplitudes the same.
+        This is called internally by sample() if randomize_phase_only=True.
+        """
+        # Generate random phases
+        phi = np.random.uniform(0, 2*np.pi, len(self.freq))
+        
+        # If no spectrum exists yet, we need to call _randomize_spectrum first
+        if self.spectrum is None:
+            self._randomize_spectrum()
+
+        # Then override with just the phase randomization
+        amplitudes = np.abs(self.spectrum)
+        self.spectrum = amplitudes * np.exp(1j * phi)
+    
+    def sample(self, randomize_phase_only=False) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
         Generate a sample waveform using the current configuration.
         Randomizes the spectrum and phases each time it's called.
         
+        Args:
+            randomize_phase_only: If True, only randomize the phases while keeping the spectrum amplitudes the same
+    
         Returns:
             Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]: 
                 - Array of time points
@@ -110,11 +129,14 @@ class Waveform:
                 - Spectrum (amplitude)
                 - Spectral phases (phase)
         """
-        # Randomize the spectrum and phases
-        self._randomize_spectrum()
+        # Randomize the spectrum and/or phases
+        if randomize_phase_only:
+            self._randomize_phase()
+        else:
+            self._randomize_spectrum()
         
         # Positive frequencies only, TODO: is this right?
-        full_spectrum = np.hstack([self.spectrum, np.zeros_like(self.spectrum)])
+        full_spectrum = np.hstack([2*self.spectrum, np.zeros_like(self.spectrum)])
         
         # Convert to time domain
         y = np.real(ifft(full_spectrum, norm="ortho"))

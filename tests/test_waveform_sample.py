@@ -10,7 +10,7 @@ import pytest
 import numpy as np
 
 from redpitaya.waveform import Waveform
-from redpitaya.plot_waveforms import calculate_fft
+from tests.plot_waveforms import calculate_fft
 
 
 def test_waveform_sample_spectrum_consistency():
@@ -171,7 +171,7 @@ def test_waveform_reconstruction():
     t, voltage, voltage_spectral_mod, voltage_spectral_phase = waveform.sample()
     
     # Construct complex spectrum
-    complex_spectrum = voltage_spectral_mod * np.exp(1j * 2 * np.pi * voltage_spectral_phase)
+    complex_spectrum = voltage_spectral_mod * np.exp(1j * voltage_spectral_phase)
     
     # Complete the spectrum for ifft (make it symmetric)
     full_spectrum = np.zeros(len(voltage), dtype=complex)

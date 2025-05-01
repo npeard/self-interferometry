@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 from numpy.fft import fft, fftfreq
 from typing import Tuple
 import matplotlib.gridspec as gridspec
+from scipy import stats
 
 from redpitaya.waveform import Waveform
 from redpitaya.coil_driver import CoilDriver
@@ -68,7 +69,7 @@ def plot_waveforms(
     
     # Generate a random waveform
     t, voltage, voltage_spectral_mod, voltage_spectral_phase = waveform.sample()
-    voltage_spectrum = voltage_spectral_mod * np.exp(1j * 2*np.pi*voltage_spectral_phase)
+    voltage_spectrum = voltage_spectral_mod * np.exp(1j * voltage_spectral_phase)
     
     # Calculate sample rate from time array
     sample_rate = 1 / (t[1] - t[0])
@@ -97,14 +98,14 @@ def plot_waveforms(
     # Apply transfer functions to the original spectrum
     expected_displacement_spectrum = voltage_spectrum * amplitude_transfer * phase_transfer
     expected_displacement_spectral_mod = np.abs(expected_displacement_spectrum)
-    expected_velocity_spectrum = voltage_spectrum * amplitude_transfer * phase_transfer * waveform.freq * 2 * np.pi*1j
+    expected_velocity_spectrum = voltage_spectrum * amplitude_transfer * phase_transfer * waveform.freq * 2 * np.pi * 1j
     expected_velocity_spectral_mod = np.abs(expected_velocity_spectrum)
     
     # Create a dense frequency array for plotting the analytic transfer functions
     dense_freq = np.linspace(start_freq, end_freq, 1000)
     dense_amplitude_transfer = coil_driver._calculate_amplitude_transfer(dense_freq)
     dense_phase_transfer = coil_driver._calculate_phase_transfer(dense_freq)
-    displacement_transfer = dense_amplitude_transfer * np.exp(1j * 2*np.pi* dense_phase_transfer)
+    displacement_transfer = dense_amplitude_transfer * np.exp(1j * dense_phase_transfer)
     displacement_transfer_mod = np.abs(displacement_transfer)
     displacement_transfer_phase = np.angle(displacement_transfer)
     velocity_transfer = displacement_transfer * dense_freq * 2 * np.pi * 1j
@@ -231,7 +232,8 @@ def plot_waveforms(
     axes[2][1].set_xlabel('Frequency (Hz)')
     
     plt.suptitle('Waveform Generation', fontsize=16)
-    plt.tight_layout()
+    # Use subplots_adjust instead of tight_layout to avoid warnings
+    plt.subplots_adjust(left=0.1, right=0.95, top=0.9, bottom=0.1, wspace=0.3, hspace=0.3)
     
     return fig
 
@@ -263,14 +265,15 @@ def plot_waveform_histograms(
     
     # Generate multiple waveform samples
     for i in range(num_samples):
-        # Generate a random waveform
-        t, voltage, voltage_spectral_mod, voltage_spectral_phase = waveform.sample()
+        # Generate a random waveform with phase randomization only
+        # The spectrum amplitudes are kept the same
+        t, voltage, voltage_spectral_mod, voltage_spectral_phase = waveform.sample(randomize_phase_only=True)
         
         # Store the time-domain voltage values
         all_voltages.extend(voltage)
         
         # Construct complex spectrum
-        complex_spectrum = voltage_spectral_mod * np.exp(1j * 2 * np.pi * voltage_spectral_phase)
+        complex_spectrum = voltage_spectral_mod * np.exp(1j * voltage_spectral_phase)
         
         # Complete the spectrum for ifft (make it symmetric)
         # Only positive frequencies are returned by waveform.sample()
@@ -282,6 +285,13 @@ def plot_waveform_histograms(
         
         # Store the complex-valued reconstructed signals
         all_complex_values.extend(reconstructed_complex)
+
+    # Compute variance for the noise distribution
+    noise_variance = np.sum(4*voltage_spectral_mod**2) * len(t) * (t[1] - t[0])**2/np.max(t) * (waveform.freq[1] - waveform.freq[0])
+    # We use one-sided spectra, so the total power in the signal is double the power in the positive frequencies
+    # We use norm="ortho" in the FFT, so we need to multiply the PSD by the number of samples
+    # Then, the PSD is approximated by multiplying py abs(\Delta t)**2/T 
+    # For the integral to get the total variance we multiply by the size of the frequency bin
     
     # Convert to numpy arrays
     all_voltages = np.array(all_voltages)
@@ -290,20 +300,26 @@ def plot_waveform_histograms(
     # Create a figure with subplots
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
     
-    # Plot histogram of time-domain voltage values
-    ax1.hist(all_voltages, bins=100, alpha=0.7, color='blue')
+    # Plot histogram of time-domain voltage values with proper normalization
+    hist_values, bin_edges, _ = ax1.hist(all_voltages, bins=500, alpha=0.7, color='blue', density=True)
     ax1.set_title('Histogram of Time-Domain Voltage Values')
     ax1.set_xlabel('Voltage (V)')
-    ax1.set_ylabel('Frequency')
+    ax1.set_ylabel('Probability Density')
     ax1.grid(True, alpha=0.3)
     
-    # Plot 2D histogram of complex-valued reconstructed signals
+    # Overlay Gaussian with zero mean and computed variance (already normalized)
+    x = np.linspace(min(all_voltages), max(all_voltages), 1000)
+    gaussian = stats.norm.pdf(x, loc=0, scale=np.sqrt(noise_variance))
+    ax1.plot(x, gaussian, 'r-', linewidth=2, label=f'Gaussian (μ=0, σ²={noise_variance:.4f})')
+    ax1.legend()
+    
+    # Plot 2D histogram of complex-valued reconstructed signals with proper normalization
     h = ax2.hist2d(
         np.real(all_complex_values), 
         np.imag(all_complex_values), 
-        bins=50, 
-        cmap='viridis', 
-        norm=plt.matplotlib.colors.LogNorm()
+        bins=100, 
+        cmap='viridis',
+        density=True  # This ensures the integral over the entire range is 1
     )
     ax2.set_title('2D Histogram of Complex-Valued Reconstructed Signals')
     ax2.set_xlabel('Real Part')
@@ -311,12 +327,31 @@ def plot_waveform_histograms(
     ax2.grid(True, alpha=0.3)
     ax2.set_aspect('equal')
     
+    # Calculate 2D Gaussian values (assuming real and imaginary parts are independent with same variance)
+    x_range = np.linspace(min(np.real(all_complex_values)), max(np.real(all_complex_values)), 100)
+    y_range = np.linspace(min(np.imag(all_complex_values)), max(np.imag(all_complex_values)), 100)
+    X, Y = np.meshgrid(x_range, y_range)
+    
+    # Calculate 2D Gaussian PDF with zero mean and computed variance
+    # For complex Gaussian, the variance is split between real and imaginary parts
+    Z = stats.multivariate_normal.pdf(np.dstack([X, Y]), mean=[0, 0], cov=[[noise_variance, 0], [0, noise_variance]])
+    levels = [stats.norm.pdf(n*np.sqrt(noise_variance), loc=0, scale=np.sqrt(noise_variance)) for n in range(6, 0, -1)]
+    
+    # Plot contour lines of the 2D Gaussian PDF
+    ax2.contour(X, Y, Z, colors='r', levels=levels, alpha=0.7, linewidths=1.5)
+    
+    # Add a proxy artist for the legend
+    from matplotlib.lines import Line2D
+    legend_element = Line2D([0], [0], color='r', lw=1.5, label='Gaussian PDF')
+    ax2.legend(handles=[legend_element], loc='upper right')
+    
     # Add colorbar
     cbar = plt.colorbar(h[3], ax=ax2)
-    cbar.set_label('Count')
+    cbar.set_label('Probability Density')
     
     plt.suptitle('Waveform Sample Statistics', fontsize=16)
-    plt.tight_layout()
+    # Use subplots_adjust instead of tight_layout to avoid warnings
+    plt.subplots_adjust(left=0.1, right=0.95, top=0.9, bottom=0.1, wspace=0.3)
     
     return fig
 
@@ -337,7 +372,7 @@ if __name__ == "__main__":
     fig1 = plot_waveforms(waveform, coil_driver)
     
     # Generate and plot waveform histograms
-    fig2 = plot_waveform_histograms(waveform, num_samples=100)
+    fig2 = plot_waveform_histograms(waveform, num_samples=10000)
     
     # Show the plots
     plt.show()
