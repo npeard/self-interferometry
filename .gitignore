@@ -132,3 +132,4 @@ dmypy.json
 # training data
 data/*
 checkpoints/*
+lightning_logs/*
