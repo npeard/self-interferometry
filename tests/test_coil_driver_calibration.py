@@ -177,6 +177,68 @@ def test_displacement_velocity_relationship():
         "Velocity spectrum is not the derivative of displacement spectrum"
 
 
+def test_integrated_velocity_and_derivative_displacement():
+    """
+    Test that:
+    1. The integrated velocity matches the displacement from the transfer function
+    2. The derivative of displacement matches the velocity from the transfer function
+    
+    This test verifies the consistency between the time-domain and frequency-domain
+    approaches for calculating velocity and displacement.
+    """
+    # Create a waveform generator with test parameters
+    waveform = Waveform(
+        start_freq=10,
+        end_freq=1000,
+        gen_dec=8192,
+        acq_dec=256
+    )
+    
+    # Create a coil driver with default calibration parameters
+    coil_driver = CoilDriver()
+    
+    # Generate a random waveform
+    t, voltage, voltage_spectral_mod, voltage_spectral_phase = waveform.sample()
+    
+    # Calculate sample rate from time array
+    sample_rate = 1 / (t[1] - t[0])
+    
+    # Get displacement and velocity using CoilDriver
+    displacement, displacement_spectrum, displacement_freqs = coil_driver.get_displacement(voltage, sample_rate)
+    velocity, velocity_spectrum, velocity_freqs = coil_driver.get_velocity(voltage, sample_rate)
+    
+    # Test 1: Integrated velocity should match displacement from transfer function
+    
+    
+    # Integrate velocity using the same method as in CoilDriver.integrate_velocity
+    # with high_pass_freq=0.0 (default in the updated code)
+    displacement_integrated = coil_driver.integrate_velocity(velocity, sample_rate, high_pass_freq=0.0)
+    
+    # Ensure displacement starts at zero (as done in RedPitayaManager.get_displacement_data)
+    displacement_zeroed = displacement - displacement[0]
+    displacement_integrated = displacement_integrated - displacement_integrated[0]
+    
+    # Compare the integrated velocity with the displacement from transfer function
+    # using np.allclose with appropriate tolerance
+    #rtol = 5e-2  # 1% relative tolerance
+    atol = 1e-1  # absolute tolerance in microns
+    assert np.allclose(displacement_zeroed, displacement_integrated, atol=atol, rtol=0), \
+        f"Integrated velocity does not match displacement from transfer function"
+    
+    # Test 2: Derivative of displacement should match velocity from transfer function
+    # Calculate derivative of displacement using the same method as in RedPitayaManager.get_velocity_data
+    derived_velocity = coil_driver.derivative_displacement(displacement_zeroed, sample_rate)
+    
+    
+    # Compare the derivative of displacement with the velocity from transfer function
+    # using np.allclose with appropriate tolerance
+    #rtol = 1e-1  # 10% relative tolerance for derivative (more sensitive to noise)
+    atol = 5  # absolute tolerance in microns/s
+    # Don't compare the end elements, not accurately computed at the edges
+    assert np.allclose(velocity[1:-1], derived_velocity[1:-1], rtol=0.2, atol=0), \
+        f"Derivative of displacement does not match velocity from transfer function"
+
+
 if __name__ == "__main__":
     # Run the tests
     pytest.main(["-xvs", __file__])
