@@ -165,32 +165,22 @@ class Waveform:
         else:
             self._randomize_spectrum()
         
-        # Positive frequencies only, TODO: is this right?
-        full_spectrum = np.hstack([2*self.spectrum, np.zeros_like(self.spectrum)])
+        # Only positive frequencies are specified in the spectrum, so we need to 
+        # multiply the amplitude spectrum by sqrt(2) to double the power across the time series
+        full_spectrum = np.hstack([np.sqrt(2)*self.spectrum, np.zeros_like(self.spectrum)])
         
         # Convert to time domain
         y = np.real(ifft(full_spectrum, norm="ortho"))
         y = np.fft.fftshift(y)
         
-        # Normalize to [-1, 1] range with random scaling inside those bounds
-        normalization_factor = np.max(np.abs(y)) * np.random.uniform(1,10)
-        y = y / normalization_factor
-        
-        # Recompute the spectrum and phase after normalization
+        # Recompute the spectrum and phase for use in other modules
         # First, shift back to match the original order
         y_unshifted = np.fft.ifftshift(y)
         
         # Compute the FFT to get the normalized spectrum
-        normalized_spectrum = fft(y_unshifted, norm="ortho")
+        normalized_spectrum = fft(y_unshifted, norm="ortho")[:len(self.freq)]
         
-        # Extract the first half (positive frequencies)
-        normalized_complex_spectrum = normalized_spectrum[:len(self.freq)]
-        
-        # Extract amplitude and phase
-        normalized_amplitude = np.abs(normalized_complex_spectrum)
-        normalized_phase = np.angle(normalized_complex_spectrum)
-        
-        return self.t, y, normalized_amplitude, normalized_phase
+        return self.t, y, np.abs(normalized_spectrum), np.angle(normalized_spectrum)
     
     def get_valid_frequencies(self) -> np.ndarray:
         """

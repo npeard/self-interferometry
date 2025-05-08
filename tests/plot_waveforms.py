@@ -13,6 +13,7 @@ from numpy.fft import fft, fftfreq
 from typing import Tuple
 import matplotlib.gridspec as gridspec
 from scipy import stats
+from matplotlib.lines import Line2D
 
 from redpitaya.waveform import Waveform
 from redpitaya.coil_driver import CoilDriver
@@ -41,10 +42,11 @@ def calculate_fft(signal: np.ndarray, sample_rate: float) -> Tuple[np.ndarray, n
     freqs = freqs[pos_mask]
     fft_result = fft_result[pos_mask]
     
-    magnitude = np.abs(fft_result)
+    # The FFT returns the amplitude spectrum
+    amplitude = np.abs(fft_result)
     phase = np.angle(fft_result)
     
-    return freqs, magnitude, phase
+    return freqs, amplitude, phase
 
 
 def plot_waveforms(
@@ -68,14 +70,14 @@ def plot_waveforms(
     waveform.set_frequency_range(start_freq, end_freq)
     
     # Generate a random waveform
-    t, voltage, voltage_spectral_mod, voltage_spectral_phase = waveform.sample(random_single_tone=True)
-    voltage_spectrum = voltage_spectral_mod * np.exp(1j * voltage_spectral_phase)
+    t, voltage, voltage_spectral_amp, voltage_spectral_phase = waveform.sample(random_single_tone=False)
+    voltage_spectrum = voltage_spectral_amp * np.exp(1j * voltage_spectral_phase)
     
     # Calculate sample rate from time array
     sample_rate = 1 / (t[1] - t[0])
     
     # Calculate FFT of the voltage waveform
-    freqs_fft, voltage_mag, voltage_phase = calculate_fft(voltage, sample_rate)
+    freqs_fft, voltage_amp, voltage_phase = calculate_fft(voltage, sample_rate)
     
     # Get the displacement and velocity waveforms using the coil driver
     displacement, displacement_spectrum, displacement_freqs = coil_driver.get_displacement(voltage, sample_rate)
@@ -145,8 +147,8 @@ def plot_waveforms(
     
     # Frequency domain - Magnitude
     ax2 = axes[0][1]
-    ax2.plot(freqs_fft, voltage_mag, 'b--', label='FFT Magnitude')
-    ax2.plot(waveform.freq, voltage_spectral_mod, 'b-', alpha=0.3, label='Original Spectrum')
+    ax2.plot(freqs_fft, voltage_amp, 'b--', label='FFT Magnitude')
+    ax2.plot(waveform.freq, voltage_spectral_amp, 'b-', alpha=0.3, label='Original Spectrum')
     ax2.set_title('Voltage Spectrum')
     ax2.set_ylabel('Magnitude')
     ax2.set_xlim(0, end_freq * 1.2)
@@ -267,17 +269,18 @@ def plot_waveform_histograms(
     for i in range(num_samples):
         # Generate a random waveform with phase randomization only
         # The spectrum amplitudes are kept the same
-        t, voltage, voltage_spectral_mod, voltage_spectral_phase = waveform.sample(randomize_phase_only=True)
+        t, voltage, voltage_spectral_amp, voltage_spectral_phase = waveform.sample(randomize_phase_only=True)
         
         # Store the time-domain voltage values
         all_voltages.extend(voltage)
         
         # Construct complex spectrum
-        complex_spectrum = voltage_spectral_mod * np.exp(1j * voltage_spectral_phase)
+        complex_spectrum = voltage_spectral_amp * np.exp(1j * voltage_spectral_phase)
         
         # Complete the spectrum for ifft (make it symmetric)
-        # Only positive frequencies are returned by waveform.sample()
-        full_spectrum = np.hstack([2*complex_spectrum, np.zeros_like(complex_spectrum)])
+        # Only positive frequencies are returned by waveform.sample(), so we need to 
+        # multiply the amplitude spectrum by sqrt(2) to double the power
+        full_spectrum = np.hstack([np.sqrt(2)*complex_spectrum, np.zeros_like(complex_spectrum)])
         
         # Convert to time domain without taking real part
         reconstructed_complex = np.fft.ifft(full_spectrum, norm="ortho")
@@ -287,7 +290,7 @@ def plot_waveform_histograms(
         all_complex_values.extend(reconstructed_complex)
 
     # Compute variance for the noise distribution
-    noise_variance = np.sum(4*voltage_spectral_mod**2) * len(t) * (t[1] - t[0])**2/np.max(t) * (waveform.freq[1] - waveform.freq[0])
+    noise_variance = np.sum(2*voltage_spectral_amp**2) * len(t) * (t[1] - t[0])**2/np.max(t) * (waveform.freq[1] - waveform.freq[0])
     # We use one-sided spectra, so the total power in the signal is double the power in the positive frequencies
     # We use norm="ortho" in the FFT, so we need to multiply the PSD by the number of samples
     # Then, the PSD is approximated by multiplying py abs(\Delta t)**2/T 
@@ -335,14 +338,23 @@ def plot_waveform_histograms(
     # Calculate 2D Gaussian PDF with zero mean and computed variance
     # For complex Gaussian, the variance is split between real and imaginary parts
     Z = stats.multivariate_normal.pdf(np.dstack([X, Y]), mean=[0, 0], cov=[[noise_variance, 0], [0, noise_variance]])
-    levels = [stats.norm.pdf(n*np.sqrt(noise_variance), loc=0, scale=np.sqrt(noise_variance)) for n in range(6, 0, -1)]
+    
+    # Calculate contour levels for 1-sigma, 2-sigma, etc.
+    # For a 2D Gaussian, the sigma contours follow a chi-squared distribution with 2 degrees of freedom
+    # The height of the PDF at these contours is given by: peak_height * exp(-r²/2)
+    # where r is the number of sigmas (1, 2, 3, etc.)
+    peak_height = stats.multivariate_normal.pdf([0, 0], mean=[0, 0], cov=[[noise_variance, 0], [0, noise_variance]])
+    levels = [peak_height * np.exp(-(n**2)/2) for n in range(6, 0, -1)]  # 1-sigma to 5-sigma contours
     
     # Plot contour lines of the 2D Gaussian PDF
-    ax2.contour(X, Y, Z, colors='r', levels=levels, alpha=0.7, linewidths=1.5)
+    contours = ax2.contour(X, Y, Z, colors='r', levels=levels, alpha=0.7, linewidths=1.5)
     
-    # Add a proxy artist for the legend
-    from matplotlib.lines import Line2D
-    legend_element = Line2D([0], [0], color='r', lw=1.5, label='Gaussian PDF')
+    # Add contour labels
+    fmt = {level: f"{6-i}-σ" for i, level in enumerate(levels)}
+    plt.clabel(contours, contours.levels, inline=True, fmt=fmt, fontsize=10)
+    
+    # Add a legend entry for the contours
+    legend_element = Line2D([0], [0], color='r', lw=1.5, label='Gaussian σ contours')
     ax2.legend(handles=[legend_element], loc='upper right')
     
     # Add colorbar
@@ -372,7 +384,7 @@ if __name__ == "__main__":
     fig1 = plot_waveforms(waveform, coil_driver)
     
     # Generate and plot waveform histograms
-    #fig2 = plot_waveform_histograms(waveform, num_samples=10000)
+    fig2 = plot_waveform_histograms(waveform, num_samples=1000)
     
     # Show the plots
     plt.show()
