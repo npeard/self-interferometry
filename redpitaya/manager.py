@@ -8,13 +8,11 @@ waveform generation, and device management for Red Pitaya devices.
 import time
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
 from datetime import datetime
 from numpy.fft import fft
-from scipy.signal import butter, filtfilt
 import scpi
 from pathlib import Path
-from typing import List, Dict, Optional, Union, Any
+from typing import List, Dict, Union
 
 # Import our custom classes
 from redpitaya.waveform import Waveform
@@ -508,23 +506,78 @@ class RedPitayaManager:
         
         return data
     
-    def process_velocity_data(self, speaker_data: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def process_drive_voltage(self, speaker_data: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
-        Process speaker data to calculate velocity.
+        Process speaker drive voltage data to calculate velocity and displacement.
         
         Args:
             speaker_data: Speaker voltage data
             
         Returns:
-            Tuple of (velocity data, velocity FFT, frequencies)
+            Tuple containing:
+            - velocity: Velocity data from transfer function
+            - displacement: Displacement data from transfer function
+            - velocity_spectrum: Velocity FFT
+            - displacement_spectrum: Displacement FFT
+            - frequencies: Frequency array
+            - sample_rate: Calculated sample rate
         """
         # Calculate sample rate
         sample_rate = self.SAMPLE_RATE_DEC1 / self.settings["acq_dec"]
         
-        # Use the CoilDriver to calculate velocity from voltage
+        # Use the CoilDriver to calculate velocity and displacement from voltage
         velocity, velocity_spectrum, freq = self.coil_driver.get_velocity(speaker_data, sample_rate)
+        displacement, displacement_spectrum, _ = self.coil_driver.get_displacement(speaker_data, sample_rate)
         
-        return velocity, velocity_spectrum, freq
+        return velocity, displacement, velocity_spectrum, displacement_spectrum, freq, sample_rate
+    
+    def get_velocity_data(self, speaker_data: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Get velocity data from speaker drive voltage.
+        
+        Args:
+            speaker_data: Speaker voltage data
+            
+        Returns:
+            Tuple containing:
+            - velocity_tf: Velocity from transfer function
+            - velocity_derivative: Velocity from derivative of displacement
+            - velocity_spectrum: Velocity FFT
+            - frequencies: Frequency array
+        """
+        # Get velocity and displacement data
+        velocity_tf, displacement, velocity_spectrum, _, freq, sample_rate = self.process_drive_voltage(speaker_data)
+        
+        # Calculate velocity from derivative of displacement
+        velocity_derivative = self.coil_driver.derivative_displacement(displacement, sample_rate)
+        
+        return velocity_tf, velocity_derivative, velocity_spectrum, freq
+    
+    def get_displacement_data(self, speaker_data: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Get displacement data from speaker drive voltage.
+        
+        Args:
+            speaker_data: Speaker voltage data
+            
+        Returns:
+            Tuple containing:
+            - displacement_tf: Displacement from transfer function
+            - displacement_integrated: Displacement from integrated velocity
+            - displacement_spectrum: Displacement FFT
+            - frequencies: Frequency array
+        """
+        # Get velocity and displacement data
+        velocity, displacement_tf, _, displacement_spectrum, freq, sample_rate = self.process_drive_voltage(speaker_data)
+        
+        # Integrate velocity to get displacement
+        displacement_integrated = self.coil_driver.integrate_velocity(velocity, sample_rate)
+
+        # Enforce that displacement starts at zero for each trace for easier comparison
+        displacement_integrated  = displacement_integrated - displacement_integrated[0]
+        displacement_tf = displacement_tf - displacement_tf[0]
+        
+        return displacement_tf, displacement_integrated, displacement_spectrum, freq
     
     def save_data(self, data: Dict[str, np.ndarray], filename: str = None) -> str:
         """
@@ -555,12 +608,9 @@ class RedPitayaManager:
             
         return str(file_path)
     
-    def setup_plot(self, num_rows=4):
+    def setup_plot(self):
         """
-        Set up the plot with a 2-column layout.
-        
-        Args:
-            num_rows: Number of rows in the plot (should be 4 for the 4 channels)
+        Set up the plot for visualization.
         """
         if not self.plot_enabled:
             return
@@ -569,21 +619,33 @@ class RedPitayaManager:
         if self.fig is not None:
             plt.close(self.fig)
             
-        # Create a new figure with 2 columns: raw signals and FFTs
-        self.fig, self.axes = plt.subplots(num_rows, 2, figsize=(12, 8), sharex='col')
+        # Determine number of rows based on number of channels
+        num_rows = 2  # Default to 2 rows (primary device channels)
+        
+        # Add rows for secondary device if it exists
+        if len(self.device_names) > 1:
+            num_rows += 2  # Add 2 more rows for secondary device channels
+            
+        # Create a new figure with 3 columns: raw signals with velocity, displacement comparison, and FFTs
+        self.fig, self.axes = plt.subplots(num_rows, 3, figsize=(18, 8), sharex='col')
         
         # Set up the figure
         plt.tight_layout()
-        
-    def update_plot(self, data: Dict[str, np.ndarray], vel_data: np.ndarray = None, 
-                   vel_fft: np.ndarray = None, freqs: np.ndarray = None):
+    
+    def update_plot(self, data: Dict[str, np.ndarray], vel_tf_data: np.ndarray = None, 
+                   disp_derivative_data: np.ndarray = None, vel_fft: np.ndarray = None, 
+                   disp_tf_data: np.ndarray = None, vel_integrated_data: np.ndarray = None, 
+                   freqs: np.ndarray = None):
         """
-        Update the plot with new data using a 2-column layout.
+        Update the plot with new data using a 3-column layout.
         
         Args:
             data: Dictionary of channel data
-            vel_data: Velocity data
+            vel_tf_data: Velocity data from transfer function
+            disp_derivative_data: Velocity data from derivative of displacement
             vel_fft: Velocity FFT
+            disp_tf_data: Displacement data from transfer function
+            vel_integrated_data: Displacement data from integrated velocity
             freqs: Frequencies for FFT plot
         """
         if not self.plot_enabled or self.fig is None:
@@ -651,6 +713,12 @@ class RedPitayaManager:
                     # Extract device name and channel from the new format
                     device_name, channel = channel_name.split("_")
                     label = f"{device_name} {channel}"
+                    if (device_name == "RP1") and (channel == "CH2"):
+                        label = "L635P5 PD"
+                    elif (device_name == "RP2") and (channel == "CH1"):
+                        label = "HL6748MG PD"
+                    elif (device_name == "RP2") and (channel == "CH2"):
+                        label = "L515A1 PD"
                 
                 # Plot the raw data in the left column
                 self.axes[i, 0].plot(time_data, channel_values, color=colors[i % len(colors)])
@@ -659,11 +727,40 @@ class RedPitayaManager:
                 self.axes[i, 0].set_title(label)
                 
                 # Add velocity twin axis for all plots in the first column
-                if vel_data is not None:
+                if vel_tf_data is not None and disp_derivative_data is not None:
                     ax_vel = self.axes[i, 0].twinx()
-                    ax_vel.plot(time_data, vel_data, 'k-', alpha=0.7)
+                    # Plot velocity from transfer function
+                    ax_vel.plot(time_data, vel_tf_data, 'k-', alpha=0.7, label='Velocity')
+                    # Plot velocity from derivative of displacement
+                    ax_vel.plot(time_data, disp_derivative_data, 'k--', alpha=0.7, label='Derivative Displacement')
                     ax_vel.set_ylabel('Velocity (Microns/s)', color='black')
                     ax_vel.tick_params(axis='y', labelcolor='black')
+                    ax_vel.legend(loc='upper right', fontsize='small')
+                
+                # Plot displacement data in the middle column
+                if disp_tf_data is not None and vel_integrated_data is not None:
+                    # Plot the raw voltage data on primary y-axis
+                    self.axes[i, 1].plot(time_data, channel_values, color=colors[i % len(colors)])
+                    self.axes[i, 1].set_ylabel('Amplitude (V)', color=colors[i % len(colors)])
+                    self.axes[i, 1].tick_params(axis='y', labelcolor=colors[i % len(colors)])
+                    
+                    # Create twin axis for displacement
+                    ax_disp = self.axes[i, 1].twinx()
+                    
+                    # Plot displacement from transfer function
+                    ax_disp.plot(time_data, disp_tf_data, 'k-', label='Displacement')
+                    
+                    # Plot integrated displacement on the same axis
+                    ax_disp.plot(time_data, vel_integrated_data, 'k--', label='Integrated Velocity')
+                    
+                    # Add labels and legend
+                    ax_disp.set_ylabel('Displacement (Microns)', color='black')
+                    ax_disp.tick_params(axis='y', labelcolor='black')
+                    ax_disp.legend(loc='upper right')
+                    
+                    # Set title for displacement plot
+                    self.axes[i, 1].set_title(f"{label} Displacement")
+                    self.axes[i, 1].grid(True, alpha=0.3)
                 
                 # Plot the FFT in the right column
                 if freqs is not None and pos_idx is not None:
@@ -673,13 +770,13 @@ class RedPitayaManager:
                     channel_fft_phase = np.angle(channel_fft_complex, deg=True)
                     
                     # Create twin axis for phase
-                    ax_phase = self.axes[i, 1].twinx()
+                    ax_phase = self.axes[i, 2].twinx()
                     
                     # Plot magnitude on primary y-axis (log scale)
-                    self.axes[i, 1].semilogy(pos_freqs, channel_fft_mag[pos_idx], 
+                    self.axes[i, 2].semilogy(pos_freqs, channel_fft_mag[pos_idx], 
                                            color=colors[i % len(colors)], label='Magnitude')
-                    self.axes[i, 1].set_ylabel('Magnitude (log)', color=colors[i % len(colors)])
-                    self.axes[i, 1].tick_params(axis='y', labelcolor=colors[i % len(colors)])
+                    self.axes[i, 2].set_ylabel('Magnitude (log)', color=colors[i % len(colors)])
+                    self.axes[i, 2].tick_params(axis='y', labelcolor=colors[i % len(colors)])
                     
                     # Plot phase on secondary y-axis with alpha=0.3
                     ax_phase.plot(pos_freqs, channel_fft_phase[pos_idx], 'r-', 
@@ -689,17 +786,18 @@ class RedPitayaManager:
                     ax_phase.set_ylim(-180, 180)
                     
                     # Set title for FFT plot
-                    self.axes[i, 1].set_title(f"{label} FFT")
+                    self.axes[i, 2].set_title(f"{label} FFT")
                     
                     # Add grid to FFT plot
-                    self.axes[i, 1].grid(True, which="both", ls="-", alpha=0.5)
+                    self.axes[i, 2].grid(True, which="both", ls="-", alpha=0.5)
         
         # Set common x-axis labels
         for i in range(len(self.axes)):
             # Only add x-axis label to bottom plots
             if i == len(self.axes) - 1:
                 self.axes[i, 0].set_xlabel('Time (s)')
-                self.axes[i, 1].set_xlabel('Frequency (Hz)')
+                self.axes[i, 1].set_xlabel('Time (s)')
+                self.axes[i, 2].set_xlabel('Frequency (Hz)')
         
         plt.tight_layout()
         plt.draw()
@@ -769,22 +867,34 @@ class RedPitayaManager:
         # Get the data
         data = self.get_acquisition_data(timeout=timeout)
         
-        # Process velocity data from Channel 1 of RP1 (speaker drive voltage)
+        # Process velocity and displacement data from Channel 1 of RP1 (speaker drive voltage)
         speaker_data = data.get(f"{self.device_names[device_idx]}_CH1")
-        vel_data = None
+        vel_tf_data = None
+        vel_derivative_data = None
         vel_fft = None
+        disp_tf_data = None
+        disp_integrated_data = None
+        disp_fft = None
         freqs = None
         
         if speaker_data is not None:
             try:
-                vel_data, vel_fft, freqs = self.process_velocity_data(speaker_data)
+                # Process velocity data (returns velocity from transfer function, velocity from derivative, spectrum, freqs)
+                vel_tf_data, vel_derivative_data, vel_fft, freqs = self.get_velocity_data(speaker_data)
                 
-                # Add velocity data to the data dictionary
-                data["Velocity"] = vel_data
-                data["Velocity_FFT"] = vel_fft
-                data["Frequencies"] = freqs
+                # Process displacement data (returns displacement from transfer function, integrated displacement, spectrum, freqs)
+                disp_tf_data, disp_integrated_data, disp_fft, _ = self.get_displacement_data(speaker_data)
+                
+                # Add data to the data dictionary
+                data["Velocity_TF"] = vel_tf_data  # Velocity from transfer function
+                data["Velocity_Derivative"] = vel_derivative_data  # Velocity from derivative of displacement
+                data["Velocity_FFT"] = vel_fft  # Velocity spectrum
+                data["Displacement_TF"] = disp_tf_data  # Displacement from transfer function
+                data["Displacement_Integrated"] = disp_integrated_data  # Displacement from integrated velocity
+                data["Displacement_FFT"] = disp_fft  # Displacement spectrum
+                data["Frequencies"] = freqs  # Frequency array
             except Exception as e:
-                print(f"Error processing velocity data: {e}")
+                print(f"Error processing data: {e}")
         else:
             print(f"Warning: No speaker data found for {self.device_names[device_idx]}_CH1")
         
@@ -796,7 +906,7 @@ class RedPitayaManager:
         if plot_data:
             try:
                 # Always update with all available data
-                self.update_plot(data, vel_data, vel_fft, freqs)
+                self.update_plot(data, vel_tf_data, vel_derivative_data, vel_fft, disp_tf_data, disp_integrated_data, freqs)
                 
                 # Show the plot
                 self.show_plot(block=block_plot)
@@ -839,7 +949,7 @@ class RedPitayaManager:
             # Determine number of rows based on data available
             # We'll assume 4 rows for now (raw, velocity, and 2 FFT plots)
             num_rows = 4
-            self.setup_plot(num_rows=num_rows)
+            self.setup_plot()
             plt.ion()  # Turn on interactive mode
             plt.show(block=False)  # Show the plot without blocking
         

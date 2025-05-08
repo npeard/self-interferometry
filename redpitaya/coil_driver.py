@@ -9,6 +9,7 @@ import numpy as np
 from numpy.fft import fft, ifft, fftfreq
 from typing import Tuple, Optional, Union, Dict
 from dataclasses import dataclass
+from scipy import signal
 
 
 @dataclass
@@ -124,6 +125,10 @@ class CoilDriver:
         
         # Multiply by the transfer function
         displacement_spectrum = voltage_spectrum * amplitude_transfer * phase_transfer
+
+        # Divide by 2pi to account for change of variables used when fitting the transfer functions
+        # Need to do this whenever we inverse FFT the spectrum
+        displacement_spectrum /= 2 * np.pi
         
         # Convert back to time domain
         displacement_waveform = np.real(ifft(displacement_spectrum, norm="ortho"))
@@ -172,11 +177,86 @@ class CoilDriver:
         
         # For velocity, we multiply by i*omega = i*2*pi*f in frequency domain
         velocity_spectrum = 1j * 2 * np.pi * freq * voltage_spectrum * amplitude_transfer * phase_transfer
+
+        # Divide by 2pi to account for change of variables used when fitting the transfer functions
+        velocity_spectrum /= 2 * np.pi
         
         # Convert back to time domain
         velocity_waveform = np.real(ifft(velocity_spectrum, norm="ortho"))
         
         return velocity_waveform, velocity_spectrum, freq
+    
+    def integrate_velocity(self, 
+                         velocity_waveform: np.ndarray, 
+                         sample_rate: float,
+                         high_pass_freq: float = 0.0) -> np.ndarray:
+        """
+        Integrate velocity waveform to get displacement waveform using cumulative integration.
+        
+        Args:
+            velocity_waveform: Velocity waveform (microns/s)
+            sample_rate: Sample rate of the velocity waveform (Hz)
+            high_pass_freq: High-pass filter cutoff frequency (Hz) to remove DC drift
+                           Set to 0 to disable high-pass filtering
+            
+        Returns:
+            Displacement waveform (microns)
+        """
+        # Time step
+        dt = 1.0 / sample_rate
+        
+        # Simple cumulative integration (cumulative sum * dt)
+        displacement = np.cumsum(velocity_waveform) * dt
+        
+        # Apply high-pass filter to remove DC drift if requested
+        if high_pass_freq > 0:
+            # Design a high-pass filter
+            nyquist = sample_rate / 2.0
+            normal_cutoff = high_pass_freq / nyquist
+            b, a = signal.butter(2, normal_cutoff, btype='high', analog=False)
+            
+            # Apply the filter
+            displacement = signal.filtfilt(b, a, displacement)
+
+        # Shift displacement to start at zero at the beginning of the trace
+        displacement = displacement - displacement[0]
+        
+        return displacement
+        
+    def derivative_displacement(self,
+                              displacement_waveform: np.ndarray,
+                              sample_rate: float) -> np.ndarray:
+        """
+        Calculate the time derivative of a displacement waveform to get velocity.
+        
+        This method uses central differences to compute the derivative.
+        
+        Args:
+            displacement_waveform: Displacement waveform (microns)
+            sample_rate: Sample rate of the displacement waveform (Hz)
+            
+        Returns:
+            Velocity waveform (microns/s)
+        """
+        # Time step
+        dt = 1.0 / sample_rate
+        
+        # Use central differences for better accuracy
+        # For the first point, use forward difference
+        # For the last point, use backward difference
+        # For all other points, use central difference
+        velocity = np.zeros_like(displacement_waveform)
+        
+        # First point (forward difference)
+        velocity[0] = (displacement_waveform[1] - displacement_waveform[0]) / dt
+        
+        # Middle points (central difference)
+        velocity[1:-1] = (displacement_waveform[2:] - displacement_waveform[:-2]) / (2 * dt)
+        
+        # Last point (backward difference)
+        velocity[-1] = (displacement_waveform[-1] - displacement_waveform[-2]) / dt
+        
+        return velocity
     
     def set_calibration_parameters(self, params: CalibrationParameters):
         """
