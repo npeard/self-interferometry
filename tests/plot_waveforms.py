@@ -40,20 +40,15 @@ def calculate_fft(signal: np.ndarray, sample_rate: float) -> Tuple[np.ndarray, n
     # Get the positive frequency components (first half)
     pos_mask = freqs >= 0
     freqs = freqs[pos_mask]
-    fft_result = fft_result[pos_mask]
+    spectrum = fft_result[pos_mask]
+    # Note: this is the amplitude spectrum
     
-    # The FFT returns the amplitude spectrum
-    amplitude = np.abs(fft_result)
-    phase = np.angle(fft_result)
-    
-    return freqs, amplitude, phase
+    return freqs, spectrum
 
 
 def plot_waveforms(
     waveform: Waveform,
     coil_driver: CoilDriver,
-    start_freq: float = 10,
-    end_freq: float = 1000,
     figsize: Tuple[int, int] = (15, 10)
 ) -> None:
     """
@@ -62,57 +57,44 @@ def plot_waveforms(
     Args:
         waveform: Waveform generator
         coil_driver: Coil driver for calibration
-        start_freq: Start frequency in Hz
-        end_freq: End frequency in Hz
-        figsize: Figure size (width, height) in inches
     """
-    # Update frequency range
-    waveform.set_frequency_range(start_freq, end_freq)
-    
-    # Generate a random waveform
-    t, voltage, voltage_spectral_amp, voltage_spectral_phase = waveform.sample(random_single_tone=False)
-    voltage_spectrum = voltage_spectral_amp * np.exp(1j * voltage_spectral_phase)
+    # Generate a random waveform using standard method
+    t, voltage, voltage_spectrum = waveform.sample(random_single_tone=False)
     
     # Calculate sample rate from time array
     sample_rate = 1 / (t[1] - t[0])
     
     # Calculate FFT of the voltage waveform
-    freqs_fft, voltage_amp, voltage_phase = calculate_fft(voltage, sample_rate)
+    freqs_fft, voltage_fft = calculate_fft(voltage, sample_rate)
     
     # Get the displacement and velocity waveforms using the coil driver
     displacement, displacement_spectrum, displacement_freqs = coil_driver.get_displacement(voltage, sample_rate)
     velocity, velocity_spectrum, velocity_freqs = coil_driver.get_velocity(voltage, sample_rate)
+
+    # Calculate FFTs of displacement and velocity
+    _, displacement_fft = calculate_fft(displacement, sample_rate)
+    _, velocity_fft = calculate_fft(velocity, sample_rate)
+    
+    # Generate a waveform with equalized gain using the new CoilDriver.sample() method
+    t_eq, voltage_eq, voltage_spectrum_eq = coil_driver.sample(waveform, equalize_gain=True, test_mode=True)
+    
+    # Calculate FFT of the equalized voltage waveform
+    freqs_fft_eq, voltage_fft_eq = calculate_fft(voltage_eq, sample_rate)
+    
+    # Get the displacement and velocity waveforms for the equalized voltage
+    displacement_eq, displacement_spectrum_eq, displacement_freqs_eq = coil_driver.get_displacement(voltage_eq, sample_rate)
+    velocity_eq, velocity_spectrum_eq, velocity_freqs_eq = coil_driver.get_velocity(voltage_eq, sample_rate)
     
     # Calculate FFTs of displacement and velocity
-    _, displacement_mag, displacement_phase = calculate_fft(displacement, sample_rate)
-    _, velocity_mag, velocity_phase = calculate_fft(velocity, sample_rate)
-    
-    # Calculate expected displacement and velocity spectra from the original spectrum
-    # Get the amplitude transfer functions
-    amplitude_transfer = coil_driver._calculate_amplitude_transfer(np.abs(waveform.freq))
-    # For negative frequencies, we need to conjugate the phase
-    phase_transfer = np.where(
-        waveform.freq < 0,
-        np.exp(-1j * coil_driver._calculate_phase_transfer(-waveform.freq)),
-        np.exp(1j * coil_driver._calculate_phase_transfer(waveform.freq))
-    )
-    
-    # Apply transfer functions to the original spectrum
-    expected_displacement_spectrum = voltage_spectrum * amplitude_transfer * phase_transfer
-    expected_displacement_spectral_mod = np.abs(expected_displacement_spectrum)
-    expected_velocity_spectrum = voltage_spectrum * amplitude_transfer * phase_transfer * waveform.freq * 2 * np.pi * 1j
-    expected_velocity_spectral_mod = np.abs(expected_velocity_spectrum)
+    _, displacement_fft_eq = calculate_fft(displacement_eq, sample_rate)
+    _, velocity_fft_eq = calculate_fft(velocity_eq, sample_rate)
     
     # Create a dense frequency array for plotting the analytic transfer functions
-    dense_freq = np.linspace(start_freq, end_freq, 1000)
+    dense_freq = np.linspace(waveform.start_freq, waveform.end_freq, 1000)
     dense_amplitude_transfer = coil_driver._calculate_amplitude_transfer(dense_freq)
     dense_phase_transfer = coil_driver._calculate_phase_transfer(dense_freq)
     displacement_transfer = dense_amplitude_transfer * np.exp(1j * dense_phase_transfer)
-    displacement_transfer_mod = np.abs(displacement_transfer)
-    displacement_transfer_phase = np.angle(displacement_transfer)
     velocity_transfer = displacement_transfer * dense_freq * 2 * np.pi * 1j
-    velocity_transfer_mod = np.abs(velocity_transfer)
-    velocity_transfer_phase = np.angle(velocity_transfer)
     
     # Create a figure with a 3x2 grid
     fig = plt.figure(figsize=figsize)
@@ -140,48 +122,56 @@ def plot_waveforms(
     # Row 1: Voltage
     # Time domain
     ax1 = axes[0][0]
-    ax1.plot(t, voltage)
+    ax1.plot(t, voltage, 'b-', label='Standard')
+    ax1.plot(t_eq, voltage_eq, 'r--', alpha=0.3, label='Equalized Gain')
     ax1.set_title('Voltage Waveform')
     ax1.set_ylabel('Amplitude (V)')
     ax1.grid(True)
+    ax1.legend()
     
     # Frequency domain - Magnitude
     ax2 = axes[0][1]
-    ax2.plot(freqs_fft, voltage_amp, 'b--', label='FFT Magnitude')
-    ax2.plot(waveform.freq, voltage_spectral_amp, 'b-', alpha=0.3, label='Original Spectrum')
+    ax2.plot(freqs_fft, np.abs(voltage_fft), 'b--', label='Standard FFT')
+    ax2.plot(waveform.freq, np.abs(voltage_spectrum), 'b-', alpha=0.3, label='Standard Spectrum')
+    ax2.plot(freqs_fft_eq, np.abs(voltage_fft_eq), 'r--', label='Equalized FFT')
+    ax2.plot(waveform.freq, np.abs(voltage_spectrum_eq), 'r-', alpha=0.3, label='Equalized Spectrum')
     ax2.set_title('Voltage Spectrum')
     ax2.set_ylabel('Magnitude')
-    ax2.set_xlim(0, end_freq * 1.2)
+    ax2.set_xlim(0, waveform.end_freq * 1.2)
     ax2.grid(True, alpha=0.3)
     ax2.legend()
     
     # Row 2: Displacement
     # Time domain
     ax3 = axes[1][0]
-    ax3.plot(t, displacement)
+    ax3.plot(t, displacement, 'b-', label='Standard')
+    ax3.plot(t_eq, displacement_eq, 'r--', label='Equalized Gain')
     ax3.set_title('Displacement Waveform')
     ax3.set_ylabel('Displacement (μm)')
     ax3.grid(True)
+    ax3.legend()
     
     # Frequency domain - Magnitude and Phase with twin y-axis
     ax4 = axes[1][1]
     ax4_twin = ax4.twinx()
     
     # Plot magnitude on left y-axis
-    ax4.plot(freqs_fft, displacement_mag, 'b--', label='FFT Magnitude')
-    ax4.plot(waveform.freq, expected_displacement_spectral_mod, 'b-', alpha=0.3, label='Expected Spectrum')
+    ax4.plot(freqs_fft, np.abs(displacement_fft), 'b--', label='Standard FFT')
+    ax4.plot(waveform.freq, np.abs(displacement_spectrum), 'b-', alpha=0.3, label='Standard Expected')
+    ax4.plot(freqs_fft_eq, 2*np.pi*np.abs(displacement_fft_eq), 'r--', label='2π*Equalized FFT')
+    ax4.plot(waveform.freq, 2*np.pi*np.abs(displacement_spectrum_eq), 'r-', alpha=0.3, label='2π*Equalized Expected')
     
     # Plot transfer function on left y-axis
-    ax4.plot(dense_freq, displacement_transfer_mod, 'g-', label='Transfer Function')
+    ax4.plot(dense_freq, np.abs(displacement_transfer)/(2*np.pi), 'g-', label='Transfer Function (divided by 2π)')
     
     ax4.set_title('Displacement Spectrum & Transfer Function')
     ax4.set_ylabel('Magnitude', color='b')
     ax4.tick_params(axis='y', labelcolor='b')
-    ax4.set_xlim(0, end_freq * 1.2)
+    ax4.set_xlim(0, waveform.end_freq * 1.2)
     ax4.grid(True, alpha=0.3)
     
     # Plot phase on right y-axis
-    ax4_twin.plot(dense_freq, displacement_transfer_phase, 'r-', alpha=0.3, label='Phase Transfer')
+    ax4_twin.plot(dense_freq, np.angle(displacement_transfer), 'r-', alpha=0.3, label='Phase Transfer')
     ax4_twin.set_ylabel('Phase (rad)', color='r')
     ax4_twin.tick_params(axis='y', labelcolor='r')
     ax4_twin.set_ylim(-np.pi, np.pi)
@@ -194,32 +184,39 @@ def plot_waveforms(
     # Row 3: Velocity
     # Time domain
     ax5 = axes[2][0]
-    ax5.plot(t, velocity)
+    ax5.plot(t, velocity, 'b-', label='Standard')
+    ax5.plot(t_eq, velocity_eq, 'r--', label='Equalized Gain')
     ax5.set_title('Velocity Waveform')
     ax5.set_xlabel('Time (s)')
     ax5.set_ylabel('Velocity (μm/s)')
     ax5.grid(True)
+    ax5.legend()
     
     # Frequency domain - Magnitude and Phase with twin y-axis
     ax6 = axes[2][1]
     ax6_twin = ax6.twinx()
     
     # Plot magnitude on left y-axis
-    ax6.plot(freqs_fft, velocity_mag, 'b--', label='FFT Magnitude')
-    ax6.plot(waveform.freq, expected_velocity_spectral_mod, 'b-', alpha=0.3, label='Expected Spectrum')
+    ax6.plot(freqs_fft, np.abs(velocity_fft), 'b--', label='Standard FFT')
+    ax6.plot(waveform.freq, np.abs(velocity_spectrum), 'b-', alpha=0.3, label='Standard Expected')
+    
+    # Calculate FFTs of velocity with equalized gain
+    _, velocity_fft_eq = calculate_fft(velocity_eq, sample_rate)
+    ax6.plot(freqs_fft_eq, np.abs(velocity_fft_eq), 'r--', label='Equalized FFT')
+    ax6.plot(waveform.freq, np.abs(velocity_spectrum_eq), 'r-', alpha=0.3, label='Equalized Expected')
     
     # For velocity, we do multiply by 2*pi*1j*frequency, angular frequency in FFT
-    ax6.plot(dense_freq, velocity_transfer_mod, 'g-', label='Transfer Function')
+    ax6.plot(dense_freq, np.abs(velocity_transfer)/(2*np.pi), 'g-', label='Transfer Function (divided by 2π)')
     
     ax6.set_title('Velocity Spectrum & Transfer Function')
     ax6.set_xlabel('Frequency (Hz)')
     ax6.set_ylabel('Magnitude', color='b')
     ax6.tick_params(axis='y', labelcolor='b')
-    ax6.set_xlim(0, end_freq * 1.2)
+    ax6.set_xlim(0, waveform.end_freq * 1.2)
     ax6.grid(True, alpha=0.3)
     
     # Plot phase on right y-axis
-    ax6_twin.plot(dense_freq, velocity_transfer_phase, 'r-', alpha=0.3, label='Phase Transfer')
+    ax6_twin.plot(dense_freq, np.angle(velocity_transfer), 'r-', alpha=0.3, label='Phase Transfer')
     ax6_twin.set_ylabel('Phase (rad)', color='r')
     ax6_twin.tick_params(axis='y', labelcolor='r')
     ax6_twin.set_ylim(-np.pi, np.pi)
@@ -242,128 +239,59 @@ def plot_waveforms(
 
 def plot_waveform_histograms(
     waveform: Waveform,
-    start_freq: float = 10,
-    end_freq: float = 1000,
     num_samples: int = 100,
-    figsize: Tuple[int, int] = (12, 10)
+    figsize: Tuple[int, int] = (10, 8)
 ) -> None:
     """
-    Generate multiple waveform samples and plot histograms of the time-domain values
-    and a 2D histogram of the complex-valued reconstructed signals.
+    Generate multiple waveform samples and plot a histogram of the time-domain values.
     
     Args:
         waveform: Waveform generator
-        start_freq: Start frequency in Hz
-        end_freq: End frequency in Hz
         num_samples: Number of waveform samples to generate
         figsize: Figure size (width, height) in inches
     """
-    # Update frequency range
-    waveform.set_frequency_range(start_freq, end_freq)
     
-    # Initialize arrays to store all voltage samples and reconstructed complex signals
+    # Initialize array to store all voltage samples
     all_voltages = []
-    all_complex_values = []
     
     # Generate multiple waveform samples
     for i in range(num_samples):
         # Generate a random waveform with phase randomization only
         # The spectrum amplitudes are kept the same
-        t, voltage, voltage_spectral_amp, voltage_spectral_phase = waveform.sample(randomize_phase_only=True)
+        t, voltage, voltage_spectrum = waveform.sample(randomize_phase_only=True)
         
         # Store the time-domain voltage values
         all_voltages.extend(voltage)
-        
-        # Construct complex spectrum
-        complex_spectrum = voltage_spectral_amp * np.exp(1j * voltage_spectral_phase)
-        
-        # Complete the spectrum for ifft (make it symmetric)
-        # Only positive frequencies are returned by waveform.sample(), so we need to 
-        # multiply the amplitude spectrum by sqrt(2) to double the power
-        full_spectrum = np.hstack([np.sqrt(2)*complex_spectrum, np.zeros_like(complex_spectrum)])
-        
-        # Convert to time domain without taking real part
-        reconstructed_complex = np.fft.ifft(full_spectrum, norm="ortho")
-        reconstructed_complex = np.fft.fftshift(reconstructed_complex)
-        
-        # Store the complex-valued reconstructed signals
-        all_complex_values.extend(reconstructed_complex)
 
     # Compute variance for the noise distribution
-    noise_variance = np.sum(2*voltage_spectral_amp**2) * len(t) * (t[1] - t[0])**2/np.max(t) * (waveform.freq[1] - waveform.freq[0])
-    # We use one-sided spectra, so the total power in the signal is double the power in the positive frequencies
+    noise_variance = np.sum(np.abs(voltage_spectrum)**2) * len(t) * (t[1] - t[0])**2/np.max(t) * (waveform.freq[1] - waveform.freq[0])
     # We use norm="ortho" in the FFT, so we need to multiply the PSD by the number of samples
     # Then, the PSD is approximated by multiplying py abs(\Delta t)**2/T 
     # For the integral to get the total variance we multiply by the size of the frequency bin
     
-    # Convert to numpy arrays
+    # Convert to numpy array
     all_voltages = np.array(all_voltages)
-    all_complex_values = np.array(all_complex_values)
     
-    # Create a figure with subplots
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+    # Create a figure
+    fig, ax = plt.subplots(figsize=figsize)
     
     # Plot histogram of time-domain voltage values with proper normalization
-    hist_values, bin_edges, _ = ax1.hist(all_voltages, bins=500, alpha=0.7, color='blue', density=True)
-    ax1.set_title('Histogram of Time-Domain Voltage Values')
-    ax1.set_xlabel('Voltage (V)')
-    ax1.set_ylabel('Probability Density')
-    ax1.grid(True, alpha=0.3)
+    hist_values, bin_edges, _ = ax.hist(all_voltages, bins=500, alpha=0.7, color='blue', density=True)
+    ax.set_title('Histogram of Time-Domain Voltage Values')
+    ax.set_xlabel('Voltage (V)')
+    ax.set_ylabel('Probability Density')
+    ax.grid(True, alpha=0.3)
     
     # Overlay Gaussian with zero mean and computed variance (already normalized)
     x = np.linspace(min(all_voltages), max(all_voltages), 1000)
     gaussian = stats.norm.pdf(x, loc=0, scale=np.sqrt(noise_variance))
-    ax1.plot(x, gaussian, 'r-', linewidth=2, label=f'Gaussian (μ=0, σ²={noise_variance:.4f})')
-    ax1.legend()
+    ax.plot(x, gaussian, 'r-', linewidth=2, label=f'Gaussian (μ=0, σ²={noise_variance:.4f})')
+    ax.legend()
     
-    # Plot 2D histogram of complex-valued reconstructed signals with proper normalization
-    h = ax2.hist2d(
-        np.real(all_complex_values), 
-        np.imag(all_complex_values), 
-        bins=100, 
-        cmap='viridis',
-        density=True  # This ensures the integral over the entire range is 1
-    )
-    ax2.set_title('2D Histogram of Complex-Valued Reconstructed Signals')
-    ax2.set_xlabel('Real Part')
-    ax2.set_ylabel('Imaginary Part')
-    ax2.grid(True, alpha=0.3)
-    ax2.set_aspect('equal')
-    
-    # Calculate 2D Gaussian values (assuming real and imaginary parts are independent with same variance)
-    x_range = np.linspace(min(np.real(all_complex_values)), max(np.real(all_complex_values)), 100)
-    y_range = np.linspace(min(np.imag(all_complex_values)), max(np.imag(all_complex_values)), 100)
-    X, Y = np.meshgrid(x_range, y_range)
-    
-    # Calculate 2D Gaussian PDF with zero mean and computed variance
-    # For complex Gaussian, the variance is split between real and imaginary parts
-    Z = stats.multivariate_normal.pdf(np.dstack([X, Y]), mean=[0, 0], cov=[[noise_variance, 0], [0, noise_variance]])
-    
-    # Calculate contour levels for 1-sigma, 2-sigma, etc.
-    # For a 2D Gaussian, the sigma contours follow a chi-squared distribution with 2 degrees of freedom
-    # The height of the PDF at these contours is given by: peak_height * exp(-r²/2)
-    # where r is the number of sigmas (1, 2, 3, etc.)
-    peak_height = stats.multivariate_normal.pdf([0, 0], mean=[0, 0], cov=[[noise_variance, 0], [0, noise_variance]])
-    levels = [peak_height * np.exp(-(n**2)/2) for n in range(6, 0, -1)]  # 1-sigma to 5-sigma contours
-    
-    # Plot contour lines of the 2D Gaussian PDF
-    contours = ax2.contour(X, Y, Z, colors='r', levels=levels, alpha=0.7, linewidths=1.5)
-    
-    # Add contour labels
-    fmt = {level: f"{6-i}-σ" for i, level in enumerate(levels)}
-    plt.clabel(contours, contours.levels, inline=True, fmt=fmt, fontsize=10)
-    
-    # Add a legend entry for the contours
-    legend_element = Line2D([0], [0], color='r', lw=1.5, label='Gaussian σ contours')
-    ax2.legend(handles=[legend_element], loc='upper right')
-    
-    # Add colorbar
-    cbar = plt.colorbar(h[3], ax=ax2)
-    cbar.set_label('Probability Density')
+
     
     plt.suptitle('Waveform Sample Statistics', fontsize=16)
-    # Use subplots_adjust instead of tight_layout to avoid warnings
-    plt.subplots_adjust(left=0.1, right=0.95, top=0.9, bottom=0.1, wspace=0.3)
+    plt.tight_layout(rect=[0, 0, 1, 0.95])  # Adjust layout while preserving space for the title
     
     return fig
 
@@ -371,8 +299,8 @@ def plot_waveform_histograms(
 if __name__ == "__main__":
     # Create a waveform generator
     waveform = Waveform(
-        start_freq=1,
-        end_freq=1000,
+        start_freq=100,
+        end_freq=500,
         gen_dec=8192,
         acq_dec=256
     )
@@ -384,7 +312,7 @@ if __name__ == "__main__":
     fig1 = plot_waveforms(waveform, coil_driver)
     
     # Generate and plot waveform histograms
-    fig2 = plot_waveform_histograms(waveform, num_samples=1000)
+    #fig2 = plot_waveform_histograms(waveform, num_samples=100)
     
     # Show the plots
     plt.show()

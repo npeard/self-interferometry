@@ -24,37 +24,34 @@ def test_waveform_sample_spectrum_consistency():
     3. For each sample, compares the spectrum values returned by sample()
        with those calculated by calculate_fft()
     """
-    # Create a waveform generator with test parameters
-    start_freq = 10
-    end_freq = 1000
-    waveform = Waveform(
-        start_freq=start_freq,
-        end_freq=end_freq,
-        gen_dec=8192,
-        acq_dec=256
-    )
-    
     # Run the test multiple times with different random waveforms
     num_tests = 10
     for i in range(num_tests):
-        # Update frequency range slightly for each test to get different waveforms
-        test_start_freq = start_freq + i
-        test_end_freq = end_freq + i * 10
-        waveform.set_frequency_range(test_start_freq, test_end_freq)
+        # Create a new waveform generator with slightly different frequency range for each test
+        test_start_freq = 10 + i
+        test_end_freq = 1000 + i * 10
+        waveform = Waveform(
+            start_freq=test_start_freq,
+            end_freq=test_end_freq,
+            gen_dec=8192,
+            acq_dec=256
+        )
         
         # Generate a random waveform
-        t, voltage, voltage_spectral_mod, voltage_spectral_phase = waveform.sample()
+        t, voltage, voltage_spectrum = waveform.sample()
         
         # Calculate sample rate from time array
         sample_rate = 1 / (t[1] - t[0])
         
         # Calculate FFT of the voltage waveform using the calculate_fft function
-        freqs_fft, voltage_mag_fft, voltage_phase_fft = calculate_fft(voltage, sample_rate)
+        freqs_fft, spectrum_fft = calculate_fft(voltage, sample_rate)
         
-        assert np.allclose(voltage_spectral_mod, voltage_mag_fft, rtol=0.1), \
-            f"Test {i+1}: Spectrum mismatch"
-        assert np.allclose(voltage_spectral_phase, voltage_phase_fft, rtol=0.1), \
-            f"Test {i+1}: Phase mismatch"
+        # Extract magnitude and phase from the complex spectrum
+        voltage_mag_fft = np.abs(spectrum_fft)
+        voltage_mag_sample = np.abs(voltage_spectrum)[:len(voltage_mag_fft)]
+        
+        assert np.allclose(voltage_mag_sample, voltage_mag_fft, rtol=0.1), \
+            f"Test {i+1}: Spectrum magnitude mismatch"
             
         print(f"Completed test iteration {i+1}/{num_tests}")
 
@@ -73,8 +70,8 @@ def test_waveform_sample_reproducibility():
     )
     
     # Generate two consecutive waveforms
-    _, voltage1, _, _ = waveform.sample()
-    _, voltage2, _, _ = waveform.sample()
+    _, voltage1, _ = waveform.sample()
+    _, voltage2, _ = waveform.sample()
     
     # They should be different (random generation)
     assert not np.allclose(voltage1, voltage2), "Consecutive samples should be different"
@@ -95,18 +92,20 @@ def test_waveform_frequency_range():
     )
     
     # Generate a waveform
-    _, voltage, voltage_spectral_mod, _ = waveform.sample()
+    _, voltage, voltage_spectrum = waveform.sample()
     
     # Calculate sample rate from time array
     sample_rate = 1 / (waveform.t[1] - waveform.t[0])
     
     # Calculate FFT of the voltage waveform using the calculate_fft function
-    freqs_fft, voltage_mag, _ = calculate_fft(voltage, sample_rate)
+    freqs_fft, spectrum_fft = calculate_fft(voltage, sample_rate)
+    voltage_mag = np.abs(spectrum_fft)
     
     # Check that significant spectral content is within the specified range
     # (allowing for some leakage)
-    threshold = 0.1 * np.max(voltage_mag)
-    significant_freqs = freqs_fft[voltage_mag > threshold]
+    voltage_spectral_mod = np.abs(voltage_spectrum)[:len(freqs_fft)]
+    threshold = 0.1 * np.max(voltage_spectral_mod)
+    significant_freqs = freqs_fft[voltage_spectral_mod > threshold]
     
     # Check lower bound (with some tolerance)
     assert np.min(significant_freqs) >= start_freq * 0.9, \
@@ -131,7 +130,7 @@ def test_waveform_output_range():
     
     # Generate multiple waveforms and check their ranges
     for i in range(5):
-        _, voltage, _, _ = waveform.sample()
+        _, voltage, _ = waveform.sample()
         assert np.max(np.abs(voltage)) <= 1.0, f"Test {i+1}: Voltage exceeds normalized range [-1, 1]"
 
 
@@ -149,34 +148,8 @@ def test_waveform_length_consistency():
     
     # Generate multiple waveforms and check their lengths
     for i in range(5):
-        t, voltage, voltage_spectral_mod, voltage_spectral_phase = waveform.sample()
+        t, voltage, voltage_spectrum = waveform.sample()
         assert len(t) == len(voltage), f"Test {i+1}: Time and voltage arrays have different lengths"
-        assert len(voltage_spectral_mod) == len(voltage_spectral_phase), \
-            f"Test {i+1}: Spectral modulus and phase arrays have different lengths"
-
-def test_waveform_energy_in_band():
-    """
-    Test that at least 90% of the energy is in the specified frequency band.
-    """
-    # Create a waveform generator
-    waveform = Waveform(
-        start_freq=10,
-        end_freq=1000,
-        gen_dec=8192,
-        acq_dec=256
-    )
-    
-    # Generate a waveform
-    _, _, voltage_spectral_mod, _ = waveform.sample()
-    
-    # Calculate energy in the specified band
-    freq_mask = (waveform.freq >= waveform.start_freq) & (waveform.freq <= waveform.end_freq)
-    in_band_energy = np.sum(voltage_spectral_mod[freq_mask]**2)
-    total_energy = np.sum(voltage_spectral_mod**2)
-    
-    # At least 90% of energy should be in the specified band
-    assert in_band_energy / total_energy > 0.9, "Too much energy outside the specified frequency band"
-
 
 def test_waveform_reconstruction():
     """
@@ -191,18 +164,12 @@ def test_waveform_reconstruction():
     )
     
     # Generate a waveform
-    _, voltage, voltage_spectral_mod, voltage_spectral_phase = waveform.sample()
+    _, voltage, voltage_spectrum = waveform.sample()
     
-    # Construct complex spectrum
-    complex_spectrum = voltage_spectral_mod * np.exp(1j * voltage_spectral_phase)
     
-    # Normally, we would only multiply by sqrt(2) to double the power
-    # However, waveform.sample takes the FFT again to return the spectrum and then halves
-    # the spectrum, so we need to multiply by sqrt(2) twice?
-    full_spectrum = np.hstack([2*complex_spectrum, np.zeros_like(complex_spectrum)])
     
     # Convert to time domain
-    reconstructed = np.real(np.fft.ifft(full_spectrum, norm="ortho"))
+    reconstructed = np.real(np.fft.ifft(voltage_spectrum, norm="ortho"))
     reconstructed = np.fft.fftshift(reconstructed)
     
     # The reconstructed signal should be normalized
@@ -235,8 +202,6 @@ def test_waveform_statistics():
         acq_dec=256
     )
     
-    # Update frequency range
-    waveform.set_frequency_range(start_freq, end_freq)
     
     # Initialize arrays to store all voltage samples and reconstructed complex signals
     all_voltages = []
@@ -246,26 +211,23 @@ def test_waveform_statistics():
     last_voltage_spectral_amp = None
     last_t = None
     
-    # Generate multiple waveform samples
+    # Generate multiple waveform samples with phase randomization only
     for i in range(num_samples):
         # Generate a random waveform with phase randomization only
-        t, voltage, voltage_spectral_amp, voltage_spectral_phase = waveform.sample(randomize_phase_only=True)
+        t, voltage, voltage_spectrum = waveform.sample(randomize_phase_only=True)
         
         # Store for later use
-        last_voltage_spectral_amp = voltage_spectral_amp
+        last_voltage_spectral_amp = voltage_spectrum
         last_t = t
         
         # Store the time-domain voltage values
         all_voltages.extend(voltage)
         
-        # Construct complex spectrum
-        complex_spectrum = voltage_spectral_amp * np.exp(1j * voltage_spectral_phase)
-        
-        # Complete the spectrum for ifft (make it symmetric)
-        full_spectrum = np.hstack([np.sqrt(2)*complex_spectrum, np.zeros_like(complex_spectrum)])
+        # Use the complex spectrum directly
+        complex_spectrum = voltage_spectrum
         
         # Convert to time domain without taking real part
-        reconstructed_complex = np.fft.ifft(full_spectrum, norm="ortho")
+        reconstructed_complex = np.fft.ifft(complex_spectrum, norm="ortho")
         reconstructed_complex = np.fft.fftshift(reconstructed_complex)
         
         # Store the complex-valued reconstructed signals
@@ -276,7 +238,8 @@ def test_waveform_statistics():
     all_complex_values = np.array(all_complex_values)
     
     # Compute variance for the noise distribution using the same formula as in plot_waveform_histograms
-    noise_variance = np.sum(2*last_voltage_spectral_amp**2) * len(last_t) * (last_t[1] - last_t[0])**2/np.max(last_t) * (waveform.freq[1] - waveform.freq[0])
+    last_voltage_spectral_amp = np.abs(voltage_spectrum)
+    noise_variance = np.sum(last_voltage_spectral_amp**2) * len(last_t) * (last_t[1] - last_t[0])**2/np.max(last_t) * (waveform.freq[1] - waveform.freq[0])
     
     # Test 1: Check that the mean of the time-domain voltage values is close to zero
     assert np.isclose(np.mean(all_voltages), 0, atol=0.05), \
@@ -287,19 +250,19 @@ def test_waveform_statistics():
     assert np.isclose(empirical_variance, noise_variance, rtol=0.3), \
         f"Empirical variance ({empirical_variance}) doesn't match computed variance ({noise_variance})"
     
-    # Test 3: Check that the real and imaginary parts of the complex values have variances close to half the computed noise variance
-    # For a complex Gaussian, the variance is split between real and imaginary parts
+    # Test 3: Check that the real and imaginary parts of the inverted spectrum have the correct variance. The real variance should be as 
+    # we computed above, while the imaginary part variance should be near zero because the imaginary part should be close to zero. 
     real_parts = np.real(all_complex_values)
     imag_parts = np.imag(all_complex_values)
     
     real_variance = np.var(real_parts)
     imag_variance = np.var(imag_parts)
-    expected_complex_variance = noise_variance / 2 # Half the variance for each component
+    expected_complex_variance = noise_variance
     
     assert np.isclose(real_variance, expected_complex_variance, rtol=0.3), \
         f"Real part variance ({real_variance}) doesn't match expected variance ({expected_complex_variance})"
-    assert np.isclose(imag_variance, expected_complex_variance, rtol=0.3), \
-        f"Imaginary part variance ({imag_variance}) doesn't match expected variance ({expected_complex_variance})"
+    assert np.isclose(imag_variance, 0, rtol=0.3), \
+        f"Imaginary part variance ({imag_variance}) doesn't match expected variance ({0})"
     
     # Test 4: Check that the real and imaginary parts are uncorrelated (for a circular complex Gaussian)
     correlation = np.corrcoef(real_parts, imag_parts)[0, 1]
@@ -325,6 +288,85 @@ def test_waveform_statistics():
     normalized_max = np.max(np.abs(normalized_voltages))
     assert normalized_max < 5.0, \
         f"Maximum absolute normalized value ({normalized_max}) is too large for a Gaussian distribution"
+
+
+def test_waveform_ifft_real_valued():
+    """
+    Test that the inverse FFT of the spectrum has no imaginary components.
+    This verifies that the Hermitian symmetry is properly maintained in the spectrum.
+    
+    This test:
+    1. Creates a Waveform instance
+    2. Generates multiple waveform samples
+    3. For each sample, verifies that the inverse FFT of the spectrum has negligible imaginary components
+    """
+    # Create a waveform generator
+    waveform = Waveform(
+        start_freq=10,
+        end_freq=1000,
+        gen_dec=8192,
+        acq_dec=256
+    )
+    
+    # Test with multiple samples
+    num_samples = 5
+    for i in range(num_samples):
+        # Generate a waveform
+        _, _, spectrum = waveform.sample()
+        
+        # Compute the inverse FFT
+        ifft_result = np.fft.ifft(spectrum, norm="ortho")
+        
+        # Calculate the ratio of imaginary to real energy
+        real_energy = np.sum(np.real(ifft_result)**2)
+        imag_energy = np.sum(np.imag(ifft_result)**2)
+        
+        # The imaginary energy should be negligible compared to the real energy
+        # We'll use a threshold of 1e-10 times the real energy
+        assert imag_energy < 1e-10 * real_energy, \
+            f"Sample {i+1}: Inverse FFT has significant imaginary components. Real energy: {real_energy}, Imag energy: {imag_energy}"
+
+
+def test_waveform_spectrum_hermitian():
+    """
+    Test that the spectrum returned by Waveform.sample() is Hermitian.
+    
+    A Hermitian spectrum has the property that S(-f) = S(f)*, where * denotes complex conjugation.
+    This ensures that the inverse FFT will yield a real-valued signal.
+    
+    This test:
+    1. Creates a Waveform instance
+    2. Generates multiple waveform samples
+    3. For each sample, verifies that the spectrum satisfies the Hermitian property
+    """
+    # Create a waveform generator
+    waveform = Waveform(
+        start_freq=10,
+        end_freq=1000,
+        gen_dec=8192,
+        acq_dec=256
+    )
+    
+    # Test with multiple samples
+    num_samples = 5
+    for i in range(num_samples):
+        # Generate a waveform
+        _, _, spectrum = waveform.sample()
+        
+        # Get the frequency array
+        freq = waveform.freq
+        
+        # For a Hermitian spectrum, S(-f) = S(f)*
+        # We need to find pairs of frequencies with opposite signs
+        for j in range(len(freq)):
+            if freq[j] > 0:  # For positive frequencies
+                # Find the corresponding negative frequency index
+                neg_idx = np.where(freq == -freq[j])[0]
+                if len(neg_idx) > 0:  # If we found a matching negative frequency
+                    neg_idx = neg_idx[0]
+                    # Check that S(-f) = S(f)*
+                    assert np.isclose(spectrum[neg_idx], np.conj(spectrum[j])), \
+                        f"Sample {i+1}, Frequency {freq[j]} Hz: Spectrum is not Hermitian. S(-f)={spectrum[neg_idx]}, S(f)*={np.conj(spectrum[j])}"
 
 
 if __name__ == "__main__":

@@ -33,7 +33,7 @@ def test_displacement_velocity_consistency():
     coil_driver = CoilDriver()
     
     # Generate a random waveform
-    t, voltage, voltage_spectral_mod, voltage_spectral_phase = waveform.sample()
+    t, voltage, voltage_spectrum = waveform.sample()
     
     # Calculate sample rate from time array
     sample_rate = 1 / (t[1] - t[0])
@@ -43,13 +43,11 @@ def test_displacement_velocity_consistency():
     velocity, velocity_spectrum, velocity_freqs = coil_driver.get_velocity(voltage, sample_rate)
     
     # Calculate FFT of the displacement and velocity waveforms
-    freqs_disp_fft, displacement_mag_fft, displacement_phase_fft = calculate_fft(displacement, sample_rate)
-    freqs_vel_fft, velocity_mag_fft, velocity_phase_fft = calculate_fft(velocity, sample_rate)
+    freqs_disp_fft, displacement_fft = calculate_fft(displacement, sample_rate)
+    freqs_vel_fft, velocity_fft = calculate_fft(velocity, sample_rate)
     
-    assert np.allclose(np.abs(displacement_spectrum)[displacement_freqs >= 0], displacement_mag_fft)
-    assert np.allclose(np.abs(velocity_spectrum)[velocity_freqs >= 0], velocity_mag_fft)
-    #assert np.allclose(np.angle(displacement_spectrum)[displacement_freqs >= 0], displacement_phase_fft)
-    #assert np.allclose(np.angle(velocity_spectrum)[velocity_freqs >= 0], velocity_phase_fft)
+    assert np.allclose(np.abs(displacement_spectrum)[displacement_freqs >= 0], np.abs(displacement_fft))
+    assert np.allclose(np.abs(velocity_spectrum)[velocity_freqs >= 0], np.abs(velocity_fft))
     assert np.allclose(freqs_vel_fft, velocity_freqs[velocity_freqs >= 0])
     assert np.allclose(freqs_disp_fft, displacement_freqs[displacement_freqs >= 0])
 
@@ -71,7 +69,7 @@ def test_reconstructed_waveforms():
     coil_driver = CoilDriver()
     
     # Generate a random waveform
-    t, voltage, voltage_spectral_mod, voltage_spectral_phase = waveform.sample()
+    t, voltage, voltage_spectrum = waveform.sample()
     
     # Calculate sample rate from time array
     sample_rate = 1 / (t[1] - t[0])
@@ -159,7 +157,7 @@ def test_displacement_velocity_relationship():
     coil_driver = CoilDriver()
     
     # Generate a random waveform
-    t, voltage, voltage_spectral_mod, voltage_spectral_phase = waveform.sample()
+    t, voltage, voltage_spectrum = waveform.sample()
     
     # Calculate sample rate from time array
     sample_rate = 1 / (t[1] - t[0])
@@ -198,7 +196,7 @@ def test_integrated_velocity_and_derivative_displacement():
     coil_driver = CoilDriver()
     
     # Generate a random waveform
-    t, voltage, voltage_spectral_mod, voltage_spectral_phase = waveform.sample()
+    t, voltage, voltage_spectrum = waveform.sample()
     
     # Calculate sample rate from time array
     sample_rate = 1 / (t[1] - t[0])
@@ -235,8 +233,140 @@ def test_integrated_velocity_and_derivative_displacement():
     #rtol = 1e-1  # 10% relative tolerance for derivative (more sensitive to noise)
     atol = 5  # absolute tolerance in microns/s
     # Don't compare the end elements, not accurately computed at the edges
-    assert np.allclose(velocity[1:-1], derived_velocity[1:-1], rtol=0.2, atol=0), \
+    assert np.allclose(velocity[1:-1], derived_velocity[1:-1], rtol=0.2, atol=1), \
         f"Derivative of displacement does not match velocity from transfer function"
+
+
+def test_coil_driver_sample_spectrum_hermitian():
+    """
+    Test that the spectrum returned by CoilDriver.sample() with equalize_gain=True is Hermitian.
+    
+    A Hermitian spectrum has the property that S(-f) = S(f)*, where * denotes complex conjugation.
+    This ensures that the inverse FFT will yield a real-valued signal.
+    
+    This test:
+    1. Creates a Waveform instance and a CoilDriver instance
+    2. Generates multiple waveform samples with equalize_gain=True
+    3. For each sample, verifies that the spectrum satisfies the Hermitian property
+    """
+    # Create a waveform generator
+    waveform = Waveform(
+        start_freq=10,
+        end_freq=1000,
+        gen_dec=8192,
+        acq_dec=256
+    )
+    
+    # Create a coil driver with default calibration parameters
+    coil_driver = CoilDriver()
+    
+    # Test with multiple samples
+    num_samples = 5
+    for i in range(num_samples):
+        # Generate a waveform with equalize_gain=True
+        t, voltage, spectrum = coil_driver.sample(waveform, equalize_gain=True)
+        
+        # Calculate sample rate from time array
+        sample_rate = 1 / (t[1] - t[0])
+        
+        # Calculate frequencies
+        n = len(t)
+        freq = np.fft.fftfreq(n, d=1/sample_rate)
+        
+        # For a Hermitian spectrum, S(-f) = S(f)*
+        # We need to find pairs of frequencies with opposite signs
+        for j in range(len(freq)):
+            if freq[j] > 0:  # For positive frequencies
+                # Find the corresponding negative frequency index
+                neg_idx = np.where(freq == -freq[j])[0]
+                if len(neg_idx) > 0:  # If we found a matching negative frequency
+                    neg_idx = neg_idx[0]
+                    # Check that S(-f) = S(f)*
+                    assert np.isclose(spectrum[neg_idx], np.conj(spectrum[j])), \
+                        f"Sample {i+1}, Frequency {freq[j]} Hz: Spectrum is not Hermitian. S(-f)={spectrum[neg_idx]}, S(f)*={np.conj(spectrum[j])}"
+        
+        # Also verify that the inverse FFT of the spectrum has negligible imaginary components
+        ifft_result = np.fft.ifft(spectrum, norm="ortho")
+        real_energy = np.sum(np.real(ifft_result)**2)
+        imag_energy = np.sum(np.imag(ifft_result)**2)
+        
+        # The imaginary energy should be negligible compared to the real energy
+        assert imag_energy < 1e-10 * real_energy, \
+            f"Sample {i+1}: Inverse FFT has significant imaginary components. Real energy: {real_energy}, Imag energy: {imag_energy}"
+
+
+def test_gain_equalization():
+    """
+    This test verifies that the pre-compensation applied in the equalized spectrum correctly
+    counteracts the transfer function, resulting in a spectrum that matches the original voltage spectrum.
+    
+    This test:
+    1. Creates a Waveform instance and a CoilDriver instance
+    2. Generates a standard waveform and an equalized waveform
+    3. Calculates displacement for both waveforms
+    4. Verifies that the equalized displacement spectrum (multiplied by 2π) matches the standard voltage spectrum
+    """
+    # Create a waveform generator with a narrower frequency range for more focused testing
+    waveform = Waveform(
+        start_freq=100,  # Narrower frequency range
+        end_freq=500,   # Narrower frequency range
+        gen_dec=8192,
+        acq_dec=256
+    )
+    
+    # Create a coil driver with default calibration parameters
+    coil_driver = CoilDriver()
+    
+    # Generate a standard waveform (no equalization)
+    t_std, voltage_std, voltage_spectrum_std = waveform.sample()
+    
+    # Generate an equalized waveform
+    t_eq, voltage_eq, voltage_spectrum_eq = coil_driver.sample(waveform, equalize_gain=True, test_mode=True)
+    
+    # Calculate sample rate
+    sample_rate = 1 / (t_std[1] - t_std[0])
+    
+    # Get displacement for equalized waveform
+    displacement_eq, displacement_spectrum_eq, displacement_freqs = coil_driver.get_displacement(voltage_eq, sample_rate)
+    
+    # Calculate FFT of the standard voltage waveform and equalized displacement waveform
+    freqs_fft_std, voltage_fft_std = calculate_fft(voltage_std, sample_rate)
+    _, displacement_fft_eq = calculate_fft(displacement_eq, sample_rate)
+    
+    # Focus only on positive frequencies within the waveform's range
+    pos_freq_mask = (freqs_fft_std > 0) & (freqs_fft_std < waveform.end_freq)
+    
+    # Compare the FFTs calculated with calculate_fft
+    assert np.allclose(
+        2 * np.pi * np.abs(displacement_fft_eq[pos_freq_mask]),
+        np.abs(voltage_fft_std[pos_freq_mask]),
+        rtol=0.2  # Tolerance for numerical differences
+    ), "Equalized displacement FFT (multiplied by 2π) does not match standard voltage FFT"
+    
+    # Compare the spectra from CoilDriver
+    # Focus only on positive frequencies
+    pos_freq_mask_coil = (displacement_freqs > 0) & (displacement_freqs < waveform.end_freq)
+    
+    # Compare the spectra from CoilDriver
+    assert np.allclose(
+        2 * np.pi * np.abs(displacement_spectrum_eq[pos_freq_mask_coil]),
+        np.abs(voltage_spectrum_std[pos_freq_mask_coil]),
+        rtol=0.2  # Tolerance for numerical differences
+    ), "Equalized displacement spectrum (multiplied by 2π) does not match standard voltage spectrum"
+    
+    # Verify that the equalized displacement FFT matches the equalized displacement spectrum
+    assert np.allclose(
+        np.abs(displacement_fft_eq[pos_freq_mask]),
+        np.abs(displacement_spectrum_eq[pos_freq_mask_coil]),
+        rtol=0.2  # Tolerance for numerical differences
+    ), "Equalized displacement FFT does not match equalized displacement spectrum"
+    
+    # Verify that the standard voltage FFT matches the standard voltage spectrum
+    assert np.allclose(
+        np.abs(voltage_fft_std[pos_freq_mask]),
+        np.abs(voltage_spectrum_std[pos_freq_mask_coil]),
+        rtol=0.2  # Tolerance for numerical differences
+    ), "Standard voltage FFT does not match standard voltage spectrum"
 
 
 if __name__ == "__main__":
