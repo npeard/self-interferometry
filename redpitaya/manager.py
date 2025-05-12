@@ -93,7 +93,7 @@ class RedPitayaManager:
             "start_freq": 1,
             "end_freq": 1000,
             "trigger_source": "NOW",
-            "trigger_delay": 8192,
+            "trigger_delay": 2*8192,
             "channels_to_acquire": [1, 2],  # Each device only has channels 1 and 2 by default
             "burst_mode": False,
             "burst_count": 1,
@@ -217,6 +217,7 @@ class RedPitayaManager:
         # If using arbitrary waveform, create it
         if self.settings["wave_form"] == "ARBITRARY":
             # Use our Waveform class to generate a random waveform
+            # TODO: change this to CoilDriver.sample() so that we can precompensate gain
             waveform_generator = Waveform(
                 start_freq=self.settings["start_freq"],
                 end_freq=self.settings["end_freq"],
@@ -226,7 +227,7 @@ class RedPitayaManager:
             )
             
             # Generate waveform
-            _, y, _, _ = waveform_generator.sample()
+            _, y, _ = waveform_generator.sample()
             
             # Validate waveform amplitude
             if np.max(np.abs(y)) > 1.0:
@@ -849,7 +850,7 @@ class RedPitayaManager:
         
         # Configure generation on the primary device
         self.configure_generation(device_idx=device_idx)
-        
+
         # Configure acquisition on all devices
         self.configure_acquisition()
         

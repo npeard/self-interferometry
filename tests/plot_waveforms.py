@@ -158,11 +158,11 @@ def plot_waveforms(
     # Plot magnitude on left y-axis
     ax4.plot(freqs_fft, np.abs(displacement_fft), 'b--', label='Standard FFT')
     ax4.plot(waveform.freq, np.abs(displacement_spectrum), 'b-', alpha=0.3, label='Standard Expected')
-    ax4.plot(freqs_fft_eq, 2*np.pi*np.abs(displacement_fft_eq), 'r--', label='2π*Equalized FFT')
-    ax4.plot(waveform.freq, 2*np.pi*np.abs(displacement_spectrum_eq), 'r-', alpha=0.3, label='2π*Equalized Expected')
+    ax4.plot(freqs_fft_eq, 2*np.pi*0.5*np.abs(displacement_fft_eq), 'r--', label='2π/2*Equalized FFT')
+    ax4.plot(waveform.freq, 2*np.pi*0.5*np.abs(displacement_spectrum_eq), 'r-', alpha=0.3, label='2π/2*Equalized Expected')
     
     # Plot transfer function on left y-axis
-    ax4.plot(dense_freq, np.abs(displacement_transfer)/(2*np.pi), 'g-', label='Transfer Function (divided by 2π)')
+    ax4.plot(dense_freq, np.abs(displacement_transfer)/(2*np.pi)*2, 'g-', label='Transfer Function (divided by 2π/2)')
     
     ax4.set_title('Displacement Spectrum & Transfer Function')
     ax4.set_ylabel('Magnitude', color='b')
@@ -202,11 +202,11 @@ def plot_waveforms(
     
     # Calculate FFTs of velocity with equalized gain
     _, velocity_fft_eq = calculate_fft(velocity_eq, sample_rate)
-    ax6.plot(freqs_fft_eq, np.abs(velocity_fft_eq), 'r--', label='Equalized FFT')
-    ax6.plot(waveform.freq, np.abs(velocity_spectrum_eq), 'r-', alpha=0.3, label='Equalized Expected')
+    ax6.plot(freqs_fft_eq, 2*np.pi*0.5*np.abs(velocity_fft_eq), 'r--', label='2π/2*Equalized FFT')
+    ax6.plot(waveform.freq, 2*np.pi*0.5*np.abs(velocity_spectrum_eq), 'r-', alpha=0.3, label='2π/2*Equalized Expected')
     
     # For velocity, we do multiply by 2*pi*1j*frequency, angular frequency in FFT
-    ax6.plot(dense_freq, np.abs(velocity_transfer)/(2*np.pi), 'g-', label='Transfer Function (divided by 2π)')
+    ax6.plot(dense_freq, np.abs(velocity_transfer)/(2*np.pi)*2, 'g-', label='Transfer Function (divided by 2π/2)')
     
     ax6.set_title('Velocity Spectrum & Transfer Function')
     ax6.set_xlabel('Frequency (Hz)')

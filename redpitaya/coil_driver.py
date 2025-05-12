@@ -211,6 +211,8 @@ class CoilDriver:
         # Divide by 2pi to account for change of variables used when fitting the transfer functions
         # Need to do this whenever we inverse FFT the spectrum
         displacement_spectrum /= 2 * np.pi
+        # Multiply by 2 since we changed how spectra are generated (two-sided instead of one-sided)
+        displacement_spectrum *= 2
         
         # Convert back to time domain
         displacement_waveform = np.real(ifft(displacement_spectrum, norm="ortho"))
@@ -251,6 +253,8 @@ class CoilDriver:
         # Divide by 2pi to account for change of variables used when fitting the transfer functions
         # Need to do this whenever we inverse FFT the spectrum
         displacement_spectrum /= 2 * np.pi
+        # Multiply by 2 since we changed how spectra are generated (two-sided instead of one-sided)
+        displacement_spectrum *= 2
         
         # Calculate velocity spectrum by multiplying displacement spectrum by j*omega
         velocity_spectrum = displacement_spectrum * 1j * 2 * np.pi * freq
