@@ -17,6 +17,7 @@ from typing import List, Dict, Union
 # Import our custom classes
 from redpitaya.waveform import Waveform
 from redpitaya.coil_driver import CoilDriver
+from signal_analysis.interferometers import MichelsonInterferometer
 
 class RedPitayaManager:
     """
@@ -701,6 +702,27 @@ class RedPitayaManager:
             pos_idx = freqs >= 0
             pos_freqs = freqs[pos_idx]
         
+        # Create simulated Michelson signals if displacement data is available
+        simulated_signals = {}
+        if disp_tf_data is not None:
+            # Convert displacement from microns to meters for the interferometer calculation
+            displacement_meters = disp_tf_data * 1e-6
+            
+            # Create interferometers for each photodiode wavelength
+            interferometer_635 = MichelsonInterferometer(wavelength=635e-9, phase=0)
+            interferometer_674 = MichelsonInterferometer(wavelength=674.8e-9, phase=0)
+            interferometer_515 = MichelsonInterferometer(wavelength=515e-9, phase=0)
+            
+            # Generate simulated signals
+            _, simulated_signals['L635P5'], _, _ = interferometer_635.get_simulated_buffer(displacement=displacement_meters, time=time_data)
+            _, simulated_signals['HL6748MG'], _, _ = interferometer_674.get_simulated_buffer(displacement=displacement_meters, time=time_data)
+            _, simulated_signals['L515A1'], _, _ = interferometer_515.get_simulated_buffer(displacement=displacement_meters, time=time_data)
+            
+            # Scale the simulated signals to match the amplitude of the real signals
+            for key in simulated_signals:
+                # First normalize the simulated signal
+                simulated_signals[key] = simulated_signals[key] / np.max(np.abs(simulated_signals[key]))
+        
         # Plot each channel and its FFT
         for i, channel_name in enumerate(channel_order):
             if channel_name in channel_data and i < len(self.axes):
@@ -710,22 +732,39 @@ class RedPitayaManager:
                 # Create appropriate label
                 if channel_name == f"{self.device_names[0]}_CH1":
                     label = "Speaker Drive Voltage"
+                    pd_type = None
                 else:
                     # Extract device name and channel from the new format
                     device_name, channel = channel_name.split("_")
                     label = f"{device_name} {channel}"
                     if (device_name == "RP1") and (channel == "CH2"):
                         label = "L635P5 PD"
+                        pd_type = "L635P5"
                     elif (device_name == "RP2") and (channel == "CH1"):
                         label = "HL6748MG PD"
+                        pd_type = "HL6748MG"
                     elif (device_name == "RP2") and (channel == "CH2"):
                         label = "L515A1 PD"
+                        pd_type = "L515A1"
+                    else:
+                        pd_type = None
                 
                 # Plot the raw data in the left column
-                self.axes[i, 0].plot(time_data, channel_values, color=colors[i % len(colors)])
+                self.axes[i, 0].plot(time_data, channel_values, color=colors[i % len(colors)], label='Actual Signal')
                 self.axes[i, 0].set_ylabel('Amplitude (V)', color=colors[i % len(colors)])
                 self.axes[i, 0].tick_params(axis='y', labelcolor=colors[i % len(colors)])
                 self.axes[i, 0].set_title(label)
+                
+                # Add simulated Michelson signal if this is a photodiode and we have displacement data
+                if pd_type in simulated_signals and disp_tf_data is not None:
+                    # Scale the simulated signal to match the amplitude of the real signal
+                    real_signal_amplitude = np.max(np.abs(channel_values))
+                    scaled_simulated_signal = simulated_signals[pd_type] * real_signal_amplitude
+                    
+                    # Use same color as real signal but with dashed line and alpha=0.5
+                    self.axes[i, 0].plot(time_data, scaled_simulated_signal, '--', color=colors[i % len(colors)], 
+                                        alpha=0.5, label='Simulated Michelson Signal')
+                    self.axes[i, 0].legend(loc='upper left', fontsize='small')
                 
                 # Add velocity twin axis for all plots in the first column
                 if vel_tf_data is not None and disp_derivative_data is not None:
@@ -737,13 +776,24 @@ class RedPitayaManager:
                     ax_vel.set_ylabel('Velocity (Microns/s)', color='black')
                     ax_vel.tick_params(axis='y', labelcolor='black')
                     ax_vel.legend(loc='upper right', fontsize='small')
-                
+                    
                 # Plot displacement data in the middle column
                 if disp_tf_data is not None and vel_integrated_data is not None:
                     # Plot the raw voltage data on primary y-axis
-                    self.axes[i, 1].plot(time_data, channel_values, color=colors[i % len(colors)])
+                    self.axes[i, 1].plot(time_data, channel_values, color=colors[i % len(colors)], label='Actual Signal')
                     self.axes[i, 1].set_ylabel('Amplitude (V)', color=colors[i % len(colors)])
                     self.axes[i, 1].tick_params(axis='y', labelcolor=colors[i % len(colors)])
+                    
+                    # Add simulated Michelson signal if this is a photodiode
+                    if pd_type in simulated_signals:
+                        # Scale the simulated signal to match the amplitude of the real signal
+                        real_signal_amplitude = np.max(np.abs(channel_values))
+                        scaled_simulated_signal = simulated_signals[pd_type] * real_signal_amplitude
+                        
+                        # Use same color as real signal but with dashed line and alpha=0.5
+                        self.axes[i, 1].plot(time_data, scaled_simulated_signal, '--', color=colors[i % len(colors)], 
+                                            alpha=0.5, label='Simulated Michelson Signal')
+                        self.axes[i, 1].legend(loc='upper left', fontsize='small')
                     
                     # Create twin axis for displacement
                     ax_disp = self.axes[i, 1].twinx()
@@ -762,7 +812,7 @@ class RedPitayaManager:
                     # Set title for displacement plot
                     self.axes[i, 1].set_title(f"{label} Displacement")
                     self.axes[i, 1].grid(True, alpha=0.3)
-                
+                    
                 # Plot the FFT in the right column
                 if freqs is not None and pos_idx is not None:
                     # Calculate FFT
