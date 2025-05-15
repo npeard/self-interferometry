@@ -76,7 +76,7 @@ def plot_waveforms(
     _, velocity_fft = calculate_fft(velocity, sample_rate)
     
     # Generate a waveform with equalized gain using the new CoilDriver.sample() method
-    t_eq, voltage_eq, voltage_spectrum_eq = coil_driver.sample(waveform, equalize_gain=True, test_mode=True)
+    t_eq, voltage_eq, voltage_spectrum_eq = coil_driver.sample(waveform, normalize_gain=True, test_mode=True)
     
     # Calculate FFT of the equalized voltage waveform
     freqs_fft_eq, voltage_fft_eq = calculate_fft(voltage_eq, sample_rate)
@@ -122,7 +122,7 @@ def plot_waveforms(
     # Row 1: Voltage
     # Time domain
     ax1 = axes[0][0]
-    ax1.plot(t, voltage, 'b-', label='Standard')
+    #ax1.plot(t, voltage, 'b-', label='Standard')
     ax1.plot(t_eq, voltage_eq, 'r--', alpha=0.3, label='Equalized Gain')
     ax1.set_title('Voltage Waveform')
     ax1.set_ylabel('Amplitude (V)')
@@ -144,7 +144,7 @@ def plot_waveforms(
     # Row 2: Displacement
     # Time domain
     ax3 = axes[1][0]
-    ax3.plot(t, displacement, 'b-', label='Standard')
+    #ax3.plot(t, displacement, 'b-', label='Standard')
     ax3.plot(t_eq, displacement_eq, 'r--', label='Equalized Gain')
     ax3.set_title('Displacement Waveform')
     ax3.set_ylabel('Displacement (μm)')
@@ -184,7 +184,7 @@ def plot_waveforms(
     # Row 3: Velocity
     # Time domain
     ax5 = axes[2][0]
-    ax5.plot(t, velocity, 'b-', label='Standard')
+    #ax5.plot(t, velocity, 'b-', label='Standard')
     ax5.plot(t_eq, velocity_eq, 'r--', label='Equalized Gain')
     ax5.set_title('Velocity Waveform')
     ax5.set_xlabel('Time (s)')
@@ -299,8 +299,8 @@ def plot_waveform_histograms(
 if __name__ == "__main__":
     # Create a waveform generator
     waveform = Waveform(
-        start_freq=100,
-        end_freq=500,
+        start_freq=1,
+        end_freq=1000,
         gen_dec=8192,
         acq_dec=256
     )
@@ -312,7 +312,7 @@ if __name__ == "__main__":
     fig1 = plot_waveforms(waveform, coil_driver)
     
     # Generate and plot waveform histograms
-    #fig2 = plot_waveform_histograms(waveform, num_samples=100)
+    fig2 = plot_waveform_histograms(waveform, num_samples=100)
     
     # Show the plots
     plt.show()

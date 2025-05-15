@@ -86,6 +86,20 @@ class RedPitayaManager:
         self.axes = None
         self.plot_enabled = True
         
+        # Initialize histogram data and figure
+        self.hist_fig = None
+        self.hist_axes = None
+        self.histogram_data = {
+            'drive_voltage': [],
+            'drive_voltage_spectrum': [],
+            'photodiodes': {},
+            'photodiode_spectra': {},
+            'velocity': [],
+            'velocity_spectrum': [],
+            'displacement': [],
+            'displacement_spectrum': []
+        }
+        
         # Initialize device settings with defaults
         self.settings = {
             "gen_dec": 8192,
@@ -218,7 +232,6 @@ class RedPitayaManager:
         # If using arbitrary waveform, create it
         if self.settings["wave_form"] == "ARBITRARY":
             # Use our Waveform class to generate a random waveform
-            # TODO: change this to CoilDriver.sample() so that we can precompensate gain
             waveform_generator = Waveform(
                 start_freq=self.settings["start_freq"],
                 end_freq=self.settings["end_freq"],
@@ -227,8 +240,8 @@ class RedPitayaManager:
                 allowed_freqs=None  # Use all valid frequencies in the range
             )
             
-            # Generate waveform
-            _, y, _ = waveform_generator.sample()
+            # Generate waveform, passing through CoilDriver.sample() to precompensate gain
+            _, y, _ = self.coil_driver.sample(waveform_generator, normalize_gain=True)
             
             # Validate waveform amplitude
             if np.max(np.abs(y)) > 1.0:
@@ -629,10 +642,18 @@ class RedPitayaManager:
             num_rows += 2  # Add 2 more rows for secondary device channels
             
         # Create a new figure with 3 columns: raw signals with velocity, displacement comparison, and FFTs
-        self.fig, self.axes = plt.subplots(num_rows, 3, figsize=(18, 8), sharex='col')
+        # Increase figure height for better spacing between subplots
+        self.fig, self.axes = plt.subplots(num_rows, 3, figsize=(18, 12), sharex='col')
         
-        # Set up the figure
-        plt.tight_layout()
+        # Ensure axes is always a 2D array even with a single row
+        if num_rows == 1:
+            self.axes = np.array([self.axes])
+            
+        # Set figure title
+        self.fig.canvas.manager.set_window_title('Signal Analysis')
+        
+        # Add more space between subplots
+        self.fig.subplots_adjust(hspace=0.4, wspace=0.5)
     
     def update_plot(self, data: Dict[str, np.ndarray], vel_tf_data: np.ndarray = None, 
                    disp_derivative_data: np.ndarray = None, vel_fft: np.ndarray = None, 
@@ -865,15 +886,345 @@ class RedPitayaManager:
             return
             
         try:
-            plt.tight_layout()
+            plt.figure(self.fig.number)
+            plt.draw()
+            if block:
+                plt.show(block=True)
+            else:
+                plt.pause(0.01)  # Small pause to update plot
+        except Exception as e:
+            print(f"Error in show_plot: {e}")
+            
+    def setup_histograms(self):
+        """
+        Set up the histogram and spectrum plots for signal visualization.
+        """
+        if self.hist_fig is None:
+            # Create figure with 4x3 subplots (histograms and spectra)
+            self.hist_fig, self.hist_axes = plt.subplots(4, 3, figsize=(15, 12))
+            self.hist_fig.canvas.manager.set_window_title('Signal Histograms and Spectra')
+            # Add empty title to each subplot initially
+            for ax in self.hist_axes.flatten():
+                ax.set_title('No data yet')
+                ax.grid(True, alpha=0.3)
+            plt.tight_layout(pad=3.0)
+        
+    def update_histograms(self, data, vel_tf_data=None, disp_tf_data=None):
+        """
+        Update histograms and spectra with new data and display accumulated results.
+        
+        Args:
+            data: Dictionary of channel data
+            vel_tf_data: Velocity data from transfer function
+            disp_tf_data: Displacement data from transfer function
+        """
+        if not self.plot_enabled or self.hist_fig is None:
+            return
+            
+        # Make sure we're working with the histogram figure
+        plt.figure(self.hist_fig.number)
+        
+        # Clear all axes
+        for ax in self.hist_axes.flatten():
+            ax.clear()
+            
+        # Calculate sample rate from the first channel data
+        sample_rate = None
+        if "acq_dec" in self.settings:
+            sample_rate = 125e6 / self.settings["acq_dec"]
+        
+        # Accumulate data for histograms and spectra
+        # Drive voltage (Speaker)
+        speaker_channel = f"{self.device_names[0]}_CH1"
+        if speaker_channel in data:
+            speaker_data = data[speaker_channel]
+            self.histogram_data['drive_voltage'].append(speaker_data)
+            
+            # Calculate and accumulate spectrum
+            if sample_rate is not None:
+                # Calculate FFT
+                speaker_fft_complex = fft(speaker_data, norm='ortho')
+                speaker_fft_mag = np.abs(speaker_fft_complex)
+                self.histogram_data['drive_voltage_spectrum'].append(speaker_fft_mag)
+            
+        # Photodiode signals
+        for channel_name, channel_data in data.items():
+            if "_CH" in channel_name and channel_name != speaker_channel:
+                # Extract device name and channel
+                device_name, channel = channel_name.split("_")
+                
+                # Determine photodiode type
+                pd_type = None
+                if (device_name == "RP1") and (channel == "CH2"):
+                    pd_type = "L635P5 PD"
+                elif (device_name == "RP2") and (channel == "CH1"):
+                    pd_type = "HL6748MG PD"
+                elif (device_name == "RP2") and (channel == "CH2"):
+                    pd_type = "L515A1 PD"
+                
+                if pd_type:
+                    # Accumulate time domain data
+                    if pd_type not in self.histogram_data['photodiodes']:
+                        self.histogram_data['photodiodes'][pd_type] = []
+                    self.histogram_data['photodiodes'][pd_type].append(channel_data)
+                    
+                    # Calculate and accumulate spectrum
+                    if sample_rate is not None:
+                        # Calculate FFT
+                        pd_fft_complex = fft(channel_data, norm='ortho')
+                        pd_fft_mag = np.abs(pd_fft_complex)
+                        
+                        if pd_type not in self.histogram_data['photodiode_spectra']:
+                            self.histogram_data['photodiode_spectra'][pd_type] = []
+                        self.histogram_data['photodiode_spectra'][pd_type].append(pd_fft_mag)
+        
+        # Velocity and displacement data
+        if vel_tf_data is not None:
+            self.histogram_data['velocity'].append(vel_tf_data)
+            
+            # Calculate and accumulate spectrum
+            if sample_rate is not None:
+                # Calculate FFT
+                vel_fft_complex = fft(vel_tf_data, norm='ortho')
+                vel_fft_mag = np.abs(vel_fft_complex)
+                self.histogram_data['velocity_spectrum'].append(vel_fft_mag)
+        
+        if disp_tf_data is not None:
+            self.histogram_data['displacement'].append(disp_tf_data)
+            
+            # Calculate and accumulate spectrum
+            if sample_rate is not None:
+                # Calculate FFT
+                disp_fft_complex = fft(disp_tf_data, norm='ortho')
+                disp_fft_mag = np.abs(disp_fft_complex)
+                self.histogram_data['displacement_spectrum'].append(disp_fft_mag)
+        
+        # Calculate FFT frequencies
+        freqs = None
+        pos_idx = None
+        pos_freqs = None
+        if sample_rate is not None and speaker_channel in data:
+            n = len(data[speaker_channel])
+            freqs = np.fft.fftfreq(n, 1/sample_rate)
+            # Only plot positive frequencies
+            pos_idx = np.where(freqs > 0)
+            pos_freqs = freqs[pos_idx]
+        
+        # Plot histograms and spectra
+        # First row: Drive voltage, velocity, displacement histograms
+        # Second row: Drive voltage, velocity, displacement spectra
+        # Third row: PD signal histograms
+        # Fourth row: PD signal spectra
+        
+        # Row 1: Histograms for drive voltage, velocity, displacement
+        # Drive voltage histogram
+        if self.histogram_data['drive_voltage']:
+            drive_data = np.concatenate(self.histogram_data['drive_voltage'])
+            
+            # Calculate histogram
+            hist, bin_edges = np.histogram(drive_data, bins=100)
+            bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+            self.hist_axes[0, 0].hist(drive_data, bins=100, color='blue', alpha=0.7)
+            
+            # Calculate Gaussian overlay if spectrum data is available
+            if self.histogram_data['drive_voltage_spectrum'] and sample_rate is not None:
+                drive_spectra = np.array(self.histogram_data['drive_voltage_spectrum'])
+                avg_drive_spectrum = np.mean(drive_spectra, axis=0)
+                
+                # Calculate time step and total time
+                if speaker_channel in data:
+                    n = len(data[speaker_channel])
+                    dt = 1 / sample_rate
+                    total_time = n * dt
+                    df = 1 / total_time
+                    
+                    # Compute variance using the spectrum
+                    drive_variance = np.sum(np.abs(avg_drive_spectrum)**2) * n * dt**2 / total_time * df
+                    
+                    # Create Gaussian curve
+                    mean = np.mean(drive_data)
+                    mean = 0
+                    std_dev = np.sqrt(drive_variance)
+                    gaussian = np.max(hist) * np.exp(-0.5 * ((bin_centers - mean) / std_dev)**2)
+                    
+                    # Plot Gaussian overlay
+                    self.hist_axes[0, 0].plot(bin_centers, gaussian, 'r-', linewidth=2, 
+                                            label=f'Gaussian (σ={std_dev:.4f})')
+                    self.hist_axes[0, 0].legend(loc='upper right')
+            
+            self.hist_axes[0, 0].set_title('Speaker Drive Voltage')
+            self.hist_axes[0, 0].set_xlabel('Amplitude (V)')
+            self.hist_axes[0, 0].set_ylabel('Count')
+            self.hist_axes[0, 0].grid(True, alpha=0.3)
+        
+        # Velocity histogram
+        if self.histogram_data['velocity']:
+            vel_data = np.concatenate(self.histogram_data['velocity'])
+            
+            # Calculate histogram
+            hist, bin_edges = np.histogram(vel_data, bins=100)
+            bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+            self.hist_axes[0, 1].hist(vel_data, bins=100, color='orange', alpha=0.7)
+            
+            # Calculate Gaussian overlay if spectrum data is available
+            if self.histogram_data['velocity_spectrum'] and sample_rate is not None:
+                vel_spectra = np.array(self.histogram_data['velocity_spectrum'])
+                avg_vel_spectrum = np.mean(vel_spectra, axis=0)
+                
+                # Calculate time step and total time
+                if speaker_channel in data:
+                    n = len(data[speaker_channel])
+                    dt = 1 / sample_rate
+                    total_time = n * dt
+                    df = 1 / total_time
+                    
+                    # Compute variance using the spectrum
+                    vel_variance = np.sum(np.abs(avg_vel_spectrum)**2) * n * dt**2 / total_time * df
+                    
+                    # Create Gaussian curve
+                    mean = np.mean(vel_data)
+                    mean = 0
+                    std_dev = np.sqrt(vel_variance)
+                    gaussian = np.max(hist) * np.exp(-0.5 * ((bin_centers - mean) / std_dev)**2)
+                    
+                    # Plot Gaussian overlay
+                    self.hist_axes[0, 1].plot(bin_centers, gaussian, 'r-', linewidth=2, 
+                                            label=f'Gaussian (σ={std_dev:.4f})')
+                    self.hist_axes[0, 1].legend(loc='upper right')
+            
+            self.hist_axes[0, 1].set_title('Velocity')
+            self.hist_axes[0, 1].set_xlabel('Velocity (Microns/s)')
+            self.hist_axes[0, 1].set_ylabel('Count')
+            self.hist_axes[0, 1].grid(True, alpha=0.3)
+        
+        # Displacement histogram
+        if self.histogram_data['displacement']:
+            disp_data = np.concatenate(self.histogram_data['displacement'])
+            
+            # Calculate histogram
+            hist, bin_edges = np.histogram(disp_data, bins=100)
+            bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+            self.hist_axes[0, 2].hist(disp_data, bins=100, color='cyan', alpha=0.7)
+            
+            # Calculate Gaussian overlay if spectrum data is available
+            if self.histogram_data['displacement_spectrum'] and sample_rate is not None:
+                disp_spectra = np.array(self.histogram_data['displacement_spectrum'])
+                avg_disp_spectrum = np.mean(disp_spectra, axis=0)
+                
+                # Calculate time step and total time
+                if speaker_channel in data:
+                    n = len(data[speaker_channel])
+                    dt = 1 / sample_rate
+                    total_time = n * dt
+                    df = 1 / total_time
+                    
+                    # Compute variance using the spectrum
+                    disp_variance = np.sum(np.abs(avg_disp_spectrum)**2) * n * dt**2 / total_time * df
+                    
+                    # Create Gaussian curve
+                    mean = np.mean(disp_data)
+                    mean = 0
+                    std_dev = np.sqrt(disp_variance)
+                    gaussian = np.max(hist) * np.exp(-0.5 * ((bin_centers - mean) / std_dev)**2)
+                    
+                    # Plot Gaussian overlay
+                    self.hist_axes[0, 2].plot(bin_centers, gaussian, 'r-', linewidth=2, 
+                                            label=f'Gaussian (σ={std_dev:.4f})')
+                    self.hist_axes[0, 2].legend(loc='upper right')
+            
+            self.hist_axes[0, 2].set_title('Displacement')
+            self.hist_axes[0, 2].set_xlabel('Displacement (Microns)')
+            self.hist_axes[0, 2].set_ylabel('Count')
+            self.hist_axes[0, 2].grid(True, alpha=0.3)
+        
+        # Row 2: Spectra for drive voltage, velocity, displacement
+        if pos_freqs is not None:
+            # Drive voltage spectrum
+            if self.histogram_data['drive_voltage_spectrum']:
+                drive_spectra = np.array(self.histogram_data['drive_voltage_spectrum'])
+                avg_drive_spectrum = np.mean(drive_spectra, axis=0)
+                self.hist_axes[1, 0].semilogy(pos_freqs, avg_drive_spectrum[pos_idx], color='blue')
+                self.hist_axes[1, 0].set_title('Speaker Drive Voltage Spectrum')
+                self.hist_axes[1, 0].set_xlabel('Frequency (Hz)')
+                self.hist_axes[1, 0].set_ylabel('Magnitude')
+                self.hist_axes[1, 0].grid(True, which="both", ls="-", alpha=0.5)
+                self.hist_axes[1, 0].set_xlim(0, 2*self.settings["end_freq"])
+            
+            # Velocity spectrum
+            if self.histogram_data['velocity_spectrum']:
+                vel_spectra = np.array(self.histogram_data['velocity_spectrum'])
+                avg_vel_spectrum = np.mean(vel_spectra, axis=0)
+                self.hist_axes[1, 1].semilogy(pos_freqs, avg_vel_spectrum[pos_idx], color='orange')
+                self.hist_axes[1, 1].set_title('Velocity Spectrum')
+                self.hist_axes[1, 1].set_xlabel('Frequency (Hz)')
+                self.hist_axes[1, 1].set_ylabel('Magnitude')
+                self.hist_axes[1, 1].grid(True, which="both", ls="-", alpha=0.5)
+                self.hist_axes[1, 1].set_xlim(0, 2*self.settings["end_freq"])
+            
+            # Displacement spectrum
+            if self.histogram_data['displacement_spectrum']:
+                disp_spectra = np.array(self.histogram_data['displacement_spectrum'])
+                avg_disp_spectrum = np.mean(disp_spectra, axis=0)
+                self.hist_axes[1, 2].semilogy(pos_freqs, avg_disp_spectrum[pos_idx], color='cyan')
+                self.hist_axes[1, 2].set_title('Displacement Spectrum')
+                self.hist_axes[1, 2].set_xlabel('Frequency (Hz)')
+                self.hist_axes[1, 2].set_ylabel('Magnitude')
+                self.hist_axes[1, 2].grid(True, which="both", ls="-", alpha=0.5)
+                self.hist_axes[1, 2].set_xlim(0, 2*self.settings["end_freq"])
+        
+        # Row 3: Photodiode histograms
+        pd_positions = [(2, 0), (2, 1), (2, 2)]
+        for i, (pd_type, pd_data_list) in enumerate(self.histogram_data['photodiodes'].items()):
+            if i < len(pd_positions) and pd_data_list:
+                row, col = pd_positions[i]
+                pd_data = np.concatenate(pd_data_list)
+                self.hist_axes[row, col].hist(pd_data, bins=100, color=['red', 'green', 'purple'][i % 3], alpha=0.7)
+                self.hist_axes[row, col].set_title(f'{pd_type} Signal')
+                self.hist_axes[row, col].set_xlabel('Amplitude (V)')
+                self.hist_axes[row, col].set_ylabel('Count')
+                self.hist_axes[row, col].grid(True, alpha=0.3)
+        
+        # Row 4: Photodiode spectra
+        if pos_freqs is not None:
+            pd_spectrum_positions = [(3, 0), (3, 1), (3, 2)]
+            for i, (pd_type, pd_spectra_list) in enumerate(self.histogram_data['photodiode_spectra'].items()):
+                if i < len(pd_spectrum_positions) and pd_spectra_list:
+                    row, col = pd_spectrum_positions[i]
+                    pd_spectra = np.array(pd_spectra_list)
+                    avg_pd_spectrum = np.mean(pd_spectra, axis=0)
+                    self.hist_axes[row, col].semilogy(pos_freqs, avg_pd_spectrum[pos_idx], color=['red', 'green', 'purple'][i % 3])
+                    self.hist_axes[row, col].set_title(f'{pd_type} Spectrum')
+                    self.hist_axes[row, col].set_xlabel('Frequency (Hz)')
+                    self.hist_axes[row, col].set_ylabel('Magnitude')
+                    self.hist_axes[row, col].grid(True, which="both", ls="-", alpha=0.5)
+        
+        # Update the figure
+        plt.figure(self.hist_fig.number)
+        plt.tight_layout()
+        # Don't call plt.draw() or plt.pause() here - we'll do that in the calling function
+        
+    def show_histograms(self, block=False):
+        """
+        Show the histograms plot.
+        
+        Args:
+            block: Whether to block execution until the plot window is closed
+        """
+        if self.hist_fig is None:
+            return
+            
+        try:
+            plt.figure(self.hist_fig.number)
             plt.draw()
             if block:
                 plt.show(block=True)
             else:
                 plt.pause(0.1)  # Increase pause time to ensure plot updates
         except Exception as e:
-            print(f"Error in show_plot: {e}")
+            print(f"Error in show_histograms: {e}")
     
+
+        
     def run_one_shot(self,
                     device_idx: int = 0,
                     store_data: bool = True,
@@ -956,13 +1307,26 @@ class RedPitayaManager:
         # Plot data if requested
         if plot_data:
             try:
-                # Always update with all available data
+                # Update the main plot first
                 self.update_plot(data, vel_tf_data, vel_derivative_data, vel_fft, disp_tf_data, disp_integrated_data, freqs)
                 
-                # Show the plot
-                self.show_plot(block=block_plot)
+                # Update histograms
+                self.update_histograms(data, vel_tf_data, disp_tf_data)
+                
+                # Handle the blocking behavior for the last plot only
+                if block_plot:
+                    plt.show(block=True)
+                else:
+                    # Just make sure both figures are displayed and updated
+                    if self.fig is not None:
+                        plt.figure(self.fig.number)
+                        plt.draw()
+                    if self.hist_fig is not None:
+                        plt.figure(self.hist_fig.number)
+                        plt.draw()
+                    plt.pause(0.01)  # Small pause to update both plots
             except Exception as e:
-                print(f"Error updating plot: {e}")
+                print(f"Error updating plots: {e}")
         
         return data
     
@@ -995,14 +1359,23 @@ class RedPitayaManager:
         
         all_data = []
         
-        # Set up the plot once if plotting is enabled
+        # Set up both plots once if plotting is enabled
         if plot_data:
-            # Determine number of rows based on data available
-            # We'll assume 4 rows for now (raw, velocity, and 2 FFT plots)
-            num_rows = 4
+            plt.ion()  # Turn on interactive mode first
+            
+            # Set up main plot
             self.setup_plot()
-            plt.ion()  # Turn on interactive mode
-            plt.show(block=False)  # Show the plot without blocking
+            if self.fig is not None:
+                plt.figure(self.fig.number)
+                plt.draw()
+                plt.pause(0.01)
+            
+            # Set up histogram plot
+            self.setup_histograms()
+            if self.hist_fig is not None:
+                plt.figure(self.hist_fig.number)
+                plt.draw()
+                plt.pause(0.01)
         
         try:
             for i in range(num_shots):
@@ -1055,8 +1428,19 @@ class RedPitayaManager:
                         plt.close(self.fig)  # Close the figure to clean up resources
                         self.fig = None
                         self.axes = None
+                    if self.hist_fig is not None:
+                        plt.close(self.hist_fig)  # Close the histogram figure
+                        self.hist_fig = None
+                        self.hist_axes = None
+                        # Clear histogram data
+                        self.histogram_data = {
+                            'drive_voltage': [],
+                            'photodiodes': {},
+                            'displacement': [],
+                            'velocity': []
+                        }
                 except Exception as e:
-                    print(f"Error cleaning up plot: {e}")
+                    print(f"Error cleaning up plots: {e}")
             
             end_time = datetime.now()
             print(f"Completed {len(all_data)} acquisition cycles")
@@ -1116,7 +1500,7 @@ if __name__ == "__main__":
 
     # Run multiple acquisitions
     rp_manager.run_multiple_shots(
-        num_shots=1,
+        num_shots=10,
         delay_between_shots=1.0,
         store_data=False,
         plot_data=True,

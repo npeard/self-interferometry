@@ -16,7 +16,7 @@ from redpitaya.coil_driver import CoilDriver
 from plot_waveforms import calculate_fft
 
 
-def test_displacement_velocity_consistency():
+def test_spectra_consistency():
     """
     Test that the displacement and velocity spectra calculated by CoilDriver
     are consistent with those calculated using calculate_fft.
@@ -257,7 +257,7 @@ def test_coil_driver_sample_spectrum_hermitian():
     num_samples = 5
     for i in range(num_samples):
         # Generate a waveform with equalize_gain=True
-        t, voltage, spectrum = coil_driver.sample(waveform, equalize_gain=True)
+        t, voltage, spectrum = coil_driver.sample(waveform, normalize_gain=True)
         
         # Calculate sample rate from time array
         sample_rate = 1 / (t[1] - t[0])
@@ -288,21 +288,22 @@ def test_coil_driver_sample_spectrum_hermitian():
             f"Sample {i+1}: Inverse FFT has significant imaginary components. Real energy: {real_energy}, Imag energy: {imag_energy}"
 
 
-def test_gain_equalization():
+def test_gain_normalization():
     """
-    This test verifies that the pre-compensation applied in the equalized spectrum correctly
-    counteracts the transfer function, resulting in a spectrum that matches the original voltage spectrum.
+    This test verifies that the shape of the velocity spectrum of the speaker surface matches the shape of the waveform
+    spectrum. The speaker velocity spectrum exhibits a lot of gain near resonance, so the waveform spectrum that is
+    sent to the device needs to be divided by the velocity transfer function to counteract this gain.
     
     This test:
     1. Creates a Waveform instance and a CoilDriver instance
     2. Generates a standard waveform and an equalized waveform
-    3. Calculates displacement for both waveforms
-    4. Verifies that the equalized displacement spectrum (multiplied by 2π) matches the standard voltage spectrum
+    3. Calculates velocity for both waveforms
+    4. Verifies that the normalized equalized velocity spectrum shape matches the normalized standard voltage spectrum shape
     """
-    # Create a waveform generator with a narrower frequency range for more focused testing
+    # Create a waveform generator
     waveform = Waveform(
-        start_freq=100,  # Narrower frequency range
-        end_freq=500,   # Narrower frequency range
+        start_freq=1, 
+        end_freq=100, 
         gen_dec=8192,
         acq_dec=256
     )
@@ -314,52 +315,68 @@ def test_gain_equalization():
     t_std, voltage_std, voltage_spectrum_std = waveform.sample()
     
     # Generate an equalized waveform
-    t_eq, voltage_eq, voltage_spectrum_eq = coil_driver.sample(waveform, equalize_gain=True, test_mode=True)
+    t_eq, voltage_eq, voltage_spectrum_eq = coil_driver.sample(waveform, normalize_gain=True, test_mode=True)
     
     # Calculate sample rate
     sample_rate = 1 / (t_std[1] - t_std[0])
     
-    # Get displacement for equalized waveform
-    displacement_eq, displacement_spectrum_eq, displacement_freqs = coil_driver.get_displacement(voltage_eq, sample_rate)
+    # Get velocity for equalized waveform
+    velocity_eq, velocity_spectrum_eq, velocity_freqs = coil_driver.get_velocity(voltage_eq, sample_rate)
     
-    # Calculate FFT of the standard voltage waveform and equalized displacement waveform
+    # Calculate FFT of the standard voltage waveform and equalized velocity waveform
     freqs_fft_std, voltage_fft_std = calculate_fft(voltage_std, sample_rate)
-    _, displacement_fft_eq = calculate_fft(displacement_eq, sample_rate)
+    _, velocity_fft_eq = calculate_fft(velocity_eq, sample_rate)
     
     # Focus only on positive frequencies within the waveform's range
     pos_freq_mask = (freqs_fft_std > 0) & (freqs_fft_std < waveform.end_freq)
     
-    # Compare the FFTs calculated with calculate_fft
+    # Normalize the FFTs by their maximum values to compare only their shapes
+    velocity_fft_normalized = np.abs(velocity_fft_eq[pos_freq_mask]) / np.max(np.abs(velocity_fft_eq[pos_freq_mask]))
+    voltage_fft_normalized = np.abs(voltage_fft_std[pos_freq_mask]) / np.max(np.abs(voltage_fft_std[pos_freq_mask]))
+    
+    # Compare the normalized FFTs calculated with calculate_fft
     assert np.allclose(
-        2 * np.pi * 0.5 * np.abs(displacement_fft_eq[pos_freq_mask]),
-        np.abs(voltage_fft_std[pos_freq_mask]),
+        velocity_fft_normalized,
+        voltage_fft_normalized,
         rtol=0.2  # Tolerance for numerical differences
-    ), "Equalized displacement FFT (multiplied by 2π) does not match standard voltage FFT"
+    ), "Normalized equalized velocity FFT shape does not match normalized standard voltage FFT shape"
     
     # Compare the spectra from CoilDriver
     # Focus only on positive frequencies
-    pos_freq_mask_coil = (displacement_freqs > 0) & (displacement_freqs < waveform.end_freq)
+    pos_freq_mask_coil = (velocity_freqs > 0) & (velocity_freqs < waveform.end_freq)
     
-    # Compare the spectra from CoilDriver
-    assert np.allclose(
-        2 * np.pi * 0.5 * np.abs(displacement_spectrum_eq[pos_freq_mask_coil]),
-        np.abs(voltage_spectrum_std[pos_freq_mask_coil]),
-        rtol=0.2  # Tolerance for numerical differences
-    ), "Equalized displacement spectrum (multiplied by 2π) does not match standard voltage spectrum"
+    # Normalize the spectra by their maximum values to compare only their shapes
+    velocity_spectrum_normalized = np.abs(velocity_spectrum_eq[pos_freq_mask_coil]) / np.max(np.abs(velocity_spectrum_eq[pos_freq_mask_coil]))
+    voltage_spectrum_normalized = np.abs(voltage_spectrum_std[pos_freq_mask_coil]) / np.max(np.abs(voltage_spectrum_std[pos_freq_mask_coil]))
     
-    # Verify that the equalized displacement FFT matches the equalized displacement spectrum
+    # Compare the normalized spectra from CoilDriver
     assert np.allclose(
-        np.abs(displacement_fft_eq[pos_freq_mask]),
-        np.abs(displacement_spectrum_eq[pos_freq_mask_coil]),
+        velocity_spectrum_normalized,
+        voltage_spectrum_normalized,
         rtol=0.2  # Tolerance for numerical differences
-    ), "Equalized displacement FFT does not match equalized displacement spectrum"
+    ), "Normalized equalized velocity spectrum shape does not match normalized standard voltage spectrum shape"
     
-    # Verify that the standard voltage FFT matches the standard voltage spectrum
+    # Normalize the velocity FFT and spectrum to compare their shapes
+    velocity_fft_norm = np.abs(velocity_fft_eq[pos_freq_mask]) / np.max(np.abs(velocity_fft_eq[pos_freq_mask]))
+    velocity_spectrum_norm = np.abs(velocity_spectrum_eq[pos_freq_mask_coil]) / np.max(np.abs(velocity_spectrum_eq[pos_freq_mask_coil]))
+    
+    # Verify that the normalized equalized velocity FFT shape matches the normalized equalized velocity spectrum shape
     assert np.allclose(
-        np.abs(voltage_fft_std[pos_freq_mask]),
-        np.abs(voltage_spectrum_std[pos_freq_mask_coil]),
+        velocity_fft_norm,
+        velocity_spectrum_norm,
         rtol=0.2  # Tolerance for numerical differences
-    ), "Standard voltage FFT does not match standard voltage spectrum"
+    ), "Normalized equalized velocity FFT shape does not match normalized equalized velocity spectrum shape"
+    
+    # Normalize the voltage FFT and spectrum to compare their shapes
+    voltage_fft_norm = np.abs(voltage_fft_std[pos_freq_mask]) / np.max(np.abs(voltage_fft_std[pos_freq_mask]))
+    voltage_spectrum_norm = np.abs(voltage_spectrum_std[pos_freq_mask_coil]) / np.max(np.abs(voltage_spectrum_std[pos_freq_mask_coil]))
+    
+    # Verify that the normalized standard voltage FFT shape matches the normalized standard voltage spectrum shape
+    assert np.allclose(
+        voltage_fft_norm,
+        voltage_spectrum_norm,
+        rtol=0.2  # Tolerance for numerical differences
+    ), "Normalized standard voltage FFT shape does not match normalized standard voltage spectrum shape"
 
 
 if __name__ == "__main__":

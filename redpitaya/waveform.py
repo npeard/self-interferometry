@@ -84,7 +84,7 @@ class Waveform:
         valid_mask_pos = np.any(np.abs(pos_freqs - valid_freqs) <= 0.5, axis=0)
         
         # Generate spectrum only for positive frequencies
-        spectrum_pos = np.random.uniform(0.0, 1.0, len(pos_freqs))
+        spectrum_pos = np.random.uniform(0.0, 1, len(pos_freqs))
         spectrum_pos = np.where((pos_freqs >= self.start_freq) & 
                                (pos_freqs <= self.end_freq) & 
                                valid_mask_pos, 
@@ -242,9 +242,6 @@ class Waveform:
             self._randomize_spectrum()
 
         # Convert to time domain
-        # # TODO: implement a test that verifies the imaginary part is zero
-        # print("real", np.sum(np.real(ifft(self.spectrum, norm="ortho"))**2))
-        # print("imag", np.sum(np.imag(ifft(self.spectrum, norm="ortho"))**2))
         y = np.real(ifft(self.spectrum, norm="ortho"))
         y = np.fft.fftshift(y)
         
