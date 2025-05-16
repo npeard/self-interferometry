@@ -1,29 +1,29 @@
 #!/usr/bin/env python3
-"""
-Red Pitaya Manager - A comprehensive class for managing Red Pitaya devices
+"""Red Pitaya Manager - A comprehensive class for managing Red Pitaya devices
 This module provides a class that encapsulates functionality for data acquisition,
 waveform generation, and device management for Red Pitaya devices.
 """
 
 import time
-import numpy as np
-import matplotlib.pyplot as plt
 from datetime import datetime
-from numpy.fft import fft
-import scpi
 from pathlib import Path
-from typing import List, Dict, Union
+
+import matplotlib.pyplot as plt
+import numpy as np
+import scpi
+from numpy.fft import fft
+
+from redpitaya.coil_driver import CoilDriver
 
 # Import our custom classes
 from redpitaya.waveform import Waveform
-from redpitaya.coil_driver import CoilDriver
 from signal_analysis.interferometers import MichelsonInterferometer
 
+
 class RedPitayaManager:
-    """
-    A comprehensive manager for Red Pitaya devices that encapsulates functionality
+    """A comprehensive manager for Red Pitaya devices that encapsulates functionality
     for data acquisition, waveform generation, and device management.
-    
+
     This class provides methods for:
     - Connecting to one or more Red Pitaya devices
     - Configuring and triggering scope acquisitions
@@ -33,18 +33,19 @@ class RedPitayaManager:
     - Running multiple acquisitions with configurable delays
     - Daisy-chaining multiple devices
     """
-    
+
     # Constants
     BUFFER_SIZE = 16384  # Number of samples in buffer
     SAMPLE_RATE_DEC1 = 125e6  # Sample rate for decimation=1 in Samples/s (Hz)
-    
-    def __init__(self, 
-                 ip_addresses: Union[str, List[str]],
-                 data_save_path: str = None,
-                 blink_on_connect: bool = False):
-        """
-        Initialize the Red Pitaya Manager.
-        
+
+    def __init__(
+        self,
+        ip_addresses: str | list[str],
+        data_save_path: str = None,
+        blink_on_connect: bool = False,
+    ):
+        """Initialize the Red Pitaya Manager.
+
         Args:
             ip_addresses: IP address(es) of the Red Pitaya device(s)
             data_save_path: Path to save acquired data (default: None)
@@ -52,40 +53,42 @@ class RedPitayaManager:
         """
         self.devices = []
         self.device_names = []
-        
+
         # Connect to devices
         if isinstance(ip_addresses, str):
             ip_addresses = [ip_addresses]
-            
+
         for i, ip in enumerate(ip_addresses):
             try:
                 device = scpi.scpi(ip)
                 self.devices.append(device)
-                self.device_names.append(f"RP{i+1}")
-                print(f"Connected to {ip} as {self.device_names[-1]}")
-                
+                self.device_names.append(f'RP{i + 1}')
+                print(f'Connected to {ip} as {self.device_names[-1]}')
+
                 # Blink LED 0 if requested for connectivity confirmation
                 if blink_on_connect:
                     self.blink_led(device_idx=i, led_num=0, num_blinks=3, period=0.5)
-                    
+
             except Exception as e:
-                print(f"Failed to connect to {ip}: {e}")
-        
+                print(f'Failed to connect to {ip}: {e}')
+
         # Set data save path
         if data_save_path:
             self.data_save_path = Path(data_save_path)
         else:
             # Default to a data directory in the project
-            self.data_save_path = Path(__file__).parent.parent / "signal_analysis" / "data"
-            
+            self.data_save_path = (
+                Path(__file__).parent.parent / 'signal_analysis' / 'data'
+            )
+
         # Ensure the data directory exists
         self.data_save_path.mkdir(parents=True, exist_ok=True)
-        
+
         # Initialize plotting
         self.fig = None
         self.axes = None
         self.plot_enabled = True
-        
+
         # Initialize histogram data and figure
         self.hist_fig = None
         self.hist_axes = None
@@ -97,32 +100,35 @@ class RedPitayaManager:
             'velocity': [],
             'velocity_spectrum': [],
             'displacement': [],
-            'displacement_spectrum': []
+            'displacement_spectrum': [],
         }
-        
+
         # Initialize device settings with defaults
         self.settings = {
-            "gen_dec": 8192,
-            "acq_dec": 256,
-            "wave_form": "ARBITRARY",
-            "start_freq": 1,
-            "end_freq": 1000,
-            "trigger_source": "NOW",
-            "trigger_delay": 2*8192,
-            "channels_to_acquire": [1, 2],  # Each device only has channels 1 and 2 by default
-            "burst_mode": False,
-            "burst_count": 1,
-            "burst_period": None,
-            "input4": False,  # Set to True for 4-input devices
+            'gen_dec': 8192,
+            'acq_dec': 256,
+            'wave_form': 'ARBITRARY',
+            'start_freq': 1,
+            'end_freq': 1000,
+            'trigger_source': 'NOW',
+            'trigger_delay': 2 * 8192,
+            'channels_to_acquire': [
+                1,
+                2,
+            ],  # Each device only has channels 1 and 2 by default
+            'burst_mode': False,
+            'burst_count': 1,
+            'burst_period': None,
+            'input4': False,  # Set to True for 4-input devices
         }
-        
+
         # Initialize the coil driver for velocity and displacement calculations
         self.coil_driver = CoilDriver()
-    
+
     def __del__(self):
         """Clean up resources when the object is destroyed."""
         self.close_all()
-    
+
     def close_all(self):
         """Close all device connections."""
         for device in self.devices:
@@ -132,39 +138,46 @@ class RedPitayaManager:
                 pass
         self.devices = []
         self.device_names = []
-    
+
     def reset_all(self):
         """Reset generation and acquisition on all devices."""
         for device in self.devices:
             device.tx_txt('GEN:RST')
             device.tx_txt('ACQ:RST')
-            
-    def configure_daisy_chain(self, primary_idx: int = 0, secondary_indices: List[int] = None):
-        """
-        Configure devices for daisy chain operation.
-        
+
+    def configure_daisy_chain(
+        self, primary_idx: int = 0, secondary_indices: list[int] = None
+    ):
+        """Configure devices for daisy chain operation.
+
         Args:
             primary_idx: Index of the primary device
             secondary_indices: Indices of secondary devices
         """
         if not secondary_indices:
-            secondary_indices = [i for i in range(len(self.devices)) if i != primary_idx]
-            
-        if primary_idx >= len(self.devices) or any(idx >= len(self.devices) for idx in secondary_indices):
-            raise ValueError("Device index out of range")
-            
+            secondary_indices = [
+                i for i in range(len(self.devices)) if i != primary_idx
+            ]
+
+        if primary_idx >= len(self.devices) or any(
+            idx >= len(self.devices) for idx in secondary_indices
+        ):
+            raise ValueError('Device index out of range')
+
         # Configure primary unit
         primary = self.devices[primary_idx]
         primary.tx_txt('DAISY:SYNC:TRig ON')
         primary.tx_txt('DAISY:SYNC:CLK ON')
         primary.tx_txt('DAISY:TRIG_O:SOUR ADC')
         primary.tx_txt('DIG:PIN LED5,1')  # LED Indicator
-        
-        print(f"Primary device ({self.device_names[primary_idx]}) daisy chain configured:")
-        print(f"  Trig: {primary.txrx_txt('DAISY:SYNC:TRig?')}")
-        print(f"  CLK: {primary.txrx_txt('DAISY:SYNC:CLK?')}")
-        print(f"  Sour: {primary.txrx_txt('DAISY:TRIG_O:SOUR?')}")
-        
+
+        print(
+            f'Primary device ({self.device_names[primary_idx]}) daisy chain configured:'
+        )
+        print(f'  Trig: {primary.txrx_txt("DAISY:SYNC:TRig?")}')
+        print(f'  CLK: {primary.txrx_txt("DAISY:SYNC:CLK?")}')
+        print(f'  Sour: {primary.txrx_txt("DAISY:TRIG_O:SOUR?")}')
+
         # Configure secondary units
         for idx in secondary_indices:
             secondary = self.devices[idx]
@@ -172,22 +185,23 @@ class RedPitayaManager:
             secondary.tx_txt('DAISY:SYNC:CLK ON')
             secondary.tx_txt('DAISY:TRIG_O:SOUR ADC')
             secondary.tx_txt('DIG:PIN LED5,1')  # LED Indicator
-            
-            print(f"Secondary device ({self.device_names[idx]}) daisy chain configured")
-    
-    def configure_generation(self, 
-                       device_idx: int = 0,
-                       channel: int = 1, 
-                       wave_form: str = None,
-                       start_freq: int = None,
-                       end_freq: int = None,
-                       gen_dec: int = None,
-                       burst_mode: bool = None,
-                       burst_count: int = None,
-                       burst_period: int = None):
-        """
-        Configure signal generation on a device.
-        
+
+            print(f'Secondary device ({self.device_names[idx]}) daisy chain configured')
+
+    def configure_generation(
+        self,
+        device_idx: int = 0,
+        channel: int = 1,
+        wave_form: str = None,
+        start_freq: int = None,
+        end_freq: int = None,
+        gen_dec: int = None,
+        burst_mode: bool = None,
+        burst_count: int = None,
+        burst_period: int = None,
+    ):
+        """Configure signal generation on a device.
+
         Args:
             device_idx: Index of the device to configure
             channel: Output channel (1 or 2)
@@ -201,156 +215,161 @@ class RedPitayaManager:
         """
         # Update settings with provided values
         if wave_form is not None:
-            self.settings["wave_form"] = wave_form
+            self.settings['wave_form'] = wave_form
         if start_freq is not None:
-            self.settings["start_freq"] = start_freq
+            self.settings['start_freq'] = start_freq
         if end_freq is not None:
-            self.settings["end_freq"] = end_freq
+            self.settings['end_freq'] = end_freq
         if gen_dec is not None:
-            self.settings["gen_dec"] = gen_dec
+            self.settings['gen_dec'] = gen_dec
         if burst_mode is not None:
-            self.settings["burst_mode"] = burst_mode
+            self.settings['burst_mode'] = burst_mode
         if burst_count is not None:
-            self.settings["burst_count"] = burst_count
+            self.settings['burst_count'] = burst_count
         if burst_period is not None:
-            self.settings["burst_period"] = burst_period
-            
+            self.settings['burst_period'] = burst_period
+
         # Check if device index is valid
         if device_idx >= len(self.devices):
-            raise ValueError(f"Device index {device_idx} out of range")
-            
+            raise ValueError(f'Device index {device_idx} out of range')
+
         device = self.devices[device_idx]
-        
+
         # Reset generation
         device.tx_txt('GEN:RST')
-        
+
         # Calculate parameters
-        gen_smpl_rate = self.SAMPLE_RATE_DEC1 // self.settings["gen_dec"]
+        gen_smpl_rate = self.SAMPLE_RATE_DEC1 // self.settings['gen_dec']
         burst_time = self.BUFFER_SIZE / gen_smpl_rate
         freq = 1 / burst_time
-        
+
         # If using arbitrary waveform, create it
-        if self.settings["wave_form"] == "ARBITRARY":
+        if self.settings['wave_form'] == 'ARBITRARY':
             # Use our Waveform class to generate a random waveform
             waveform_generator = Waveform(
-                start_freq=self.settings["start_freq"],
-                end_freq=self.settings["end_freq"],
-                gen_dec=self.settings["gen_dec"],
-                acq_dec=self.settings["acq_dec"],
-                allowed_freqs=None  # Use all valid frequencies in the range
+                start_freq=self.settings['start_freq'],
+                end_freq=self.settings['end_freq'],
+                gen_dec=self.settings['gen_dec'],
+                acq_dec=self.settings['acq_dec'],
+                allowed_freqs=None,  # Use all valid frequencies in the range
             )
-            
+
             # Generate waveform, passing through CoilDriver.sample() to precompensate gain
             _, y, _ = self.coil_driver.sample(waveform_generator, normalize_gain=True)
-            
+
             # Validate waveform amplitude
             if np.max(np.abs(y)) > 1.0:
-                raise ValueError("Waveform amplitude exceeds 1.0. The waveform must be normalized to [-1, 1] range.")
-            
+                raise ValueError(
+                    'Waveform amplitude exceeds 1.0. The waveform must be normalized to [-1, 1] range.'
+                )
+
             # Configure source with arbitrary waveform (amplitude fixed at 1.0)
             device.sour_set(
-                channel, 
-                self.settings["wave_form"], 
+                channel,
+                self.settings['wave_form'],
                 1.0,  # Fixed amplitude of 1.0 - normalization handled by Waveform class
-                freq, 
+                freq,
                 data=y,
-                burst=self.settings["burst_mode"],
-                ncyc=self.settings["burst_count"],
-                period=self.settings["burst_period"]
+                burst=self.settings['burst_mode'],
+                ncyc=self.settings['burst_count'],
+                period=self.settings['burst_period'],
             )
         else:
             # Configure source with standard waveform (amplitude fixed at 1.0)
             device.sour_set(
-                channel, 
-                self.settings["wave_form"], 
+                channel,
+                self.settings['wave_form'],
                 1.0,  # Fixed amplitude of 1.0
                 freq,
-                burst=self.settings["burst_mode"],
-                ncyc=self.settings["burst_count"],
-                period=self.settings["burst_period"]
+                burst=self.settings['burst_mode'],
+                ncyc=self.settings['burst_count'],
+                period=self.settings['burst_period'],
             )
-            
-        print(f"Generation configured on {self.device_names[device_idx]}, channel {channel}")
-    
+
+        print(
+            f'Generation configured on {self.device_names[device_idx]}, channel {channel}'
+        )
+
     def enable_output(self, device_idx: int = 0, channel: int = 1, enable: bool = True):
-        """
-        Enable or disable output on a device channel.
-        
+        """Enable or disable output on a device channel.
+
         Args:
             device_idx: Index of the device
             channel: Channel number (1 or 2)
             enable: True to enable, False to disable
         """
         if device_idx >= len(self.devices):
-            raise ValueError(f"Device index {device_idx} out of range")
-            
+            raise ValueError(f'Device index {device_idx} out of range')
+
         device = self.devices[device_idx]
-        
+
         if enable:
             device.tx_txt(f'OUTPUT{channel}:STATE ON')
-            print(f"Output enabled on {self.device_names[device_idx]}, channel {channel}")
+            print(
+                f'Output enabled on {self.device_names[device_idx]}, channel {channel}'
+            )
         else:
             device.tx_txt(f'OUTPUT{channel}:STATE OFF')
-            print(f"Output disabled on {self.device_names[device_idx]}, channel {channel}")
-    
+            print(
+                f'Output disabled on {self.device_names[device_idx]}, channel {channel}'
+            )
+
     def trigger_generation(self, device_idx: int = 0, channel: int = 1):
-        """
-        Trigger generation on a device channel.
-        
+        """Trigger generation on a device channel.
+
         Args:
             device_idx: Index of the device
             channel: Channel number (1 or 2)
         """
         if device_idx >= len(self.devices):
-            raise ValueError(f"Device index {device_idx} out of range")
-            
+            raise ValueError(f'Device index {device_idx} out of range')
+
         device = self.devices[device_idx]
         device.tx_txt(f'SOUR{channel}:TRig:INT')
-        print(f"Generation triggered on {self.device_names[device_idx]}, channel {channel}")
-    
+        print(
+            f'Generation triggered on {self.device_names[device_idx]}, channel {channel}'
+        )
+
     def configure_acquisition(self, acq_dec: int = None, trigger_delay: int = None):
-        """
-        Configure acquisition on all devices.
-        
+        """Configure acquisition on all devices.
+
         Args:
             acq_dec: Decimation for acquisition
             trigger_delay: Trigger delay in samples
         """
         # Update settings with provided values
         if acq_dec is not None:
-            self.settings["acq_dec"] = acq_dec
+            self.settings['acq_dec'] = acq_dec
         if trigger_delay is not None:
-            self.settings["trigger_delay"] = trigger_delay
-            
+            self.settings['trigger_delay'] = trigger_delay
+
         # Configure acquisition on all devices
         for i, device in enumerate(self.devices):
             device_name = self.device_names[i]
             device.tx_txt('ACQ:RST')
             device.acq_set(
-                dec=self.settings["acq_dec"],
-                trig_delay=self.settings["trigger_delay"]
+                dec=self.settings['acq_dec'], trig_delay=self.settings['trigger_delay']
             )
-            print(f"Acquisition configured on {device_name}")
-            
+            print(f'Acquisition configured on {device_name}')
+
     def start_acquisition(self, device_idx: int = 0, timeout: int = 5):
-        """
-        Start acquisition on all devices.
-        
+        """Start acquisition on all devices.
+
         For multiple devices, we start acquisition on secondary devices first,
         then on the primary device. This ensures proper triggering.
-        
+
         Args:
             device_idx: Index of the device to use as primary
             timeout: Timeout in seconds for waiting for triggers
         """
         # Check if device index is valid
         if device_idx >= len(self.devices):
-            raise ValueError(f"Device index {device_idx} out of range")
-            
+            raise ValueError(f'Device index {device_idx} out of range')
+
         # Get the primary device
         primary_device = self.devices[device_idx]
         primary_name = self.device_names[device_idx]
-        
+
         # Identify secondary devices
         secondary_devices = []
         secondary_names = []
@@ -358,33 +377,32 @@ class RedPitayaManager:
             if i != device_idx:
                 secondary_devices.append(device)
                 secondary_names.append(self.device_names[i])
-        
+
         # Start acquisition on secondary devices first
-        for device, name in zip(secondary_devices, secondary_names):
+        for device, name in zip(secondary_devices, secondary_names, strict=False):
             device.tx_txt('ACQ:START')
             time.sleep(0.2)
             device.tx_txt('ACQ:TRig EXT_NE')
-            print(f"Acquisition started on {name} with trigger EXT_NE")
-        
+            print(f'Acquisition started on {name} with trigger EXT_NE')
+
         # Start acquisition on primary device
         primary_device.tx_txt('ACQ:START')
         time.sleep(0.2)
         primary_device.tx_txt('ACQ:TRig CH1_PE')
-        print(f"Acquisition started on {primary_name} with trigger CH1_PE")
-        
+        print(f'Acquisition started on {primary_name} with trigger CH1_PE')
+
         # Store the primary device index for later use
         self._primary_device_idx = device_idx
-            
-    def get_acquisition_data(self, timeout: int = 5) -> Dict[str, np.ndarray]:
-        """
-        Get acquisition data from all devices.
-        
+
+    def get_acquisition_data(self, timeout: int = 5) -> dict[str, np.ndarray]:
+        """Get acquisition data from all devices.
+
         This method waits for triggers and buffer fills on all devices,
         then retrieves the data.
-        
+
         Args:
             timeout: Timeout in seconds for waiting for triggers
-            
+
         Returns:
             Dictionary of acquired data
         """
@@ -392,7 +410,7 @@ class RedPitayaManager:
         device_idx = getattr(self, '_primary_device_idx', 0)
         primary_device = self.devices[device_idx]
         primary_name = self.device_names[device_idx]
-        
+
         # Identify secondary devices
         secondary_devices = []
         secondary_names = []
@@ -400,134 +418,147 @@ class RedPitayaManager:
             if i != device_idx:
                 secondary_devices.append(device)
                 secondary_names.append(self.device_names[i])
-        
+
         # Wait for primary device trigger with timeout
-        print(f"Waiting for {primary_name} trigger (timeout: {timeout}s)...")
+        print(f'Waiting for {primary_name} trigger (timeout: {timeout}s)...')
         start_time = time.time()
         triggered = False
-        
+
         while time.time() - start_time < timeout:
             primary_device.tx_txt('ACQ:TRig:STAT?')
             status = primary_device.rx_txt()
-            print(f"Trigger status: {status}")
-            
+            print(f'Trigger status: {status}')
+
             if status == 'TD':  # Triggered
                 triggered = True
                 break
             time.sleep(0.5)  # Check every half second
-            
+
         if not triggered:
-            print(f"Timeout waiting for {primary_name} trigger")
+            print(f'Timeout waiting for {primary_name} trigger')
             # Try to recover by forcing a trigger
             primary_device.tx_txt('ACQ:TRig NOW')
             time.sleep(1)
         else:
-            print(f"Trigger detected on {primary_name}")
-        
+            print(f'Trigger detected on {primary_name}')
+
         # Wait for primary device buffer fill with timeout
-        print(f"Waiting for {primary_name} buffer to fill (timeout: {timeout}s)...")
+        print(f'Waiting for {primary_name} buffer to fill (timeout: {timeout}s)...')
         start_time = time.time()
         filled = False
-        
+
         while time.time() - start_time < timeout:
             primary_device.tx_txt('ACQ:TRig:FILL?')
             fill_status = primary_device.rx_txt()
-            print(f"Fill status: {fill_status}")
-            
+            print(f'Fill status: {fill_status}')
+
             if fill_status == '1':  # Buffer filled
                 filled = True
                 break
             time.sleep(0.5)  # Check every half second
-            
+
         if not filled:
-            print(f"Timeout waiting for {primary_name} buffer to fill")
+            print(f'Timeout waiting for {primary_name} buffer to fill')
         else:
-            print(f"Buffer filled on {primary_name}")
-        
+            print(f'Buffer filled on {primary_name}')
+
         # Wait for secondary devices with timeout
-        for device, name in zip(secondary_devices, secondary_names):
+        for device, name in zip(secondary_devices, secondary_names, strict=False):
             # Wait for trigger
-            print(f"Waiting for {name} trigger (timeout: {timeout}s)...")
+            print(f'Waiting for {name} trigger (timeout: {timeout}s)...')
             start_time = time.time()
             triggered = False
-            
+
             while time.time() - start_time < timeout:
                 device.tx_txt('ACQ:TRig:STAT?')
                 status = device.rx_txt()
-                print(f"Trigger status: {status}")
-                
+                print(f'Trigger status: {status}')
+
                 if status == 'TD':  # Triggered
                     triggered = True
                     break
                 time.sleep(0.5)  # Check every half second
-                
+
             if not triggered:
-                print(f"Timeout waiting for {name} trigger")
+                print(f'Timeout waiting for {name} trigger')
                 # Try to recover by forcing a trigger
                 device.tx_txt('ACQ:TRig NOW')
                 time.sleep(1)
             else:
-                print(f"Trigger detected on {name}")
-            
+                print(f'Trigger detected on {name}')
+
             # Wait for buffer fill
-            print(f"Waiting for {name} buffer to fill (timeout: {timeout}s)...")
+            print(f'Waiting for {name} buffer to fill (timeout: {timeout}s)...')
             start_time = time.time()
             filled = False
-            
+
             while time.time() - start_time < timeout:
                 device.tx_txt('ACQ:TRig:FILL?')
                 fill_status = device.rx_txt()
-                print(f"Fill status: {fill_status}")
-                
+                print(f'Fill status: {fill_status}')
+
                 if fill_status == '1':  # Buffer filled
                     filled = True
                     break
                 time.sleep(0.5)  # Check every half second
-                
+
             if not filled:
-                print(f"Timeout waiting for {name} buffer to fill")
+                print(f'Timeout waiting for {name} buffer to fill')
             else:
-                print(f"Buffer filled on {name}")
-        
+                print(f'Buffer filled on {name}')
+
         # Get data from all devices
         data = {}
-        
+
         # Get data from primary device
         try:
             for chan in [1, 2]:
-                if chan in self.settings["channels_to_acquire"]:
+                if chan in self.settings['channels_to_acquire']:
                     try:
-                        channel_data = np.array(primary_device.acq_data(chan=chan, convert=True))
-                        data[f"{primary_name}_CH{chan}"] = channel_data
-                        print(f"Successfully acquired data from {primary_name} Channel {chan}")
+                        channel_data = np.array(
+                            primary_device.acq_data(chan=chan, convert=True)
+                        )
+                        data[f'{primary_name}_CH{chan}'] = channel_data
+                        print(
+                            f'Successfully acquired data from {primary_name} Channel {chan}'
+                        )
                     except Exception as e:
-                        print(f"Error acquiring data from {primary_name}, channel {chan}: {e}")
+                        print(
+                            f'Error acquiring data from {primary_name}, channel {chan}: {e}'
+                        )
         except Exception as e:
-            print(f"Error during data acquisition from primary device: {e}")
-        
+            print(f'Error during data acquisition from primary device: {e}')
+
         # Get data from secondary devices
-        for device, name in zip(secondary_devices, secondary_names):
+        for device, name in zip(secondary_devices, secondary_names, strict=False):
             try:
                 for chan in [1, 2]:
-                    if chan in self.settings["channels_to_acquire"]:
+                    if chan in self.settings['channels_to_acquire']:
                         try:
-                            channel_data = np.array(device.acq_data(chan=chan, convert=True))
-                            data[f"{name}_CH{chan}"] = channel_data
-                            print(f"Successfully acquired data from {name} Channel {chan}")
+                            channel_data = np.array(
+                                device.acq_data(chan=chan, convert=True)
+                            )
+                            data[f'{name}_CH{chan}'] = channel_data
+                            print(
+                                f'Successfully acquired data from {name} Channel {chan}'
+                            )
                         except Exception as e:
-                            print(f"Error acquiring data from {name}, channel {chan}: {e}")
+                            print(
+                                f'Error acquiring data from {name}, channel {chan}: {e}'
+                            )
             except Exception as e:
-                print(f"Error during data acquisition from {name}: {e}")
-        
+                print(f'Error during data acquisition from {name}: {e}')
+
         return data
-    
-    def process_drive_voltage(self, speaker_data: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """
-        Process speaker drive voltage data to calculate velocity and displacement.
-        
+
+    def process_drive_voltage(
+        self, speaker_data: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Process speaker drive voltage data to calculate velocity and displacement.
+
         Args:
             speaker_data: Speaker voltage data
-            
+
         Returns:
             Tuple containing:
             - velocity: Velocity data from transfer function
@@ -538,21 +569,33 @@ class RedPitayaManager:
             - sample_rate: Calculated sample rate
         """
         # Calculate sample rate
-        sample_rate = self.SAMPLE_RATE_DEC1 / self.settings["acq_dec"]
-        
+        sample_rate = self.SAMPLE_RATE_DEC1 / self.settings['acq_dec']
+
         # Use the CoilDriver to calculate velocity and displacement from voltage
-        velocity, velocity_spectrum, freq = self.coil_driver.get_velocity(speaker_data, sample_rate)
-        displacement, displacement_spectrum, _ = self.coil_driver.get_displacement(speaker_data, sample_rate)
-        
-        return velocity, displacement, velocity_spectrum, displacement_spectrum, freq, sample_rate
-    
-    def get_velocity_data(self, speaker_data: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """
-        Get velocity data from speaker drive voltage.
-        
+        velocity, velocity_spectrum, freq = self.coil_driver.get_velocity(
+            speaker_data, sample_rate
+        )
+        displacement, displacement_spectrum, _ = self.coil_driver.get_displacement(
+            speaker_data, sample_rate
+        )
+
+        return (
+            velocity,
+            displacement,
+            velocity_spectrum,
+            displacement_spectrum,
+            freq,
+            sample_rate,
+        )
+
+    def get_velocity_data(
+        self, speaker_data: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Get velocity data from speaker drive voltage.
+
         Args:
             speaker_data: Speaker voltage data
-            
+
         Returns:
             Tuple containing:
             - velocity_tf: Velocity from transfer function
@@ -561,20 +604,25 @@ class RedPitayaManager:
             - frequencies: Frequency array
         """
         # Get velocity and displacement data
-        velocity_tf, displacement, velocity_spectrum, _, freq, sample_rate = self.process_drive_voltage(speaker_data)
-        
+        velocity_tf, displacement, velocity_spectrum, _, freq, sample_rate = (
+            self.process_drive_voltage(speaker_data)
+        )
+
         # Calculate velocity from derivative of displacement
-        velocity_derivative = self.coil_driver.derivative_displacement(displacement, sample_rate)
-        
+        velocity_derivative = self.coil_driver.derivative_displacement(
+            displacement, sample_rate
+        )
+
         return velocity_tf, velocity_derivative, velocity_spectrum, freq
-    
-    def get_displacement_data(self, speaker_data: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """
-        Get displacement data from speaker drive voltage.
-        
+
+    def get_displacement_data(
+        self, speaker_data: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Get displacement data from speaker drive voltage.
+
         Args:
             speaker_data: Speaker voltage data
-            
+
         Returns:
             Tuple containing:
             - displacement_tf: Displacement from transfer function
@@ -583,85 +631,93 @@ class RedPitayaManager:
             - frequencies: Frequency array
         """
         # Get velocity and displacement data
-        velocity, displacement_tf, _, displacement_spectrum, freq, sample_rate = self.process_drive_voltage(speaker_data)
-        
+        velocity, displacement_tf, _, displacement_spectrum, freq, sample_rate = (
+            self.process_drive_voltage(speaker_data)
+        )
+
         # Integrate velocity to get displacement
-        displacement_integrated = self.coil_driver.integrate_velocity(velocity, sample_rate)
+        displacement_integrated = self.coil_driver.integrate_velocity(
+            velocity, sample_rate
+        )
 
         # Enforce that displacement starts at zero for each trace for easier comparison
-        displacement_integrated  = displacement_integrated - displacement_integrated[0]
+        displacement_integrated = displacement_integrated - displacement_integrated[0]
         displacement_tf = displacement_tf - displacement_tf[0]
-        
+
         return displacement_tf, displacement_integrated, displacement_spectrum, freq
-    
-    def save_data(self, data: Dict[str, np.ndarray], filename: str = None) -> str:
-        """
-        Save acquisition data to a file.
-        
+
+    def save_data(self, data: dict[str, np.ndarray], filename: str = None) -> str:
+        """Save acquisition data to a file.
+
         Args:
             data: Dictionary of data to save
             filename: Filename to save to (default: auto-generated)
-            
+
         Returns:
             Path to the saved file
         """
         if filename is None:
             # Generate a filename based on current time
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"data_{timestamp}.h5py"
-            
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f'data_{timestamp}.h5py'
+
         file_path = self.data_save_path / filename
-        
+
         # Import util here to avoid circular imports
         try:
-            import signal_analysis.util as util
+            from signal_analysis import util
+
             util.write_data(file_path, data)
-            print(f"Data saved to {file_path}")
+            print(f'Data saved to {file_path}')
         except ImportError:
-            print("Warning: signal_analysis.util module not found. Data not saved.")
-            print(f"Would have saved to {file_path}")
-            
+            print('Warning: signal_analysis.util module not found. Data not saved.')
+            print(f'Would have saved to {file_path}')
+
         return str(file_path)
-    
+
     def setup_plot(self):
-        """
-        Set up the plot for visualization.
+        """Set up the plot for visualization.
         """
         if not self.plot_enabled:
             return
-            
+
         # Close any existing plot
         if self.fig is not None:
             plt.close(self.fig)
-            
+
         # Determine number of rows based on number of channels
         num_rows = 2  # Default to 2 rows (primary device channels)
-        
+
         # Add rows for secondary device if it exists
         if len(self.device_names) > 1:
             num_rows += 2  # Add 2 more rows for secondary device channels
-            
+
         # Create a new figure with 3 columns: raw signals with velocity, displacement comparison, and FFTs
         # Increase figure height for better spacing between subplots
         self.fig, self.axes = plt.subplots(num_rows, 3, figsize=(18, 12), sharex='col')
-        
+
         # Ensure axes is always a 2D array even with a single row
         if num_rows == 1:
             self.axes = np.array([self.axes])
-            
+
         # Set figure title
         self.fig.canvas.manager.set_window_title('Signal Analysis')
-        
+
         # Add more space between subplots
         self.fig.subplots_adjust(hspace=0.4, wspace=0.5)
-    
-    def update_plot(self, data: Dict[str, np.ndarray], vel_tf_data: np.ndarray = None, 
-                   disp_derivative_data: np.ndarray = None, vel_fft: np.ndarray = None, 
-                   disp_tf_data: np.ndarray = None, vel_integrated_data: np.ndarray = None, 
-                   freqs: np.ndarray = None):
-        """
-        Update the plot with new data using a 3-column layout.
-        
+
+    def update_plot(
+        self,
+        data: dict[str, np.ndarray],
+        vel_tf_data: np.ndarray = None,
+        disp_derivative_data: np.ndarray = None,
+        vel_fft: np.ndarray = None,
+        disp_tf_data: np.ndarray = None,
+        vel_integrated_data: np.ndarray = None,
+        freqs: np.ndarray = None,
+    ):
+        """Update the plot with new data using a 3-column layout.
+
         Args:
             data: Dictionary of channel data
             vel_tf_data: Velocity data from transfer function
@@ -673,196 +729,274 @@ class RedPitayaManager:
         """
         if not self.plot_enabled or self.fig is None:
             return
-            
+
         # First, remove any existing twin axes to start fresh
         for ax in self.fig.axes[:]:
             if ax not in self.axes.flatten():
                 self.fig.delaxes(ax)
-                
+
         # Clear all main axes
         for ax in self.axes.flatten():
             ax.clear()
-            
+
         # Calculate time data
-        acq_smpl_rate = self.SAMPLE_RATE_DEC1 // self.settings["acq_dec"]
-        time_data = np.linspace(0, (self.BUFFER_SIZE-1)/acq_smpl_rate, self.BUFFER_SIZE)
-        
+        acq_smpl_rate = self.SAMPLE_RATE_DEC1 // self.settings['acq_dec']
+        time_data = np.linspace(
+            0, (self.BUFFER_SIZE - 1) / acq_smpl_rate, self.BUFFER_SIZE
+        )
+
         # Filter to only include raw channel data (not processed data)
         channel_data = {}
         for k, v in data.items():
-            if "_CH" in k:  # New naming convention: RP1_CH1
+            if '_CH' in k:  # New naming convention: RP1_CH1
                 channel_data[k] = v
-        
+
         # Define channel order with new naming convention
         channel_order = [
-            f"{self.device_names[0]}_CH1",  # Speaker Drive Voltage (primary device CH1)
-            f"{self.device_names[0]}_CH2",  # Primary device CH2
+            f'{self.device_names[0]}_CH1',  # Speaker Drive Voltage (primary device CH1)
+            f'{self.device_names[0]}_CH2',  # Primary device CH2
         ]
-        
+
         # Add secondary device channels if they exist
         if len(self.device_names) > 1:
-            channel_order.extend([
-                f"{self.device_names[1]}_CH1",  # Secondary device CH1
-                f"{self.device_names[1]}_CH2",  # Secondary device CH2
-            ])
-        
+            channel_order.extend(
+                [
+                    f'{self.device_names[1]}_CH1',  # Secondary device CH1
+                    f'{self.device_names[1]}_CH2',  # Secondary device CH2
+                ]
+            )
+
         # Colors for each channel
         colors = ['blue', 'red', 'green', 'purple']
-        
+
         # Calculate FFT frequencies once
         if freqs is None and len(channel_data) > 0:
             # Get the length of any channel data
             any_data = next(iter(channel_data.values()))
             n = len(any_data)
-            freqs = np.fft.fftfreq(n, 1/acq_smpl_rate)
-            
+            freqs = np.fft.fftfreq(n, 1 / acq_smpl_rate)
+
         # Only plot positive frequencies for FFT
         pos_idx = None
         pos_freqs = None
         if freqs is not None:
             pos_idx = freqs >= 0
             pos_freqs = freqs[pos_idx]
-        
+
         # Create simulated Michelson signals if displacement data is available
         simulated_signals = {}
         if disp_tf_data is not None:
             # Convert displacement from microns to meters for the interferometer calculation
             displacement_meters = disp_tf_data * 1e-6
-            
+
             # Create interferometers for each photodiode wavelength
             interferometer_635 = MichelsonInterferometer(wavelength=635e-9, phase=0)
             interferometer_674 = MichelsonInterferometer(wavelength=674.8e-9, phase=0)
             interferometer_515 = MichelsonInterferometer(wavelength=515e-9, phase=0)
-            
+
             # Generate simulated signals
-            _, simulated_signals['L635P5'], _, _ = interferometer_635.get_simulated_buffer(displacement=displacement_meters, time=time_data)
-            _, simulated_signals['HL6748MG'], _, _ = interferometer_674.get_simulated_buffer(displacement=displacement_meters, time=time_data)
-            _, simulated_signals['L515A1'], _, _ = interferometer_515.get_simulated_buffer(displacement=displacement_meters, time=time_data)
-            
+            _, simulated_signals['L635P5'], _, _ = (
+                interferometer_635.get_simulated_buffer(
+                    displacement=displacement_meters, time=time_data
+                )
+            )
+            _, simulated_signals['HL6748MG'], _, _ = (
+                interferometer_674.get_simulated_buffer(
+                    displacement=displacement_meters, time=time_data
+                )
+            )
+            _, simulated_signals['L515A1'], _, _ = (
+                interferometer_515.get_simulated_buffer(
+                    displacement=displacement_meters, time=time_data
+                )
+            )
+
             # Scale the simulated signals to match the amplitude of the real signals
             for key in simulated_signals:
                 # First normalize the simulated signal
-                simulated_signals[key] = simulated_signals[key] / np.max(np.abs(simulated_signals[key]))
-        
+                simulated_signals[key] = simulated_signals[key] / np.max(
+                    np.abs(simulated_signals[key])
+                )
+
         # Plot each channel and its FFT
         for i, channel_name in enumerate(channel_order):
             if channel_name in channel_data and i < len(self.axes):
                 # Get the channel data
                 channel_values = channel_data[channel_name]
-                
+
                 # Create appropriate label
-                if channel_name == f"{self.device_names[0]}_CH1":
-                    label = "Speaker Drive Voltage"
+                if channel_name == f'{self.device_names[0]}_CH1':
+                    label = 'Speaker Drive Voltage'
                     pd_type = None
                 else:
                     # Extract device name and channel from the new format
-                    device_name, channel = channel_name.split("_")
-                    label = f"{device_name} {channel}"
-                    if (device_name == "RP1") and (channel == "CH2"):
-                        label = "L635P5 PD"
-                        pd_type = "L635P5"
-                    elif (device_name == "RP2") and (channel == "CH1"):
-                        label = "HL6748MG PD"
-                        pd_type = "HL6748MG"
-                    elif (device_name == "RP2") and (channel == "CH2"):
-                        label = "L515A1 PD"
-                        pd_type = "L515A1"
+                    device_name, channel = channel_name.split('_')
+                    label = f'{device_name} {channel}'
+                    if (device_name == 'RP1') and (channel == 'CH2'):
+                        label = 'L635P5 PD'
+                        pd_type = 'L635P5'
+                    elif (device_name == 'RP2') and (channel == 'CH1'):
+                        label = 'HL6748MG PD'
+                        pd_type = 'HL6748MG'
+                    elif (device_name == 'RP2') and (channel == 'CH2'):
+                        label = 'L515A1 PD'
+                        pd_type = 'L515A1'
                     else:
                         pd_type = None
-                
+
                 # Plot the raw data in the left column
-                self.axes[i, 0].plot(time_data, channel_values, color=colors[i % len(colors)], label='Actual Signal')
-                self.axes[i, 0].set_ylabel('Amplitude (V)', color=colors[i % len(colors)])
-                self.axes[i, 0].tick_params(axis='y', labelcolor=colors[i % len(colors)])
+                self.axes[i, 0].plot(
+                    time_data,
+                    channel_values,
+                    color=colors[i % len(colors)],
+                    label='Actual Signal',
+                )
+                self.axes[i, 0].set_ylabel(
+                    'Amplitude (V)', color=colors[i % len(colors)]
+                )
+                self.axes[i, 0].tick_params(
+                    axis='y', labelcolor=colors[i % len(colors)]
+                )
                 self.axes[i, 0].set_title(label)
-                
+
                 # Add simulated Michelson signal if this is a photodiode and we have displacement data
                 if pd_type in simulated_signals and disp_tf_data is not None:
                     # Scale the simulated signal to match the amplitude of the real signal
                     real_signal_amplitude = np.max(np.abs(channel_values))
-                    scaled_simulated_signal = simulated_signals[pd_type] * real_signal_amplitude
-                    
+                    scaled_simulated_signal = (
+                        simulated_signals[pd_type] * real_signal_amplitude
+                    )
+
                     # Use same color as real signal but with dashed line and alpha=0.5
-                    self.axes[i, 0].plot(time_data, scaled_simulated_signal, '--', color=colors[i % len(colors)], 
-                                        alpha=0.5, label='Simulated Michelson Signal')
+                    self.axes[i, 0].plot(
+                        time_data,
+                        scaled_simulated_signal,
+                        '--',
+                        color=colors[i % len(colors)],
+                        alpha=0.5,
+                        label='Simulated Michelson Signal',
+                    )
                     self.axes[i, 0].legend(loc='upper left', fontsize='small')
-                
+
                 # Add velocity twin axis for all plots in the first column
                 if vel_tf_data is not None and disp_derivative_data is not None:
                     ax_vel = self.axes[i, 0].twinx()
                     # Plot velocity from transfer function
-                    ax_vel.plot(time_data, vel_tf_data, 'k-', alpha=0.7, label='Velocity')
+                    ax_vel.plot(
+                        time_data, vel_tf_data, 'k-', alpha=0.7, label='Velocity'
+                    )
                     # Plot velocity from derivative of displacement
-                    ax_vel.plot(time_data, disp_derivative_data, 'k--', alpha=0.7, label='Derivative Displacement')
+                    ax_vel.plot(
+                        time_data,
+                        disp_derivative_data,
+                        'k--',
+                        alpha=0.7,
+                        label='Derivative Displacement',
+                    )
                     ax_vel.set_ylabel('Velocity (Microns/s)', color='black')
                     ax_vel.tick_params(axis='y', labelcolor='black')
                     ax_vel.legend(loc='upper right', fontsize='small')
-                    
+
                 # Plot displacement data in the middle column
                 if disp_tf_data is not None and vel_integrated_data is not None:
                     # Plot the raw voltage data on primary y-axis
-                    self.axes[i, 1].plot(time_data, channel_values, color=colors[i % len(colors)], label='Actual Signal')
-                    self.axes[i, 1].set_ylabel('Amplitude (V)', color=colors[i % len(colors)])
-                    self.axes[i, 1].tick_params(axis='y', labelcolor=colors[i % len(colors)])
-                    
+                    self.axes[i, 1].plot(
+                        time_data,
+                        channel_values,
+                        color=colors[i % len(colors)],
+                        label='Actual Signal',
+                    )
+                    self.axes[i, 1].set_ylabel(
+                        'Amplitude (V)', color=colors[i % len(colors)]
+                    )
+                    self.axes[i, 1].tick_params(
+                        axis='y', labelcolor=colors[i % len(colors)]
+                    )
+
                     # Add simulated Michelson signal if this is a photodiode
                     if pd_type in simulated_signals:
                         # Scale the simulated signal to match the amplitude of the real signal
                         real_signal_amplitude = np.max(np.abs(channel_values))
-                        scaled_simulated_signal = simulated_signals[pd_type] * real_signal_amplitude
-                        
+                        scaled_simulated_signal = (
+                            simulated_signals[pd_type] * real_signal_amplitude
+                        )
+
                         # Use same color as real signal but with dashed line and alpha=0.5
-                        self.axes[i, 1].plot(time_data, scaled_simulated_signal, '--', color=colors[i % len(colors)], 
-                                            alpha=0.5, label='Simulated Michelson Signal')
+                        self.axes[i, 1].plot(
+                            time_data,
+                            scaled_simulated_signal,
+                            '--',
+                            color=colors[i % len(colors)],
+                            alpha=0.5,
+                            label='Simulated Michelson Signal',
+                        )
                         self.axes[i, 1].legend(loc='upper left', fontsize='small')
-                    
+
                     # Create twin axis for displacement
                     ax_disp = self.axes[i, 1].twinx()
-                    
+
                     # Plot displacement from transfer function
                     ax_disp.plot(time_data, disp_tf_data, 'k-', label='Displacement')
-                    
+
                     # Plot integrated displacement on the same axis
-                    ax_disp.plot(time_data, vel_integrated_data, 'k--', label='Integrated Velocity')
-                    
+                    ax_disp.plot(
+                        time_data,
+                        vel_integrated_data,
+                        'k--',
+                        label='Integrated Velocity',
+                    )
+
                     # Add labels and legend
                     ax_disp.set_ylabel('Displacement (Microns)', color='black')
                     ax_disp.tick_params(axis='y', labelcolor='black')
                     ax_disp.legend(loc='upper right')
-                    
+
                     # Set title for displacement plot
-                    self.axes[i, 1].set_title(f"{label} Displacement")
+                    self.axes[i, 1].set_title(f'{label} Displacement')
                     self.axes[i, 1].grid(True, alpha=0.3)
-                    
+
                 # Plot the FFT in the right column
                 if freqs is not None and pos_idx is not None:
                     # Calculate FFT
                     channel_fft_complex = fft(channel_values, norm='ortho')
                     channel_fft_mag = np.abs(channel_fft_complex)
                     channel_fft_phase = np.angle(channel_fft_complex, deg=True)
-                    
+
                     # Create twin axis for phase
                     ax_phase = self.axes[i, 2].twinx()
-                    
+
                     # Plot magnitude on primary y-axis (log scale)
-                    self.axes[i, 2].semilogy(pos_freqs, channel_fft_mag[pos_idx], 
-                                           color=colors[i % len(colors)], label='Magnitude')
-                    self.axes[i, 2].set_ylabel('Magnitude (log)', color=colors[i % len(colors)])
-                    self.axes[i, 2].tick_params(axis='y', labelcolor=colors[i % len(colors)])
-                    
+                    self.axes[i, 2].semilogy(
+                        pos_freqs,
+                        channel_fft_mag[pos_idx],
+                        color=colors[i % len(colors)],
+                        label='Magnitude',
+                    )
+                    self.axes[i, 2].set_ylabel(
+                        'Magnitude (log)', color=colors[i % len(colors)]
+                    )
+                    self.axes[i, 2].tick_params(
+                        axis='y', labelcolor=colors[i % len(colors)]
+                    )
+
                     # Plot phase on secondary y-axis with alpha=0.3
-                    ax_phase.plot(pos_freqs, channel_fft_phase[pos_idx], 'r-', 
-                                label='Phase', alpha=0.3)
+                    ax_phase.plot(
+                        pos_freqs,
+                        channel_fft_phase[pos_idx],
+                        'r-',
+                        label='Phase',
+                        alpha=0.3,
+                    )
                     ax_phase.set_ylabel('Phase (°)', color='red')
                     ax_phase.tick_params(axis='y', labelcolor='red')
                     ax_phase.set_ylim(-180, 180)
-                    
+
                     # Set title for FFT plot
-                    self.axes[i, 2].set_title(f"{label} FFT")
-                    
+                    self.axes[i, 2].set_title(f'{label} FFT')
+
                     # Add grid to FFT plot
-                    self.axes[i, 2].grid(True, which="both", ls="-", alpha=0.5)
-        
+                    self.axes[i, 2].grid(True, which='both', ls='-', alpha=0.5)
+
         # Set common x-axis labels
         for i in range(len(self.axes)):
             # Only add x-axis label to bottom plots
@@ -870,21 +1004,20 @@ class RedPitayaManager:
                 self.axes[i, 0].set_xlabel('Time (s)')
                 self.axes[i, 1].set_xlabel('Time (s)')
                 self.axes[i, 2].set_xlabel('Frequency (Hz)')
-        
+
         plt.tight_layout()
         plt.draw()
         plt.pause(0.001)  # Small pause to update the plot
-    
+
     def show_plot(self, block=False):
-        """
-        Show the plot.
-        
+        """Show the plot.
+
         Args:
             block: Whether to block execution until the plot window is closed
         """
         if not self.plot_enabled or self.fig is None:
             return
-            
+
         try:
             plt.figure(self.fig.number)
             plt.draw()
@@ -893,26 +1026,26 @@ class RedPitayaManager:
             else:
                 plt.pause(0.01)  # Small pause to update plot
         except Exception as e:
-            print(f"Error in show_plot: {e}")
-            
+            print(f'Error in show_plot: {e}')
+
     def setup_histograms(self):
-        """
-        Set up the histogram and spectrum plots for signal visualization.
+        """Set up the histogram and spectrum plots for signal visualization.
         """
         if self.hist_fig is None:
             # Create figure with 4x3 subplots (histograms and spectra)
             self.hist_fig, self.hist_axes = plt.subplots(4, 3, figsize=(15, 12))
-            self.hist_fig.canvas.manager.set_window_title('Signal Histograms and Spectra')
+            self.hist_fig.canvas.manager.set_window_title(
+                'Signal Histograms and Spectra'
+            )
             # Add empty title to each subplot initially
             for ax in self.hist_axes.flatten():
                 ax.set_title('No data yet')
                 ax.grid(True, alpha=0.3)
             plt.tight_layout(pad=3.0)
-        
+
     def update_histograms(self, data, vel_tf_data=None, disp_tf_data=None):
-        """
-        Update histograms and spectra with new data and display accumulated results.
-        
+        """Update histograms and spectra with new data and display accumulated results.
+
         Args:
             data: Dictionary of channel data
             vel_tf_data: Velocity data from transfer function
@@ -920,299 +1053,361 @@ class RedPitayaManager:
         """
         if not self.plot_enabled or self.hist_fig is None:
             return
-            
+
         # Make sure we're working with the histogram figure
         plt.figure(self.hist_fig.number)
-        
+
         # Clear all axes
         for ax in self.hist_axes.flatten():
             ax.clear()
-            
+
         # Calculate sample rate from the first channel data
         sample_rate = None
-        if "acq_dec" in self.settings:
-            sample_rate = 125e6 / self.settings["acq_dec"]
-        
+        if 'acq_dec' in self.settings:
+            sample_rate = 125e6 / self.settings['acq_dec']
+
         # Accumulate data for histograms and spectra
         # Drive voltage (Speaker)
-        speaker_channel = f"{self.device_names[0]}_CH1"
+        speaker_channel = f'{self.device_names[0]}_CH1'
         if speaker_channel in data:
             speaker_data = data[speaker_channel]
             self.histogram_data['drive_voltage'].append(speaker_data)
-            
+
             # Calculate and accumulate spectrum
             if sample_rate is not None:
                 # Calculate FFT
                 speaker_fft_complex = fft(speaker_data, norm='ortho')
                 speaker_fft_mag = np.abs(speaker_fft_complex)
                 self.histogram_data['drive_voltage_spectrum'].append(speaker_fft_mag)
-            
+
         # Photodiode signals
         for channel_name, channel_data in data.items():
-            if "_CH" in channel_name and channel_name != speaker_channel:
+            if '_CH' in channel_name and channel_name != speaker_channel:
                 # Extract device name and channel
-                device_name, channel = channel_name.split("_")
-                
+                device_name, channel = channel_name.split('_')
+
                 # Determine photodiode type
                 pd_type = None
-                if (device_name == "RP1") and (channel == "CH2"):
-                    pd_type = "L635P5 PD"
-                elif (device_name == "RP2") and (channel == "CH1"):
-                    pd_type = "HL6748MG PD"
-                elif (device_name == "RP2") and (channel == "CH2"):
-                    pd_type = "L515A1 PD"
-                
+                if (device_name == 'RP1') and (channel == 'CH2'):
+                    pd_type = 'L635P5 PD'
+                elif (device_name == 'RP2') and (channel == 'CH1'):
+                    pd_type = 'HL6748MG PD'
+                elif (device_name == 'RP2') and (channel == 'CH2'):
+                    pd_type = 'L515A1 PD'
+
                 if pd_type:
                     # Accumulate time domain data
                     if pd_type not in self.histogram_data['photodiodes']:
                         self.histogram_data['photodiodes'][pd_type] = []
                     self.histogram_data['photodiodes'][pd_type].append(channel_data)
-                    
+
                     # Calculate and accumulate spectrum
                     if sample_rate is not None:
                         # Calculate FFT
                         pd_fft_complex = fft(channel_data, norm='ortho')
                         pd_fft_mag = np.abs(pd_fft_complex)
-                        
+
                         if pd_type not in self.histogram_data['photodiode_spectra']:
                             self.histogram_data['photodiode_spectra'][pd_type] = []
-                        self.histogram_data['photodiode_spectra'][pd_type].append(pd_fft_mag)
-        
+                        self.histogram_data['photodiode_spectra'][pd_type].append(
+                            pd_fft_mag
+                        )
+
         # Velocity and displacement data
         if vel_tf_data is not None:
             self.histogram_data['velocity'].append(vel_tf_data)
-            
+
             # Calculate and accumulate spectrum
             if sample_rate is not None:
                 # Calculate FFT
                 vel_fft_complex = fft(vel_tf_data, norm='ortho')
                 vel_fft_mag = np.abs(vel_fft_complex)
                 self.histogram_data['velocity_spectrum'].append(vel_fft_mag)
-        
+
         if disp_tf_data is not None:
             self.histogram_data['displacement'].append(disp_tf_data)
-            
+
             # Calculate and accumulate spectrum
             if sample_rate is not None:
                 # Calculate FFT
                 disp_fft_complex = fft(disp_tf_data, norm='ortho')
                 disp_fft_mag = np.abs(disp_fft_complex)
                 self.histogram_data['displacement_spectrum'].append(disp_fft_mag)
-        
+
         # Calculate FFT frequencies
         freqs = None
         pos_idx = None
         pos_freqs = None
         if sample_rate is not None and speaker_channel in data:
             n = len(data[speaker_channel])
-            freqs = np.fft.fftfreq(n, 1/sample_rate)
+            freqs = np.fft.fftfreq(n, 1 / sample_rate)
             # Only plot positive frequencies
             pos_idx = np.where(freqs > 0)
             pos_freqs = freqs[pos_idx]
-        
+
         # Plot histograms and spectra
         # First row: Drive voltage, velocity, displacement histograms
         # Second row: Drive voltage, velocity, displacement spectra
         # Third row: PD signal histograms
         # Fourth row: PD signal spectra
-        
+
         # Row 1: Histograms for drive voltage, velocity, displacement
         # Drive voltage histogram
         if self.histogram_data['drive_voltage']:
             drive_data = np.concatenate(self.histogram_data['drive_voltage'])
-            
+
             # Calculate histogram
             hist, bin_edges = np.histogram(drive_data, bins=100)
             bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
             self.hist_axes[0, 0].hist(drive_data, bins=100, color='blue', alpha=0.7)
-            
+
             # Calculate Gaussian overlay if spectrum data is available
-            if self.histogram_data['drive_voltage_spectrum'] and sample_rate is not None:
+            if (
+                self.histogram_data['drive_voltage_spectrum']
+                and sample_rate is not None
+            ):
                 drive_spectra = np.array(self.histogram_data['drive_voltage_spectrum'])
                 avg_drive_spectrum = np.mean(drive_spectra, axis=0)
-                
+
                 # Calculate time step and total time
                 if speaker_channel in data:
                     n = len(data[speaker_channel])
                     dt = 1 / sample_rate
                     total_time = n * dt
                     df = 1 / total_time
-                    
+
                     # Compute variance using the spectrum
-                    drive_variance = np.sum(np.abs(avg_drive_spectrum)**2) * n * dt**2 / total_time * df
-                    
+                    drive_variance = (
+                        np.sum(np.abs(avg_drive_spectrum) ** 2)
+                        * n
+                        * dt**2
+                        / total_time
+                        * df
+                    )
+
                     # Create Gaussian curve
                     mean = np.mean(drive_data)
                     mean = 0
                     std_dev = np.sqrt(drive_variance)
-                    gaussian = np.max(hist) * np.exp(-0.5 * ((bin_centers - mean) / std_dev)**2)
-                    
+                    gaussian = np.max(hist) * np.exp(
+                        -0.5 * ((bin_centers - mean) / std_dev) ** 2
+                    )
+
                     # Plot Gaussian overlay
-                    self.hist_axes[0, 0].plot(bin_centers, gaussian, 'r-', linewidth=2, 
-                                            label=f'Gaussian (σ={std_dev:.4f})')
+                    self.hist_axes[0, 0].plot(
+                        bin_centers,
+                        gaussian,
+                        'r-',
+                        linewidth=2,
+                        label=f'Gaussian (σ={std_dev:.4f})',
+                    )
                     self.hist_axes[0, 0].legend(loc='upper right')
-            
+
             self.hist_axes[0, 0].set_title('Speaker Drive Voltage')
             self.hist_axes[0, 0].set_xlabel('Amplitude (V)')
             self.hist_axes[0, 0].set_ylabel('Count')
             self.hist_axes[0, 0].grid(True, alpha=0.3)
-        
+
         # Velocity histogram
         if self.histogram_data['velocity']:
             vel_data = np.concatenate(self.histogram_data['velocity'])
-            
+
             # Calculate histogram
             hist, bin_edges = np.histogram(vel_data, bins=100)
             bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
             self.hist_axes[0, 1].hist(vel_data, bins=100, color='orange', alpha=0.7)
-            
+
             # Calculate Gaussian overlay if spectrum data is available
             if self.histogram_data['velocity_spectrum'] and sample_rate is not None:
                 vel_spectra = np.array(self.histogram_data['velocity_spectrum'])
                 avg_vel_spectrum = np.mean(vel_spectra, axis=0)
-                
+
                 # Calculate time step and total time
                 if speaker_channel in data:
                     n = len(data[speaker_channel])
                     dt = 1 / sample_rate
                     total_time = n * dt
                     df = 1 / total_time
-                    
+
                     # Compute variance using the spectrum
-                    vel_variance = np.sum(np.abs(avg_vel_spectrum)**2) * n * dt**2 / total_time * df
-                    
+                    vel_variance = (
+                        np.sum(np.abs(avg_vel_spectrum) ** 2)
+                        * n
+                        * dt**2
+                        / total_time
+                        * df
+                    )
+
                     # Create Gaussian curve
                     mean = np.mean(vel_data)
                     mean = 0
                     std_dev = np.sqrt(vel_variance)
-                    gaussian = np.max(hist) * np.exp(-0.5 * ((bin_centers - mean) / std_dev)**2)
-                    
+                    gaussian = np.max(hist) * np.exp(
+                        -0.5 * ((bin_centers - mean) / std_dev) ** 2
+                    )
+
                     # Plot Gaussian overlay
-                    self.hist_axes[0, 1].plot(bin_centers, gaussian, 'r-', linewidth=2, 
-                                            label=f'Gaussian (σ={std_dev:.4f})')
+                    self.hist_axes[0, 1].plot(
+                        bin_centers,
+                        gaussian,
+                        'r-',
+                        linewidth=2,
+                        label=f'Gaussian (σ={std_dev:.4f})',
+                    )
                     self.hist_axes[0, 1].legend(loc='upper right')
-            
+
             self.hist_axes[0, 1].set_title('Velocity')
             self.hist_axes[0, 1].set_xlabel('Velocity (Microns/s)')
             self.hist_axes[0, 1].set_ylabel('Count')
             self.hist_axes[0, 1].grid(True, alpha=0.3)
-        
+
         # Displacement histogram
         if self.histogram_data['displacement']:
             disp_data = np.concatenate(self.histogram_data['displacement'])
-            
+
             # Calculate histogram
             hist, bin_edges = np.histogram(disp_data, bins=100)
             bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
             self.hist_axes[0, 2].hist(disp_data, bins=100, color='cyan', alpha=0.7)
-            
+
             # Calculate Gaussian overlay if spectrum data is available
             if self.histogram_data['displacement_spectrum'] and sample_rate is not None:
                 disp_spectra = np.array(self.histogram_data['displacement_spectrum'])
                 avg_disp_spectrum = np.mean(disp_spectra, axis=0)
-                
+
                 # Calculate time step and total time
                 if speaker_channel in data:
                     n = len(data[speaker_channel])
                     dt = 1 / sample_rate
                     total_time = n * dt
                     df = 1 / total_time
-                    
+
                     # Compute variance using the spectrum
-                    disp_variance = np.sum(np.abs(avg_disp_spectrum)**2) * n * dt**2 / total_time * df
-                    
+                    disp_variance = (
+                        np.sum(np.abs(avg_disp_spectrum) ** 2)
+                        * n
+                        * dt**2
+                        / total_time
+                        * df
+                    )
+
                     # Create Gaussian curve
                     mean = np.mean(disp_data)
                     mean = 0
                     std_dev = np.sqrt(disp_variance)
-                    gaussian = np.max(hist) * np.exp(-0.5 * ((bin_centers - mean) / std_dev)**2)
-                    
+                    gaussian = np.max(hist) * np.exp(
+                        -0.5 * ((bin_centers - mean) / std_dev) ** 2
+                    )
+
                     # Plot Gaussian overlay
-                    self.hist_axes[0, 2].plot(bin_centers, gaussian, 'r-', linewidth=2, 
-                                            label=f'Gaussian (σ={std_dev:.4f})')
+                    self.hist_axes[0, 2].plot(
+                        bin_centers,
+                        gaussian,
+                        'r-',
+                        linewidth=2,
+                        label=f'Gaussian (σ={std_dev:.4f})',
+                    )
                     self.hist_axes[0, 2].legend(loc='upper right')
-            
+
             self.hist_axes[0, 2].set_title('Displacement')
             self.hist_axes[0, 2].set_xlabel('Displacement (Microns)')
             self.hist_axes[0, 2].set_ylabel('Count')
             self.hist_axes[0, 2].grid(True, alpha=0.3)
-        
+
         # Row 2: Spectra for drive voltage, velocity, displacement
         if pos_freqs is not None:
             # Drive voltage spectrum
             if self.histogram_data['drive_voltage_spectrum']:
                 drive_spectra = np.array(self.histogram_data['drive_voltage_spectrum'])
                 avg_drive_spectrum = np.mean(drive_spectra, axis=0)
-                self.hist_axes[1, 0].semilogy(pos_freqs, avg_drive_spectrum[pos_idx], color='blue')
+                self.hist_axes[1, 0].semilogy(
+                    pos_freqs, avg_drive_spectrum[pos_idx], color='blue'
+                )
                 self.hist_axes[1, 0].set_title('Speaker Drive Voltage Spectrum')
                 self.hist_axes[1, 0].set_xlabel('Frequency (Hz)')
                 self.hist_axes[1, 0].set_ylabel('Magnitude')
-                self.hist_axes[1, 0].grid(True, which="both", ls="-", alpha=0.5)
-                self.hist_axes[1, 0].set_xlim(0, 2*self.settings["end_freq"])
-            
+                self.hist_axes[1, 0].grid(True, which='both', ls='-', alpha=0.5)
+                self.hist_axes[1, 0].set_xlim(0, 2 * self.settings['end_freq'])
+
             # Velocity spectrum
             if self.histogram_data['velocity_spectrum']:
                 vel_spectra = np.array(self.histogram_data['velocity_spectrum'])
                 avg_vel_spectrum = np.mean(vel_spectra, axis=0)
-                self.hist_axes[1, 1].semilogy(pos_freqs, avg_vel_spectrum[pos_idx], color='orange')
+                self.hist_axes[1, 1].semilogy(
+                    pos_freqs, avg_vel_spectrum[pos_idx], color='orange'
+                )
                 self.hist_axes[1, 1].set_title('Velocity Spectrum')
                 self.hist_axes[1, 1].set_xlabel('Frequency (Hz)')
                 self.hist_axes[1, 1].set_ylabel('Magnitude')
-                self.hist_axes[1, 1].grid(True, which="both", ls="-", alpha=0.5)
-                self.hist_axes[1, 1].set_xlim(0, 2*self.settings["end_freq"])
-            
+                self.hist_axes[1, 1].grid(True, which='both', ls='-', alpha=0.5)
+                self.hist_axes[1, 1].set_xlim(0, 2 * self.settings['end_freq'])
+
             # Displacement spectrum
             if self.histogram_data['displacement_spectrum']:
                 disp_spectra = np.array(self.histogram_data['displacement_spectrum'])
                 avg_disp_spectrum = np.mean(disp_spectra, axis=0)
-                self.hist_axes[1, 2].semilogy(pos_freqs, avg_disp_spectrum[pos_idx], color='cyan')
+                self.hist_axes[1, 2].semilogy(
+                    pos_freqs, avg_disp_spectrum[pos_idx], color='cyan'
+                )
                 self.hist_axes[1, 2].set_title('Displacement Spectrum')
                 self.hist_axes[1, 2].set_xlabel('Frequency (Hz)')
                 self.hist_axes[1, 2].set_ylabel('Magnitude')
-                self.hist_axes[1, 2].grid(True, which="both", ls="-", alpha=0.5)
-                self.hist_axes[1, 2].set_xlim(0, 2*self.settings["end_freq"])
-        
+                self.hist_axes[1, 2].grid(True, which='both', ls='-', alpha=0.5)
+                self.hist_axes[1, 2].set_xlim(0, 2 * self.settings['end_freq'])
+
         # Row 3: Photodiode histograms
         pd_positions = [(2, 0), (2, 1), (2, 2)]
-        for i, (pd_type, pd_data_list) in enumerate(self.histogram_data['photodiodes'].items()):
+        for i, (pd_type, pd_data_list) in enumerate(
+            self.histogram_data['photodiodes'].items()
+        ):
             if i < len(pd_positions) and pd_data_list:
                 row, col = pd_positions[i]
                 pd_data = np.concatenate(pd_data_list)
-                self.hist_axes[row, col].hist(pd_data, bins=100, color=['red', 'green', 'purple'][i % 3], alpha=0.7)
+                self.hist_axes[row, col].hist(
+                    pd_data,
+                    bins=100,
+                    color=['red', 'green', 'purple'][i % 3],
+                    alpha=0.7,
+                )
                 self.hist_axes[row, col].set_title(f'{pd_type} Signal')
                 self.hist_axes[row, col].set_xlabel('Amplitude (V)')
                 self.hist_axes[row, col].set_ylabel('Count')
                 self.hist_axes[row, col].grid(True, alpha=0.3)
-        
+
         # Row 4: Photodiode spectra
         if pos_freqs is not None:
             pd_spectrum_positions = [(3, 0), (3, 1), (3, 2)]
-            for i, (pd_type, pd_spectra_list) in enumerate(self.histogram_data['photodiode_spectra'].items()):
+            for i, (pd_type, pd_spectra_list) in enumerate(
+                self.histogram_data['photodiode_spectra'].items()
+            ):
                 if i < len(pd_spectrum_positions) and pd_spectra_list:
                     row, col = pd_spectrum_positions[i]
                     pd_spectra = np.array(pd_spectra_list)
                     avg_pd_spectrum = np.mean(pd_spectra, axis=0)
-                    self.hist_axes[row, col].semilogy(pos_freqs, avg_pd_spectrum[pos_idx], color=['red', 'green', 'purple'][i % 3])
+                    self.hist_axes[row, col].semilogy(
+                        pos_freqs,
+                        avg_pd_spectrum[pos_idx],
+                        color=['red', 'green', 'purple'][i % 3],
+                    )
                     self.hist_axes[row, col].set_title(f'{pd_type} Spectrum')
                     self.hist_axes[row, col].set_xlabel('Frequency (Hz)')
                     self.hist_axes[row, col].set_ylabel('Magnitude')
-                    self.hist_axes[row, col].grid(True, which="both", ls="-", alpha=0.5)
-        
+                    self.hist_axes[row, col].grid(True, which='both', ls='-', alpha=0.5)
+
         # Update the figure
         plt.figure(self.hist_fig.number)
         plt.tight_layout()
         # Don't call plt.draw() or plt.pause() here - we'll do that in the calling function
-        
+
     def show_histograms(self, block=False):
-        """
-        Show the histograms plot.
-        
+        """Show the histograms plot.
+
         Args:
             block: Whether to block execution until the plot window is closed
         """
         if self.hist_fig is None:
             return
-            
+
         try:
             plt.figure(self.hist_fig.number)
             plt.draw()
@@ -1221,20 +1416,19 @@ class RedPitayaManager:
             else:
                 plt.pause(0.1)  # Increase pause time to ensure plot updates
         except Exception as e:
-            print(f"Error in show_histograms: {e}")
-    
+            print(f'Error in show_histograms: {e}')
 
-        
-    def run_one_shot(self,
-                    device_idx: int = 0,
-                    store_data: bool = True,
-                    plot_data: bool = False,
-                    filename: str = None,
-                    block_plot: bool = True,
-                    timeout: int = 5) -> Dict[str, np.ndarray]:
-        """
-        Run a single acquisition cycle.
-        
+    def run_one_shot(
+        self,
+        device_idx: int = 0,
+        store_data: bool = True,
+        plot_data: bool = False,
+        filename: str = None,
+        block_plot: bool = True,
+        timeout: int = 5,
+    ) -> dict[str, np.ndarray]:
+        """Run a single acquisition cycle.
+
         Args:
             device_idx: Index of the device to use as primary
             store_data: Whether to store data
@@ -1242,35 +1436,35 @@ class RedPitayaManager:
             filename: Filename to save data to
             block_plot: Whether to block on plot display
             timeout: Timeout in seconds for waiting for triggers
-            
+
         Returns:
             Dictionary of acquired data
         """
         # Configure all devices
-        print(f"Configuring {len(self.devices)} device(s)...")
-        
+        print(f'Configuring {len(self.devices)} device(s)...')
+
         # Configure generation on the primary device
         self.configure_generation(device_idx=device_idx)
 
         # Configure acquisition on all devices
         self.configure_acquisition()
-        
+
         # Start acquisition on all devices
         self.start_acquisition(device_idx=device_idx, timeout=timeout)
-        
+
         # Enable output on the primary device
         self.enable_output(device_idx=device_idx)
-        
+
         # Trigger generation on the primary device
         self.trigger_generation(device_idx=device_idx)
-        
-        print("ACQ start")
-        
+
+        print('ACQ start')
+
         # Get the data
         data = self.get_acquisition_data(timeout=timeout)
-        
+
         # Process velocity and displacement data from Channel 1 of RP1 (speaker drive voltage)
-        speaker_data = data.get(f"{self.device_names[device_idx]}_CH1")
+        speaker_data = data.get(f'{self.device_names[device_idx]}_CH1')
         vel_tf_data = None
         vel_derivative_data = None
         vel_fft = None
@@ -1278,41 +1472,61 @@ class RedPitayaManager:
         disp_integrated_data = None
         disp_fft = None
         freqs = None
-        
+
         if speaker_data is not None:
             try:
                 # Process velocity data (returns velocity from transfer function, velocity from derivative, spectrum, freqs)
-                vel_tf_data, vel_derivative_data, vel_fft, freqs = self.get_velocity_data(speaker_data)
-                
+                vel_tf_data, vel_derivative_data, vel_fft, freqs = (
+                    self.get_velocity_data(speaker_data)
+                )
+
                 # Process displacement data (returns displacement from transfer function, integrated displacement, spectrum, freqs)
-                disp_tf_data, disp_integrated_data, disp_fft, _ = self.get_displacement_data(speaker_data)
-                
+                disp_tf_data, disp_integrated_data, disp_fft, _ = (
+                    self.get_displacement_data(speaker_data)
+                )
+
                 # Add data to the data dictionary
-                data["Velocity_TF"] = vel_tf_data  # Velocity from transfer function
-                data["Velocity_Derivative"] = vel_derivative_data  # Velocity from derivative of displacement
-                data["Velocity_FFT"] = vel_fft  # Velocity spectrum
-                data["Displacement_TF"] = disp_tf_data  # Displacement from transfer function
-                data["Displacement_Integrated"] = disp_integrated_data  # Displacement from integrated velocity
-                data["Displacement_FFT"] = disp_fft  # Displacement spectrum
-                data["Frequencies"] = freqs  # Frequency array
+                data['Velocity_TF'] = vel_tf_data  # Velocity from transfer function
+                data['Velocity_Derivative'] = (
+                    vel_derivative_data  # Velocity from derivative of displacement
+                )
+                data['Velocity_FFT'] = vel_fft  # Velocity spectrum
+                data['Displacement_TF'] = (
+                    disp_tf_data  # Displacement from transfer function
+                )
+                data['Displacement_Integrated'] = (
+                    disp_integrated_data  # Displacement from integrated velocity
+                )
+                data['Displacement_FFT'] = disp_fft  # Displacement spectrum
+                data['Frequencies'] = freqs  # Frequency array
             except Exception as e:
-                print(f"Error processing data: {e}")
+                print(f'Error processing data: {e}')
         else:
-            print(f"Warning: No speaker data found for {self.device_names[device_idx]}_CH1")
-        
+            print(
+                f'Warning: No speaker data found for {self.device_names[device_idx]}_CH1'
+            )
+
         # Store data if requested
         if store_data:
             self.save_data(data, filename)
-            
+
         # Plot data if requested
         if plot_data:
             try:
                 # Update the main plot first
-                self.update_plot(data, vel_tf_data, vel_derivative_data, vel_fft, disp_tf_data, disp_integrated_data, freqs)
-                
+                self.update_plot(
+                    data,
+                    vel_tf_data,
+                    vel_derivative_data,
+                    vel_fft,
+                    disp_tf_data,
+                    disp_integrated_data,
+                    freqs,
+                )
+
                 # Update histograms
                 self.update_histograms(data, vel_tf_data, disp_tf_data)
-                
+
                 # Handle the blocking behavior for the last plot only
                 if block_plot:
                     plt.show(block=True)
@@ -1326,21 +1540,22 @@ class RedPitayaManager:
                         plt.draw()
                     plt.pause(0.01)  # Small pause to update both plots
             except Exception as e:
-                print(f"Error updating plots: {e}")
-        
+                print(f'Error updating plots: {e}')
+
         return data
-    
-    def run_multiple_shots(self, 
-                          num_shots: int,
-                          device_idx: int = 0,
-                          delay_between_shots: float = 0.5,
-                          store_data: bool = True,
-                          plot_data: bool = False,
-                          filename_prefix: str = None,
-                          keep_final_plot: bool = True) -> List[Dict[str, np.ndarray]]:
-        """
-        Run multiple acquisition cycles.
-        
+
+    def run_multiple_shots(
+        self,
+        num_shots: int,
+        device_idx: int = 0,
+        delay_between_shots: float = 0.5,
+        store_data: bool = True,
+        plot_data: bool = False,
+        filename_prefix: str = None,
+        keep_final_plot: bool = True,
+    ) -> list[dict[str, np.ndarray]]:
+        """Run multiple acquisition cycles.
+
         Args:
             num_shots: Number of shots to run
             device_idx: Index of the device to use as primary
@@ -1349,49 +1564,51 @@ class RedPitayaManager:
             plot_data: Whether to plot data
             filename_prefix: Prefix for filenames
             keep_final_plot: Whether to keep the final plot open for examination
-            
+
         Returns:
             List of dictionaries of acquired data
         """
-        print(f"Starting {num_shots} acquisition cycles")
+        print(f'Starting {num_shots} acquisition cycles')
         start_time = datetime.now()
-        print(f"Start time: {start_time.strftime('%H:%M:%S.%f')}")
-        
+        print(f'Start time: {start_time.strftime("%H:%M:%S.%f")}')
+
         all_data = []
-        
+
         # Set up both plots once if plotting is enabled
         if plot_data:
             plt.ion()  # Turn on interactive mode first
-            
+
             # Set up main plot
             self.setup_plot()
             if self.fig is not None:
                 plt.figure(self.fig.number)
                 plt.draw()
                 plt.pause(0.01)
-            
+
             # Set up histogram plot
             self.setup_histograms()
             if self.hist_fig is not None:
                 plt.figure(self.hist_fig.number)
                 plt.draw()
                 plt.pause(0.01)
-        
+
         try:
             for i in range(num_shots):
-                print(f"Shot {i}/{num_shots} at {datetime.now().strftime('%H:%M:%S.%f')}")
-                
+                print(
+                    f'Shot {i}/{num_shots} at {datetime.now().strftime("%H:%M:%S.%f")}'
+                )
+
                 # Generate filename if storing data
                 filename = None
                 if store_data and filename_prefix:
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    filename = f"{filename_prefix}_{timestamp}_{i}.npz"
-                
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    filename = f'{filename_prefix}_{timestamp}_{i}.npz'
+
                 try:
                     # For the last shot, set block_plot based on keep_final_plot
-                    is_last_shot = (i == num_shots - 1)
+                    is_last_shot = i == num_shots - 1
                     should_block = is_last_shot and keep_final_plot
-                    
+
                     # Run one shot
                     shot_data = self.run_one_shot(
                         device_idx=device_idx,
@@ -1399,27 +1616,27 @@ class RedPitayaManager:
                         plot_data=plot_data,
                         filename=filename,
                         block_plot=should_block,  # Block on the last plot if requested
-                        timeout=5
+                        timeout=5,
                     )
-                    
+
                     all_data.append(shot_data)
-                    
+
                     # Wait between shots
                     if i < num_shots - 1:  # Don't wait after the last shot
                         time.sleep(delay_between_shots)
-                        
+
                 except Exception as e:
-                    print(f"Error in shot {i}: {e}")
+                    print(f'Error in shot {i}: {e}')
                     # Continue with next shot instead of stopping
                     continue
-        
+
         except KeyboardInterrupt:
-            print("Acquisition interrupted by user")
-        
+            print('Acquisition interrupted by user')
+
         finally:
             # Make sure to reset devices
             self.reset_all()
-            
+
             # Turn off interactive mode if it was enabled
             if plot_data and not keep_final_plot:
                 try:
@@ -1437,21 +1654,26 @@ class RedPitayaManager:
                             'drive_voltage': [],
                             'photodiodes': {},
                             'displacement': [],
-                            'velocity': []
+                            'velocity': [],
                         }
                 except Exception as e:
-                    print(f"Error cleaning up plots: {e}")
-            
+                    print(f'Error cleaning up plots: {e}')
+
             end_time = datetime.now()
-            print(f"Completed {len(all_data)} acquisition cycles")
-            print(f"End time: {end_time.strftime('%H:%M:%S.%f')}")
-            
+            print(f'Completed {len(all_data)} acquisition cycles')
+            print(f'End time: {end_time.strftime("%H:%M:%S.%f")}')
+
             return all_data
-    
-    def blink_led(self, device_idx: int = 0, led_num: int = 0, num_blinks: int = 3, period: float = 1.0):
-        """
-        Blink an LED on the Red Pitaya device for connectivity troubleshooting.
-        
+
+    def blink_led(
+        self,
+        device_idx: int = 0,
+        led_num: int = 0,
+        num_blinks: int = 3,
+        period: float = 1.0,
+    ):
+        """Blink an LED on the Red Pitaya device for connectivity troubleshooting.
+
         Args:
             device_idx: Index of the device to blink LED on
             led_num: LED number to blink (0-7)
@@ -1459,42 +1681,45 @@ class RedPitayaManager:
             period: Period of each blink in seconds
         """
         if len(self.devices) <= device_idx:
-            print(f"No device at index {device_idx}")
+            print(f'No device at index {device_idx}')
             return
-            
+
         device = self.devices[device_idx]
         device_name = self.device_names[device_idx]
-        
-        print(f"Blinking LED[{led_num}] on {device_name} {num_blinks} times")
-        
+
+        print(f'Blinking LED[{led_num}] on {device_name} {num_blinks} times')
+
         try:
             for i in range(num_blinks):
                 # Turn LED on
                 device.tx_txt(f'DIG:PIN LED{led_num},1')
-                time.sleep(period/2.0)
-                
+                time.sleep(period / 2.0)
+
                 # Turn LED off
                 device.tx_txt(f'DIG:PIN LED{led_num},0')
-                time.sleep(period/2.0)
-                
-            print(f"Finished blinking LED on {device_name}")
+                time.sleep(period / 2.0)
+
+            print(f'Finished blinking LED on {device_name}')
         except Exception as e:
-            print(f"Error blinking LED on {device_name}: {e}")
+            print(f'Error blinking LED on {device_name}: {e}')
+
 
 # Example usage
-if __name__ == "__main__":
+if __name__ == '__main__':
     # # Connect to a single Red Pitaya device
     # rp_manager = RedPitayaManager("rp-f0c04a.local")
-    
+
     # # Run a single acquisition
     # rp_manager.run_one_shot(
     #     store_data=False,
     #     plot_data=True
     # )
-    
+
     # Connect to multiple Red Pitaya devices
-    rp_manager = RedPitayaManager(["rp-f0c04a.local", "rp-f0c026.local"], blink_on_connect=True)
-    
+    rp_manager = RedPitayaManager(
+        ['rp-f0c04a.local', 'rp-f0c026.local'], blink_on_connect=True
+    )
+
     # Configure daisy chain
     rp_manager.configure_daisy_chain()
 
@@ -1504,5 +1729,5 @@ if __name__ == "__main__":
         delay_between_shots=1.0,
         store_data=False,
         plot_data=True,
-        keep_final_plot=True  # Keep the final plot open
+        keep_final_plot=True,  # Keep the final plot open
     )

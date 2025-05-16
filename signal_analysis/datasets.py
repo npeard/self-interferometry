@@ -1,14 +1,16 @@
 #!/usr/bin/env python
 
-from typing import Optional, Tuple, Dict, Any, Callable
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
+
+import h5py
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
-import h5py
-from tqdm import tqdm
-from pathlib import Path
-import matplotlib.pyplot as plt
 from fluo.speckle1d import Fluorescence1D
+from torch.utils.data import DataLoader, Dataset
+from tqdm import tqdm
 
 
 class H5Dataset(Dataset):
@@ -26,11 +28,11 @@ class H5Dataset(Dataset):
     def __init__(
         self,
         file_path: str,
-        input_key: str = "inputs",
-        target_key: str = "targets",
-        transform: Optional[Callable] = None,
-        target_transform: Optional[Callable] = None,
-        cache_size: int = 0
+        input_key: str = 'inputs',
+        target_key: str = 'targets',
+        transform: Callable | None = None,
+        target_transform: Callable | None = None,
+        cache_size: int = 0,
     ):
         self.file_path = file_path
         self.input_key = input_key
@@ -75,7 +77,7 @@ class H5Dataset(Dataset):
     def __len__(self):
         return self.length
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         """Get a single item from the dataset."""
         # Check cache first
         if idx in self._cache:
@@ -100,7 +102,7 @@ class H5Dataset(Dataset):
 
         return torch.FloatTensor(inputs), torch.FloatTensor(targets)
 
-    def _add_to_cache(self, key: int, value: Tuple[np.ndarray, np.ndarray]) -> None:
+    def _add_to_cache(self, key: int, value: tuple[np.ndarray, np.ndarray]) -> None:
         """Add an item to the cache, maintaining cache size limit."""
         if self.cache_size == 0:
             return
@@ -121,8 +123,8 @@ def create_data_loaders(
     test_path: str,
     batch_size: int,
     num_workers: int = 4,
-    **dataset_kwargs: Dict[str, Any],
-) -> Tuple[DataLoader, DataLoader, DataLoader]:
+    **dataset_kwargs: dict[str, Any],
+) -> tuple[DataLoader, DataLoader, DataLoader]:
     """Create DataLoaders for training, validation, and testing.
 
     Args:
@@ -176,10 +178,7 @@ def create_data_loaders(
 
 
 def generate_pretraining_data(
-    file_path: str,
-    num_pix: int,
-    num_samples: int,
-    chunk_size: Optional[int] = None
+    file_path: str, num_pix: int, num_samples: int, chunk_size: int | None = None
 ) -> None:
     """Generate pretraining data and save to HDF5 file.
 
@@ -208,7 +207,7 @@ def generate_pretraining_data(
             dtype='float32',
             chunks=(chunk_size, Phi_dim, Phi_dim),
             compression='gzip',
-            compression_opts=4
+            compression_opts=4,
         )
 
         # Only storing one quadrant of phase intentionally, redundancy by antisymmetry
@@ -218,13 +217,13 @@ def generate_pretraining_data(
             dtype='float32',
             chunks=(chunk_size, num_pix),
             compression='gzip',
-            compression_opts=4
+            compression_opts=4,
         )
 
         # Generate data
         # TODO: make a test case that compares the output dims of this block
         # to the output dims of plot_cosPhi (the from_data method therein)
-        print(f"\nGenerating {num_samples} samples...")
+        print(f'\nGenerating {num_samples} samples...')
         for i in tqdm(range(num_samples)):
             # Generate random phase, out to 2*num_pix - 1 where num_pix is the
             # number of pixels in the detector. We expect the triple correlation to
@@ -248,7 +247,7 @@ def create_train_val_test_datasets(
     train_samples: int = int(1e6),
     val_samples: int = int(1e4),
     test_samples: int = int(1e4),
-    **kwargs
+    **kwargs,
 ) -> None:
     """Create train, validation and test datasets for pretraining.
 
@@ -267,39 +266,39 @@ def create_train_val_test_datasets(
     for file in dataset_files:
         file_path = output_dir / file
         if file_path.exists():
-            print(f"Removing existing dataset file: {file}")
+            print(f'Removing existing dataset file: {file}')
             file_path.unlink()
 
-    print("Generating training dataset...")
+    print('Generating training dataset...')
     generate_pretraining_data(
         file_path=str(output_dir / 'train.h5'),
         num_pix=num_pix,
         num_samples=train_samples,
-        **kwargs
+        **kwargs,
     )
 
-    print("\nGenerating validation dataset...")
+    print('\nGenerating validation dataset...')
     generate_pretraining_data(
         file_path=str(output_dir / 'val.h5'),
         num_pix=num_pix,
         num_samples=val_samples,
-        **kwargs
+        **kwargs,
     )
 
-    print("\nGenerating test dataset...")
+    print('\nGenerating test dataset...')
     generate_pretraining_data(
         file_path=str(output_dir / 'test.h5'),
         num_pix=num_pix,
         num_samples=test_samples,
-        **kwargs
+        **kwargs,
     )
 
 
 def visualize_pretraining_dataset(
     file_path: str,
     num_samples: int = 4,
-    random_seed: Optional[int] = None,
-    save_path: Optional[str] = None
+    random_seed: int | None = None,
+    save_path: str | None = None,
 ) -> None:
     """Visualize random samples from a pretraining dataset.
 
@@ -326,25 +325,27 @@ def visualize_pretraining_dataset(
         metadata = dict(f.attrs)
 
         # Create figure with 2 rows (Phi and phase) and num_samples columns
-        fig, axes = plt.subplots(2, num_samples, figsize=(4*num_samples, 8))
+        fig, axes = plt.subplots(2, num_samples, figsize=(4 * num_samples, 8))
 
         # Plot samples
         for i in range(num_samples):
             # Plot Phi matrix
             im_phi = axes[0, i].imshow(Phi_samples[i], cmap='viridis')
-            axes[0, i].set_title(f'Phi Matrix {i+1}')
+            axes[0, i].set_title(f'Phi Matrix {i + 1}')
             axes[0, i].axis('off')
             plt.colorbar(im_phi, ax=axes[0, i])
 
             # Plot phase
             im_phase = axes[1, i].plot(phase_samples[i])
-            axes[1, i].set_title(f'Phase {i+1}')
+            axes[1, i].set_title(f'Phase {i + 1}')
             axes[1, i].set_ylim(-np.pi, np.pi)
             axes[1, i].grid(True)
 
         # Add overall title
-        plt.suptitle(f"Samples from {Path(file_path).name}\n" +
-                    f"Total Samples: {total_samples}, Pixels: {metadata['num_pix']}")
+        plt.suptitle(
+            f'Samples from {Path(file_path).name}\n'
+            + f'Total Samples: {total_samples}, Pixels: {metadata["num_pix"]}'
+        )
 
         plt.tight_layout()
 
@@ -376,13 +377,13 @@ def inspect_pretraining_dataset(file_path: str) -> dict:
                 'min': float(Phi.min()),
                 'max': float(Phi.max()),
                 'mean': float(Phi.mean()),
-                'std': float(Phi.std())
+                'std': float(Phi.std()),
             },
             'phase_stats': {
                 'min': float(phase.min()),
                 'max': float(phase.max()),
                 'mean': float(phase.mean()),
-                'std': float(phase.std())
-            }
+                'std': float(phase.std()),
+            },
         }
     return stats

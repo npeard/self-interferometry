@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 
-from torch import nn
-import torch
 from dataclasses import dataclass
 
+from torch import nn
+
 act_fn_by_name = {'LeakyReLU': nn.LeakyReLU(), 'ReLU': nn.ReLU()}
+
 
 @dataclass
 class CNNConfig:
@@ -13,11 +14,12 @@ class CNNConfig:
     activation: str = 'LeakyReLU'
     in_channels: int = 1
 
+
 class CNN(nn.Module):
     def __init__(self, config: CNNConfig):
         super(CNN, self).__init__()
         self.in_channels = config.in_channels
-        print("self.in_channels = ", self.in_channels)
+        print('self.in_channels = ', self.in_channels)
         self.conv_layers = nn.Sequential(
             nn.Conv1d(self.in_channels, 16, kernel_size=7),
             # Lout = 250, given L = 256
@@ -38,14 +40,14 @@ class CNN(nn.Module):
             nn.Conv1d(64, 64, kernel_size=7),
             # Lout = 20, given L = 26
             act_fn_by_name[config.activation],
-            nn.MaxPool1d(2)
+            nn.MaxPool1d(2),
             # Lout = 10, given L = 20
         )
         self.fc_layers = nn.Sequential(
             # length of input = 64 filters * length of 10 left
             nn.Linear(640, 16),
             act_fn_by_name[config.activation],
-            nn.Linear(16, config.output_size)
+            nn.Linear(16, config.output_size),
         )
 
     def forward(self, x):

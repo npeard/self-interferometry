@@ -1,15 +1,10 @@
-import os, sys, glob
-import h5py
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib as mpl
-import torch
-from scipy.stats import pearsonr
-import lightning as L
-from torch.utils.data import Dataset, DataLoader
+import sys
 
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
 import train
-import decoder
+from scipy.stats import pearsonr
 
 if __name__ == '__main__':
     # np.random.seed(0x5EED+3)
@@ -26,7 +21,7 @@ if __name__ == '__main__':
         test_file = 'C:\\Users\\aj14\\Desktop\\SMI\\data\\acqfreqs_singletone_2kshots_randampl.h5py'
         train_file = 'C:\\Users\\aj14\\Desktop\\SMI\\data\\021725_train_acqfreqs_mixedtones_10kshots_randampl.h5py'
 
-        model_tag = "fggpzqgv"
+        model_tag = 'fggpzqgv'
         step = 256
         batch_size = 128
 
@@ -65,9 +60,9 @@ if __name__ == '__main__':
                 targets_val = torch.squeeze(targets).cpu().detach().numpy()
 
                 targets_squeezed_val = np.squeeze(targets_val)
-                print("targets shape", targets_squeezed_val.shape)
+                print('targets shape', targets_squeezed_val.shape)
                 outputs_squeezed_val = np.squeeze(outputs_val)
-                print("preds shape", outputs_squeezed_val.shape)
+                print('preds shape', outputs_squeezed_val.shape)
 
                 fig, ax = plt.subplots(2)
                 fig.set_size_inches(8, 6)
@@ -92,7 +87,9 @@ if __name__ == '__main__':
                     idx = 0  # use first in batch of 128 shots
                     ax[0].plot(time_data, inputs_val[idx])
                     if mode == 'valid':
-                        ax[0].set_title('Validation PD Trace (contiguous buffer)', fontsize=15)
+                        ax[0].set_title(
+                            'Validation PD Trace (contiguous buffer)', fontsize=15
+                        )
                     elif mode == 'test':
                         ax[0].set_title('Test Shot (contiguous buffer)', fontsize=15)
                     ax[0].set_ylabel('Photodiode signal (V)', fontsize=15)
@@ -102,17 +99,29 @@ if __name__ == '__main__':
                     num_groups = outputs_squeezed_val.shape[1]  # 127
                     start_idxs = torch.arange(num_groups) * step
 
-                    ax[1].plot(time_data[start_idxs], targets_squeezed_val[idx], marker='.', label='Target')
+                    ax[1].plot(
+                        time_data[start_idxs],
+                        targets_squeezed_val[idx],
+                        marker='.',
+                        label='Target',
+                    )
                     # ax[1].set_title('', fontsize=15)
                     ax[1].set_ylabel(r'Velocity ($\mu$m/s)', fontsize=15)
                     ax[1].set_xlabel('Time (s)', fontsize=15)
 
-                    ax[1].plot(time_data[start_idxs], outputs_squeezed_val[idx], marker='.', label='Pred')
+                    ax[1].plot(
+                        time_data[start_idxs],
+                        outputs_squeezed_val[idx],
+                        marker='.',
+                        label='Pred',
+                    )
                     ax[1].legend(prop={'size': 12})
                     ax[1].tick_params(axis='both', which='major', labelsize=13)
-                    print(pearsonr(targets_squeezed_val[idx], outputs_squeezed_val[idx]))
+                    print(
+                        pearsonr(targets_squeezed_val[idx], outputs_squeezed_val[idx])
+                    )
 
                 fig.tight_layout()
                 plt.show()
     else:
-         print("Error: Unsupported number of command-line arguments")
+        print('Error: Unsupported number of command-line arguments')
