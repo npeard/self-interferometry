@@ -48,9 +48,9 @@ def test_waveform_sample_spectrum_consistency():
         voltage_mag_fft = np.abs(spectrum_fft)
         voltage_mag_sample = np.abs(voltage_spectrum)[: len(voltage_mag_fft)]
 
-        assert np.allclose(voltage_mag_sample, voltage_mag_fft, rtol=0.1), (
-            f'Test {i + 1}: Spectrum magnitude mismatch'
-        )
+        assert np.allclose(
+            voltage_mag_sample, voltage_mag_fft, rtol=0.1
+        ), f'Test {i + 1}: Spectrum magnitude mismatch'
 
         print(f'Completed test iteration {i + 1}/{num_tests}')
 
@@ -67,14 +67,13 @@ def test_waveform_sample_reproducibility():
     _, voltage2, _ = waveform.sample()
 
     # They should be different (random generation)
-    assert not np.allclose(voltage1, voltage2), (
-        'Consecutive samples should be different'
-    )
+    assert not np.allclose(
+        voltage1, voltage2
+    ), 'Consecutive samples should be different'
 
 
 def test_waveform_frequency_range():
-    """Test that the waveform spectrum is confined to the specified frequency range.
-    """
+    """Test that the waveform spectrum is confined to the specified frequency range."""
     # Create a waveform generator with narrow frequency range
     start_freq = 100
     end_freq = 200
@@ -99,47 +98,44 @@ def test_waveform_frequency_range():
     significant_freqs = freqs_fft[voltage_spectral_mod > threshold]
 
     # Check lower bound (with some tolerance)
-    assert np.min(significant_freqs) >= start_freq * 0.9, (
-        f'Significant frequency content found below start_freq: {np.min(significant_freqs)} < {start_freq}'
-    )
+    assert (
+        np.min(significant_freqs) >= start_freq * 0.9
+    ), f'Significant frequency content found below start_freq: {np.min(significant_freqs)} < {start_freq}'
 
     # Check upper bound (with some tolerance)
-    assert np.max(significant_freqs) <= end_freq * 1.1, (
-        f'Significant frequency content found above end_freq: {np.max(significant_freqs)} > {end_freq}'
-    )
+    assert (
+        np.max(significant_freqs) <= end_freq * 1.1
+    ), f'Significant frequency content found above end_freq: {np.max(significant_freqs)} > {end_freq}'
 
 
 def test_waveform_output_range():
-    """Test that the waveform output is properly normalized to the [-1, 1] range.
-    """
+    """Test that the waveform output is properly normalized to the [-1, 1] range."""
     # Create a waveform generator
     waveform = Waveform(start_freq=10, end_freq=1000, gen_dec=8192, acq_dec=256)
 
     # Generate multiple waveforms and check their ranges
     for i in range(5):
         _, voltage, _ = waveform.sample()
-        assert np.max(np.abs(voltage)) <= 1.0, (
-            f'Test {i + 1}: Voltage exceeds normalized range [-1, 1]'
-        )
+        assert (
+            np.max(np.abs(voltage)) <= 1.0
+        ), f'Test {i + 1}: Voltage exceeds normalized range [-1, 1]'
 
 
 def test_waveform_length_consistency():
-    """Test that the time and voltage arrays have consistent lengths.
-    """
+    """Test that the time and voltage arrays have consistent lengths."""
     # Create a waveform generator
     waveform = Waveform(start_freq=10, end_freq=1000, gen_dec=8192, acq_dec=256)
 
     # Generate multiple waveforms and check their lengths
     for i in range(5):
         t, voltage, voltage_spectrum = waveform.sample()
-        assert len(t) == len(voltage), (
-            f'Test {i + 1}: Time and voltage arrays have different lengths'
-        )
+        assert len(t) == len(
+            voltage
+        ), f'Test {i + 1}: Time and voltage arrays have different lengths'
 
 
 def test_waveform_reconstruction():
-    """Test that the reconstructed signal is close to the original signal.
-    """
+    """Test that the reconstructed signal is close to the original signal."""
     # Create a waveform generator
     waveform = Waveform(start_freq=10, end_freq=1000, gen_dec=8192, acq_dec=256)
 
@@ -151,9 +147,9 @@ def test_waveform_reconstruction():
     reconstructed = np.fft.fftshift(reconstructed)
 
     # The reconstructed signal should be normalized
-    assert np.max(np.abs(reconstructed)) <= 1.0, (
-        'Reconstructed signal exceeds normalized range'
-    )
+    assert (
+        np.max(np.abs(reconstructed)) <= 1.0
+    ), 'Reconstructed signal exceeds normalized range'
 
     # The reconstructed signal should be close to the original signal
     assert np.allclose(voltage, reconstructed, rtol=0.1), 'Signal reconstruction failed'
@@ -223,15 +219,15 @@ def test_waveform_statistics():
     )
 
     # Test 1: Check that the mean of the time-domain voltage values is close to zero
-    assert np.isclose(np.mean(all_voltages), 0, atol=0.05), (
-        f'Mean of voltage values ({np.mean(all_voltages)}) is not close to zero'
-    )
+    assert np.isclose(
+        np.mean(all_voltages), 0, atol=0.05
+    ), f'Mean of voltage values ({np.mean(all_voltages)}) is not close to zero'
 
     # Test 2: Check that the empirical variance of the time-domain voltage values is close to the computed noise variance
     empirical_variance = np.var(all_voltages)
-    assert np.isclose(empirical_variance, noise_variance, rtol=0.3), (
-        f"Empirical variance ({empirical_variance}) doesn't match computed variance ({noise_variance})"
-    )
+    assert np.isclose(
+        empirical_variance, noise_variance, rtol=0.3
+    ), f"Empirical variance ({empirical_variance}) doesn't match computed variance ({noise_variance})"
 
     # Test 3: Check that the real and imaginary parts of the inverted spectrum have the correct variance. The real variance should be as
     # we computed above, while the imaginary part variance should be near zero because the imaginary part should be close to zero.
@@ -242,18 +238,18 @@ def test_waveform_statistics():
     imag_variance = np.var(imag_parts)
     expected_complex_variance = noise_variance
 
-    assert np.isclose(real_variance, expected_complex_variance, rtol=0.3), (
-        f"Real part variance ({real_variance}) doesn't match expected variance ({expected_complex_variance})"
-    )
-    assert np.isclose(imag_variance, 0, rtol=0.3), (
-        f"Imaginary part variance ({imag_variance}) doesn't match expected variance ({0})"
-    )
+    assert np.isclose(
+        real_variance, expected_complex_variance, rtol=0.3
+    ), f"Real part variance ({real_variance}) doesn't match expected variance ({expected_complex_variance})"
+    assert np.isclose(
+        imag_variance, 0, rtol=0.3
+    ), f"Imaginary part variance ({imag_variance}) doesn't match expected variance ({0})"
 
     # Test 4: Check that the real and imaginary parts are uncorrelated (for a circular complex Gaussian)
     correlation = np.corrcoef(real_parts, imag_parts)[0, 1]
-    assert abs(correlation) < 0.1, (
-        f'Real and imaginary parts are correlated ({correlation}), should be uncorrelated'
-    )
+    assert (
+        abs(correlation) < 0.1
+    ), f'Real and imaginary parts are correlated ({correlation}), should be uncorrelated'
 
     # Test 5: Check the quartiles of the data against theoretical quartiles for a Gaussian
     # For a standard normal distribution, the quartiles are approximately -0.67, 0, and 0.67
@@ -265,22 +261,22 @@ def test_waveform_statistics():
     q1, q2, q3 = np.percentile(normalized_voltages, [25, 50, 75])
 
     # Check against theoretical quartiles with some tolerance
-    assert np.isclose(q1, -0.67, atol=0.1), (
-        f'First quartile ({q1}) is not close to expected value (-0.67)'
-    )
-    assert np.isclose(q2, 0.0, atol=0.1), (
-        f'Median ({q2}) is not close to expected value (0.0)'
-    )
-    assert np.isclose(q3, 0.67, atol=0.1), (
-        f'Third quartile ({q3}) is not close to expected value (0.67)'
-    )
+    assert np.isclose(
+        q1, -0.67, atol=0.1
+    ), f'First quartile ({q1}) is not close to expected value (-0.67)'
+    assert np.isclose(
+        q2, 0.0, atol=0.1
+    ), f'Median ({q2}) is not close to expected value (0.0)'
+    assert np.isclose(
+        q3, 0.67, atol=0.1
+    ), f'Third quartile ({q3}) is not close to expected value (0.67)'
 
     # Test 6: Check that the range of the data is reasonable for a Gaussian
     # For a large sample from a Gaussian, we expect most values to be within ±3 standard deviations
     normalized_max = np.max(np.abs(normalized_voltages))
-    assert normalized_max < 5.0, (
-        f'Maximum absolute normalized value ({normalized_max}) is too large for a Gaussian distribution'
-    )
+    assert (
+        normalized_max < 5.0
+    ), f'Maximum absolute normalized value ({normalized_max}) is too large for a Gaussian distribution'
 
 
 def test_waveform_ifft_real_valued():
@@ -310,9 +306,9 @@ def test_waveform_ifft_real_valued():
 
         # The imaginary energy should be negligible compared to the real energy
         # We'll use a threshold of 1e-10 times the real energy
-        assert imag_energy < 1e-10 * real_energy, (
-            f'Sample {i + 1}: Inverse FFT has significant imaginary components. Real energy: {real_energy}, Imag energy: {imag_energy}'
-        )
+        assert (
+            imag_energy < 1e-10 * real_energy
+        ), f'Sample {i + 1}: Inverse FFT has significant imaginary components. Real energy: {real_energy}, Imag energy: {imag_energy}'
 
 
 def test_waveform_spectrum_hermitian():
@@ -347,9 +343,9 @@ def test_waveform_spectrum_hermitian():
                 if len(neg_idx) > 0:  # If we found a matching negative frequency
                     neg_idx = neg_idx[0]
                     # Check that S(-f) = S(f)*
-                    assert np.isclose(spectrum[neg_idx], np.conj(spectrum[j])), (
-                        f'Sample {i + 1}, Frequency {freq[j]} Hz: Spectrum is not Hermitian. S(-f)={spectrum[neg_idx]}, S(f)*={np.conj(spectrum[j])}'
-                    )
+                    assert np.isclose(
+                        spectrum[neg_idx], np.conj(spectrum[j])
+                    ), f'Sample {i + 1}, Frequency {freq[j]} Hz: Spectrum is not Hermitian. S(-f)={spectrum[neg_idx]}, S(f)*={np.conj(spectrum[j])}'
 
 
 if __name__ == '__main__':

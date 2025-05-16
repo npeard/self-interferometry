@@ -6,7 +6,6 @@ This script generates random waveforms, applies calibration to get displacement 
 and plots all waveforms and their FFTs.
 """
 
-
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import gridspec

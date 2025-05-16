@@ -4,7 +4,6 @@ This module provides a class that encapsulates functionality for generating
 arbitrary waveforms with specific frequency characteristics.
 """
 
-
 import numpy as np
 from numpy.fft import fft, fftfreq, ifft
 

@@ -59,7 +59,7 @@ class scpi:
         return msg
 
     def rx_arb(self):
-        """Recieve binary data from scpi server"""
+        """Receive binary data from scpi server"""
         numOfBytes = 0
         data = b''
         while len(data) != 1:
@@ -168,7 +168,7 @@ class scpi:
                 Define the custom waveform if "func" is "ARBITRARY".
                 Defaults to `None`.
             burst (bool, optional) :
-                Enable/disable Burst mode. (`True` - BURST, `False` - CONINUOUS)
+                Enable/disable Burst mode. (`True` - BURST, `False` - CONTINUOUS)
                 Generate "nor" number of "ncyc" periods with total time "period".
                 Defaults to `False`.
             ncyc (int, optional) :
@@ -551,19 +551,17 @@ class scpi:
         # print("ACQ set successfully")
 
     def get_settings(self, siglab: bool = False, input4: bool = False) -> str:
-        """Retrieves the settings from Red Pitaya, prints them in console and returns
-        them as an array with the following sequence:
-        [decimation, avearge, trig_dly, trig_dly_ns, trig_lvl, buf_size, gain_ch1, gain_ch2, coup_ch1, coup_ch2, ext_trig_lvl]
-                                                                                           , gain_ch3, gain_ch4
+        """Retrieves the settings from Red Pitaya, prints them in console and returns them as an array with the following sequence:
+        [decimation, avearge, trig_dly, trig_dly_ns, trig_lvl, buf_size, gain_ch1, gain_ch2, coup_ch1, coup_ch2, ext_trig_lvl, gain_ch3, gain_ch4].
             Decimation   - Current decimation
             Average      - Current averaging status (ON/OFF)
             Trig_dly     - Current trigger delay in samples
             Trig_dly_ns  - Current trigger delay in nanoseconds
-            Trig_lvl     - Current triger level in Volts
+            Trig_lvl     - Current trigger level in Volts
             Buf_size     - Buffer size
             Gain_ch1-4   - Current gain on channels (CH3 and CH4 STEMlab 125-14 4-Input only)
             Coup_ch1/2   - Current coupling mode for both channels (AC/DC) (SIGNALlab only)
-            Ext_trig_lvl - Current external trigger level in Volts (SIGNALlab only)
+            Ext_trig_lvl - Current external trigger level in Volts (SIGNALlab only).
 
         Note:   The last three array elements won't exist if siglab = False
                 Gain of channels 3 and 4 only if input4 = True
@@ -896,7 +894,7 @@ class scpi:
 
         Args:
             string (str, optional): String that will be sent.
-            word_length (bool, optional): Set to True if UART word lenght is set to 7 (ASCII) or
+            word_length (bool, optional): Set to True if UART word length is set to 7 (ASCII) or
                                     False if UART word length is set to 8 (UTF-8). Defaults to False.
         """
         if word_length:

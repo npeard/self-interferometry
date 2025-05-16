@@ -676,8 +676,7 @@ class RedPitayaManager:
         return str(file_path)
 
     def setup_plot(self):
-        """Set up the plot for visualization.
-        """
+        """Set up the plot for visualization."""
         if not self.plot_enabled:
             return
 
@@ -1029,8 +1028,7 @@ class RedPitayaManager:
             print(f'Error in show_plot: {e}')
 
     def setup_histograms(self):
-        """Set up the histogram and spectrum plots for signal visualization.
-        """
+        """Set up the histogram and spectrum plots for signal visualization."""
         if self.hist_fig is None:
             # Create figure with 4x3 subplots (histograms and spectra)
             self.hist_fig, self.hist_axes = plt.subplots(4, 3, figsize=(15, 12))

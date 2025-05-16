@@ -150,7 +150,9 @@ class TrainingConfig:
 
             for training_combo in training_combinations:
                 training_config = training_fixed.copy()
-                training_config.update(dict(zip(training_keys, training_combo, strict=False)))
+                training_config.update(
+                    dict(zip(training_keys, training_combo, strict=False))
+                )
 
                 for loss_combo in loss_combinations:
                     loss_config = loss_fixed.copy()

@@ -1,9 +1,9 @@
 # Self-Mixing Interferometry for Rapid Vibration/Acoustic Spectrograms
 
 ## Goal
-Develop a fiber-coupled self-mixing interferometer which can rapidly 
-detect sub-micron displacements of a surface. Using displacement 
-time-series data, analyze vibrational transfer functions of mechanical designs. 
+Develop a fiber-coupled self-mixing interferometer which can rapidly
+detect sub-micron displacements of a surface. Using displacement
+time-series data, analyze vibrational transfer functions of mechanical designs.
 
 ## Quick Start for Contributors
 
@@ -39,19 +39,19 @@ time-series data, analyze vibrational transfer functions of mechanical designs.
    ```bash
    # Run tests
    task test
-   
+
    # Lint your code
    task lint
-   
+
    # Format your code
    task format
-   
+
    # Check spelling
    task spell
-   
+
    # Run pre-commit hooks manually
    task precommit
-   
+
    # Run format, lint and test in sequence
    task all
    ```

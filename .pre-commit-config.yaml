@@ -15,7 +15,6 @@ repos:
     -   id: check-added-large-files
         args: ['--maxkb=5000']
     -   id: debug-statements
-    -   id: requirements-txt-fixer
     -   id: check-merge-conflict
     -   id: double-quote-string-fixer
 
