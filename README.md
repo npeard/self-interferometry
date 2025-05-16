@@ -19,10 +19,9 @@ time-series data, analyze vibrational transfer functions of mechanical designs.
    source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
 
-3. Install dependencies:
+3. Install the package with development dependencies:
    ```bash
-   pip install -r requirements.txt
-   pip install -e .
+   pip install -e ".[dev]"
    ```
 
 4. Install pre-commit hooks:
@@ -36,9 +35,25 @@ time-series data, analyze vibrational transfer functions of mechanical designs.
    git checkout -b feature-name
    ```
 
-6. Make your changes and run tests:
+6. Make your changes and run tasks:
    ```bash
-   pytest tests/
+   # Run tests
+   task test
+   
+   # Lint your code
+   task lint
+   
+   # Format your code
+   task format
+   
+   # Check spelling
+   task spell
+   
+   # Run pre-commit hooks manually
+   task precommit
+   
+   # Run format, lint and test in sequence
+   task all
    ```
 
 7. Commit and push your changes:

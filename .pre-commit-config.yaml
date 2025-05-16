@@ -14,3 +14,24 @@ repos:
     -   id: check-yaml
     -   id: check-added-large-files
         args: ['--maxkb=5000']
+    -   id: debug-statements
+    -   id: requirements-txt-fixer
+    -   id: check-merge-conflict
+    -   id: double-quote-string-fixer
+
+-   repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.3.0
+    hooks:
+    -   id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+    -   id: ruff-format
+
+-   repo: https://github.com/codespell-project/codespell
+    rev: v2.2.6
+    hooks:
+    -   id: codespell
+
+-   repo: meta
+    hooks:
+    -   id: check-hooks-apply
+    -   id: check-useless-excludes
