@@ -4,15 +4,17 @@ This module provides a class that encapsulates functionality for data acquisitio
 waveform generation, and device management for Red Pitaya devices.
 """
 
+import contextlib
 import time
 from datetime import datetime
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-import scpi
 from numpy.fft import fft
 
+# Import the scpi module directly
+from redpitaya import scpi
 from redpitaya.coil_driver import CoilDriver
 
 # Import our custom classes
@@ -60,6 +62,7 @@ class RedPitayaManager:
 
         for i, ip in enumerate(ip_addresses):
             try:
+                # Create SCPI instance
                 device = scpi.scpi(ip)
                 self.devices.append(device)
                 self.device_names.append(f'RP{i + 1}')
@@ -132,10 +135,8 @@ class RedPitayaManager:
     def close_all(self):
         """Close all device connections."""
         for device in self.devices:
-            try:
+            with contextlib.suppress(Exception):
                 device.close()
-            except:
-                pass
         self.devices = []
         self.device_names = []
 
@@ -146,7 +147,7 @@ class RedPitayaManager:
             device.tx_txt('ACQ:RST')
 
     def configure_daisy_chain(
-        self, primary_idx: int = 0, secondary_indices: list[int] = None
+        self, primary_idx: int = 0, secondary_indices: list[int] | None = None
     ):
         """Configure devices for daisy chain operation.
 
@@ -646,34 +647,107 @@ class RedPitayaManager:
 
         return displacement_tf, displacement_integrated, displacement_spectrum, freq
 
-    def save_data(self, data: dict[str, np.ndarray], filename: str = None) -> str:
+    def save_data(self, data: dict[str, np.ndarray], file_path: str | Path) -> str:
         """Save acquisition data to a file.
 
         Args:
             data: Dictionary of data to save
-            filename: Filename to save to (default: auto-generated)
+            file_path: Path to save the data to
 
         Returns:
             Path to the saved file
         """
-        if filename is None:
-            # Generate a filename based on current time
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            filename = f'data_{timestamp}.h5py'
+        file_path = Path(file_path)
 
-        file_path = self.data_save_path / filename
+        # Ensure parent directory exists
+        file_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Import util here to avoid circular imports
-        try:
-            from signal_analysis import util
+        # Import h5py here to avoid circular imports
+        import h5py
 
-            util.write_data(file_path, data)
-            print(f'Data saved to {file_path}')
-        except ImportError:
-            print('Warning: signal_analysis.util module not found. Data not saved.')
-            print(f'Would have saved to {file_path}')
+        # Check if file exists to determine if we're creating or appending
+        file_exists = file_path.exists()
 
+        # Open file in appropriate mode
+        mode = 'a' if file_exists else 'w'
+        with h5py.File(file_path, mode) as f:
+            # If creating a new file, store acquisition parameters as attributes
+            if not file_exists:
+                f.attrs['sample_rate'] = (
+                    self.SAMPLE_RATE_DEC1 / self.settings['acq_dec']
+                )
+                f.attrs['decimation'] = self.settings['acq_dec']
+                f.attrs['buffer_size'] = self.BUFFER_SIZE
+                f.attrs['creation_time'] = datetime.now().isoformat()
+
+                # Store any other relevant settings
+                for key, value in self.settings.items():
+                    if isinstance(value, (int, float, str, bool)):
+                        f.attrs[key] = value
+
+            # Find Red Pitaya channel keys (the raw input signals)
+            channel_keys = []
+            for key in data:
+                if key.startswith('RP') and '_CH' in key:
+                    channel_keys.append(key)
+
+            if not channel_keys:
+                print('Warning: No Red Pitaya channel data found in acquisition')
+                return str(file_path)
+
+            # Get current dataset size if file exists
+            if file_exists:
+                # Get the first channel dataset to determine current size
+                first_key = channel_keys[0]
+                if first_key in f:
+                    current_size = f[first_key].shape[0]
+                else:
+                    # Channel doesn't exist in file yet
+                    current_size = 0
+                    # Create datasets for each channel
+                    for key in channel_keys:
+                        channel_shape = data[key].shape
+                        f.create_dataset(
+                            key,
+                            shape=(0,) + channel_shape,
+                            maxshape=(None,) + channel_shape,
+                            dtype='float32',
+                            chunks=(1,) + channel_shape,
+                            compression='gzip',
+                            compression_opts=4,
+                        )
+            else:
+                # New file, start from 0
+                current_size = 0
+                # Create datasets for each channel
+                for key in channel_keys:
+                    channel_shape = data[key].shape
+                    f.create_dataset(
+                        key,
+                        shape=(0,) + channel_shape,
+                        maxshape=(None,) + channel_shape,
+                        dtype='float32',
+                        chunks=(1,) + channel_shape,
+                        compression='gzip',
+                        compression_opts=4,
+                    )
+
+            # Resize datasets to accommodate new data
+            for key in channel_keys:
+                if key in data and key in f:
+                    dataset = f[key]
+                    new_size = current_size + 1  # Adding one sample
+                    dataset.resize(new_size, axis=0)
+                    # Add new data at the end
+                    dataset[current_size] = data[key]
+
+            # Update the number of samples attribute
+            f.attrs['num_samples'] = current_size + 1
+
+        print(f'Data saved to {file_path}')
         return str(file_path)
+
+    # Dataset creation methods have been moved to datasets.py
 
     def setup_plot(self):
         """Set up the plot for visualization."""
@@ -1419,9 +1493,7 @@ class RedPitayaManager:
     def run_one_shot(
         self,
         device_idx: int = 0,
-        store_data: bool = True,
         plot_data: bool = False,
-        filename: str = None,
         block_plot: bool = True,
         timeout: int = 5,
     ) -> dict[str, np.ndarray]:
@@ -1429,9 +1501,7 @@ class RedPitayaManager:
 
         Args:
             device_idx: Index of the device to use as primary
-            store_data: Whether to store data
             plot_data: Whether to plot data
-            filename: Filename to save data to
             block_plot: Whether to block on plot display
             timeout: Timeout in seconds for waiting for triggers
 
@@ -1504,9 +1574,7 @@ class RedPitayaManager:
                 f'Warning: No speaker data found for {self.device_names[device_idx]}_CH1'
             )
 
-        # Store data if requested
-        if store_data:
-            self.save_data(data, filename)
+        # Data is saved at the run_multiple_shots level if needed
 
         # Plot data if requested
         if plot_data:
@@ -1547,10 +1615,10 @@ class RedPitayaManager:
         num_shots: int,
         device_idx: int = 0,
         delay_between_shots: float = 0.5,
-        store_data: bool = True,
         plot_data: bool = False,
-        filename_prefix: str = None,
         keep_final_plot: bool = True,
+        hdf5_file: str = None,
+        timeout: int = 5,
     ) -> list[dict[str, np.ndarray]]:
         """Run multiple acquisition cycles.
 
@@ -1558,17 +1626,17 @@ class RedPitayaManager:
             num_shots: Number of shots to run
             device_idx: Index of the device to use as primary
             delay_between_shots: Delay between shots in seconds
-            store_data: Whether to store data
             plot_data: Whether to plot data
-            filename_prefix: Prefix for filenames
             keep_final_plot: Whether to keep the final plot open for examination
+            hdf5_file: Path to HDF5 file to save data incrementally
+            timeout: Timeout in seconds for waiting for triggers
 
         Returns:
             List of dictionaries of acquired data
         """
         print(f'Starting {num_shots} acquisition cycles')
         start_time = datetime.now()
-        print(f'Start time: {start_time.strftime("%H:%M:%S.%f")}')
+        print(f'Start time: {start_time.strftime("%H:%M:%S.%f")}')  # Start time
 
         all_data = []
 
@@ -1596,12 +1664,6 @@ class RedPitayaManager:
                     f'Shot {i}/{num_shots} at {datetime.now().strftime("%H:%M:%S.%f")}'
                 )
 
-                # Generate filename if storing data
-                filename = None
-                if store_data and filename_prefix:
-                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    filename = f'{filename_prefix}_{timestamp}_{i}.npz'
-
                 try:
                     # For the last shot, set block_plot based on keep_final_plot
                     is_last_shot = i == num_shots - 1
@@ -1610,12 +1672,17 @@ class RedPitayaManager:
                     # Run one shot
                     shot_data = self.run_one_shot(
                         device_idx=device_idx,
-                        store_data=store_data,
                         plot_data=plot_data,
-                        filename=filename,
                         block_plot=should_block,  # Block on the last plot if requested
-                        timeout=5,
+                        timeout=timeout,
                     )
+
+                    # Save to HDF5 file if specified
+                    if hdf5_file and shot_data:
+                        try:
+                            self.save_data(shot_data, hdf5_file)
+                        except Exception as e:
+                            print(f'Error saving data to HDF5 file: {e}')
 
                     all_data.append(shot_data)
 

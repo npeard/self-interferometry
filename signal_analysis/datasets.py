@@ -2,15 +2,14 @@
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
 
 import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from fluo.speckle1d import Fluorescence1D
 from torch.utils.data import DataLoader, Dataset
-from tqdm import tqdm
+
+from redpitaya.manager import RedPitayaManager
 
 
 class H5Dataset(Dataset):
@@ -117,273 +116,270 @@ class H5Dataset(Dataset):
         self._cache_keys.append(key)
 
 
-def create_data_loaders(
-    train_path: str,
-    val_path: str,
-    test_path: str,
-    batch_size: int,
-    num_workers: int = 4,
-    **dataset_kwargs: dict[str, Any],
-) -> tuple[DataLoader, DataLoader, DataLoader]:
-    """Create DataLoaders for training, validation, and testing.
+def create_dataset(
+    rp_manager,
+    output_dir: str | Path,
+    dataset_name: str,
+    num_samples: int,
+    device_idx: int = 0,
+    delay_between_shots: float = 0.5,
+    timeout: int = 5,
+) -> str:
+    """Create a dataset by acquiring multiple samples and saving them incrementally.
+
+    This method uses run_multiple_shots to acquire data and saves it to an HDF5 file.
 
     Args:
-        train_path: Path to training data HDF5 file
-        val_path: Path to validation data HDF5 file
-        test_path: Path to test data HDF5 file
-        batch_size: Batch size for all dataloaders
-        num_workers: Number of worker processes for data loading
-        **dataset_kwargs: Additional arguments to pass to the dataset class
+        rp_manager: RedPitayaManager instance to use for data acquisition
+        output_dir: Directory to save the dataset
+        dataset_name: Name of the dataset file (e.g., 'train.h5')
+        num_samples: Number of samples to acquire
+        device_idx: Index of the device to use as primary
+        delay_between_shots: Delay between shots in seconds
+        timeout: Timeout for acquisition in seconds
 
     Returns:
-        Tuple of (train_loader, val_loader, test_loader)
+        Path to the created dataset file
     """
-    train_dataset = H5Dataset(train_path, **dataset_kwargs)
-    val_dataset = H5Dataset(val_path, **dataset_kwargs)
-    test_dataset = H5Dataset(test_path, **dataset_kwargs)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    file_path = output_dir / dataset_name
 
-    # Only using pretraining dataset for now
-    # train_dataset = PreTrainingDataset(train_path, **dataset_kwargs)
-    # val_dataset = PreTrainingDataset(val_path, **dataset_kwargs)
-    # test_dataset = PreTrainingDataset(test_path, **dataset_kwargs)
+    print(f'Acquiring {num_samples} samples for dataset: {dataset_name}')
 
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=num_workers,
-        persistent_workers=True,
-        pin_memory=True,
+    # Run multiple shots to acquire the data and save incrementally to HDF5
+    rp_manager.run_multiple_shots(
+        num_shots=num_samples,
+        device_idx=device_idx,
+        delay_between_shots=delay_between_shots,
+        plot_data=False,  # Don't plot during dataset creation
+        keep_final_plot=False,
+        hdf5_file=str(file_path),  # Save directly to HDF5
+        timeout=timeout,
     )
 
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-        persistent_workers=True,
-        pin_memory=True,
-    )
-
-    test_loader = DataLoader(
-        test_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-        persistent_workers=True,
-        pin_memory=True,
-    )
-
-    return train_loader, val_loader, test_loader
+    return str(file_path)
 
 
-def generate_pretraining_data(
-    file_path: str, num_pix: int, num_samples: int, chunk_size: int | None = None
-) -> None:
-    """Generate pretraining data and save to HDF5 file.
-
-    Args:
-        file_path: Path to save the HDF5 file
-        num_pix: Number of pixels in the detector
-        num_samples: Number of samples to generate
-        chunk_size: Optional chunk size for HDF5 dataset compression
-    """
-    # Create parent directory if it doesn't exist
-    Path(file_path).parent.mkdir(parents=True, exist_ok=True)
-
-    # Default chunk size to balance between compression and access speed
-    if chunk_size is None:
-        chunk_size = min(100, num_samples)
-
-    with h5py.File(file_path, 'w') as f:
-        # Store generation parameters as attributes
-        f.attrs['num_samples'] = num_samples
-        f.attrs['num_pix'] = num_pix
-
-        # Create datasets with chunking and compression
-        f.create_dataset(
-            'absPhi',
-            shape=(num_samples, Phi_dim, Phi_dim),
-            dtype='float32',
-            chunks=(chunk_size, Phi_dim, Phi_dim),
-            compression='gzip',
-            compression_opts=4,
-        )
-
-        # Only storing one quadrant of phase intentionally, redundancy by antisymmetry
-        f.create_dataset(
-            'phase',
-            shape=(num_samples, num_pix),
-            dtype='float32',
-            chunks=(chunk_size, num_pix),
-            compression='gzip',
-            compression_opts=4,
-        )
-
-        # Generate data
-        # TODO: make a test case that compares the output dims of this block
-        # to the output dims of plot_cosPhi (the from_data method therein)
-        print(f'\nGenerating {num_samples} samples...')
-        for i in tqdm(range(num_samples)):
-            # Generate random phase, out to 2*num_pix - 1 where num_pix is the
-            # number of pixels in the detector. We expect the triple correlation to
-            # contain phase information out to 2*kmax or num_pix from origin.
-            phase = np.random.uniform(-np.pi, np.pi, num_pix)
-            # Set origin, always zero, needed in computing Phi
-            phase[0] = 0
-
-            # Compute Phi matrix
-            Phi = Fluorescence1D.compute_Phi_from_phase(phase)
-
-            # Store in dataset
-            f['absPhi'][i] = np.abs(Phi[1:, 1:])
-            # Only storing one quadrant of phase intentionally, redundancy by antisymmetry
-            f['phase'][i] = phase
-
-
-def create_train_val_test_datasets(
-    output_dir: str,
-    num_pix: int = 21,
-    train_samples: int = int(1e6),
-    val_samples: int = int(1e4),
-    test_samples: int = int(1e4),
+def create_train_val_test_datasets_from_rp(
+    rp_manager: RedPitayaManager,
+    output_dir: str | Path,
+    train_samples: int,
+    val_samples: int,
+    test_samples: int,
     **kwargs,
-) -> None:
-    """Create train, validation and test datasets for pretraining.
+) -> tuple[str, str, str]:
+    """Create train, validation, and test datasets from Red Pitaya data.
 
     Args:
+        rp_manager: RedPitayaManager instance to use for data acquisition
         output_dir: Directory to save the datasets
-        num_pix: Number of pixels in each sample
         train_samples: Number of training samples
         val_samples: Number of validation samples
         test_samples: Number of test samples
-        **kwargs: Additional arguments passed to generate_pretraining_data
+        **kwargs: Additional arguments passed to create_dataset
+
+    Returns:
+        Tuple of (train_path, val_path, test_path)
     """
     output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     dataset_files = ['train.h5', 'val.h5', 'test.h5']
 
-    # Delete existing dataset files if they exist
-    for file in dataset_files:
-        file_path = output_dir / file
-        if file_path.exists():
-            print(f'Removing existing dataset file: {file}')
-            file_path.unlink()
-
-    print('Generating training dataset...')
-    generate_pretraining_data(
-        file_path=str(output_dir / 'train.h5'),
-        num_pix=num_pix,
+    # Create training dataset
+    print('\nGenerating training dataset...')
+    train_path = create_dataset(
+        rp_manager=rp_manager,
+        output_dir=output_dir,
+        dataset_name=dataset_files[0],
         num_samples=train_samples,
         **kwargs,
     )
 
+    # Create validation dataset
     print('\nGenerating validation dataset...')
-    generate_pretraining_data(
-        file_path=str(output_dir / 'val.h5'),
-        num_pix=num_pix,
+    val_path = create_dataset(
+        rp_manager=rp_manager,
+        output_dir=output_dir,
+        dataset_name=dataset_files[1],
         num_samples=val_samples,
         **kwargs,
     )
 
+    # Create test dataset
     print('\nGenerating test dataset...')
-    generate_pretraining_data(
-        file_path=str(output_dir / 'test.h5'),
-        num_pix=num_pix,
+    test_path = create_dataset(
+        rp_manager=rp_manager,
+        output_dir=output_dir,
+        dataset_name=dataset_files[2],
         num_samples=test_samples,
         **kwargs,
     )
 
+    return train_path, val_path, test_path
 
-def visualize_pretraining_dataset(
-    file_path: str,
-    num_samples: int = 4,
-    random_seed: int | None = None,
-    save_path: str | None = None,
-) -> None:
-    """Visualize random samples from a pretraining dataset.
+
+def inspect_dataset(dataset_path=None, batch_size=1):
+    """Inspect a dataset by displaying samples and histograms.
+
+    This function reads an HDF5 dataset and displays two plot windows:
+    1. Raw signals from the dataset with appropriate labels
+    2. Histograms of the entire dataset with overlaid histograms for the current sample
+
+    When the plot windows are closed, it advances to the next sample.
 
     Args:
-        file_path: Path to HDF5 file
-        num_samples: Number of samples to visualize
-        random_seed: Optional random seed for reproducibility
-        save_path: Optional path to save the visualization
+        dataset_path: Path to the HDF5 dataset file (defaults to train.h5 in signal_analysis/data)
+        batch_size: Batch size for the DataLoader (default: 1)
     """
-    if random_seed is not None:
-        np.random.seed(random_seed)
+    # Default to train.h5 in signal_analysis/data if no path is provided
+    if dataset_path is None:
+        dataset_path = Path(__file__).parent / 'data' / 'train.h5'
+    else:
+        dataset_path = Path(dataset_path)
 
-    with h5py.File(file_path, 'r') as f:
-        # Get dataset info
-        total_samples = f['Phi'].shape[0]
-        indices = np.random.choice(total_samples, num_samples, replace=False)
-        indices.sort()  # Sort indices for HDF5 compatibility
+    if not dataset_path.exists():
+        raise FileNotFoundError(f'Dataset file not found: {dataset_path}')
 
-        # Load selected samples
-        Phi_samples = f['Phi'][indices]
-        phase_samples = f['phase'][indices]
+    print(f'Inspecting dataset: {dataset_path}')
 
-        # Get metadata
-        metadata = dict(f.attrs)
+    # Create a custom dataset class for the HDF5 file
+    class RawSignalDataset(Dataset):
+        def __init__(self, file_path):
+            self.file_path = file_path
+            with h5py.File(file_path, 'r') as f:
+                self.length = next(iter(f.values())).shape[0]
+                self.keys = list(f.keys())
 
-        # Create figure with 2 rows (Phi and phase) and num_samples columns
-        fig, axes = plt.subplots(2, num_samples, figsize=(4 * num_samples, 8))
+        def __len__(self):
+            return self.length
 
-        # Plot samples
-        for i in range(num_samples):
-            # Plot Phi matrix
-            im_phi = axes[0, i].imshow(Phi_samples[i], cmap='viridis')
-            axes[0, i].set_title(f'Phi Matrix {i + 1}')
-            axes[0, i].axis('off')
-            plt.colorbar(im_phi, ax=axes[0, i])
+        def __getitem__(self, idx):
+            with h5py.File(self.file_path, 'r') as f:
+                return {key: f[key][idx] for key in self.keys}
 
-            # Plot phase
-            im_phase = axes[1, i].plot(phase_samples[i])
-            axes[1, i].set_title(f'Phase {i + 1}')
-            axes[1, i].set_ylim(-np.pi, np.pi)
-            axes[1, i].grid(True)
-
-        # Add overall title
-        plt.suptitle(
-            f'Samples from {Path(file_path).name}\n'
-            + f'Total Samples: {total_samples}, Pixels: {metadata["num_pix"]}'
+    # Load the entire dataset to compute histograms
+    with h5py.File(dataset_path, 'r') as f:
+        # Get all keys and their data
+        all_data = {key: f[key][:] for key in f.keys()}
+        num_samples = next(iter(all_data.values())).shape[0]
+        print(
+            f'Dataset contains {num_samples} samples with keys: {list(all_data.keys())}'
         )
 
-        plt.tight_layout()
+    # Create dataset and dataloader
+    dataset = RawSignalDataset(dataset_path)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
-        if save_path:
-            plt.savefig(save_path, bbox_inches='tight', dpi=300)
-            plt.close()
-        else:
-            plt.show()
+    # Function to display the plots for a sample
+    def display_sample(sample_data):
+        # Create two separate figures
+        # Figure 1: Raw signals
+        fig1, axes1 = plt.subplots(len(sample_data), 1, figsize=(6, 10), sharex=True)
+        if len(sample_data) == 1:
+            axes1 = [axes1]  # Make it iterable if there's only one subplot
 
+        # Figure 2: Histograms
+        fig2, axes2 = plt.subplots(len(sample_data), 1, figsize=(6, 10))
+        if len(sample_data) == 1:
+            axes2 = [axes2]  # Make it iterable if there's only one subplot
 
-def inspect_pretraining_dataset(file_path: str) -> dict:
-    """Calculate and return statistics about the pretraining dataset.
-
-    Args:
-        file_path: Path to HDF5 file
-
-    Returns:
-        Dictionary containing dataset statistics
-    """
-    with h5py.File(file_path, 'r') as f:
-        Phi = f['Phi'][:]
-        phase = f['phase'][:]
-        metadata = dict(f.attrs)
-
-        stats = {
-            'num_samples': Phi.shape[0],
-            'num_pix': metadata['num_pix'],
-            'Phi_stats': {
-                'min': float(Phi.min()),
-                'max': float(Phi.max()),
-                'mean': float(Phi.mean()),
-                'std': float(Phi.std()),
-            },
-            'phase_stats': {
-                'min': float(phase.min()),
-                'max': float(phase.max()),
-                'mean': float(phase.mean()),
-                'std': float(phase.std()),
-            },
+        # Channel labels and colors
+        labels = {
+            'RP1_CH1': 'Speaker Drive Voltage',
+            'RP1_CH2': 'Photodiode 1',
+            'RP2_CH1': 'Photodiode 2',
+            'RP2_CH2': 'Photodiode 3',
         }
-    return stats
+        colors = ['blue', 'red', 'green', 'purple']
+
+        # Calculate time data (assuming 125MHz/256 sample rate as in RedPitayaManager)
+        sample_rate = 125e6 / 256  # Default decimation in RedPitayaManager
+        for i, (key, data) in enumerate(sample_data.items()):
+            # Get the corresponding color
+            color = colors[i % len(colors)]
+
+            # Get label for the channel
+            label = labels.get(key, key)
+
+            # Plot raw signal
+            time_data = np.linspace(0, len(data) / sample_rate, len(data))
+            axes1[i].plot(time_data * 1000, data, color=color)  # Convert to ms
+            axes1[i].set_ylabel(label)
+            axes1[i].grid(True)
+
+            if i == len(sample_data) - 1:
+                axes1[i].set_xlabel('Time (ms)')
+
+            # Plot histograms
+            # Full dataset histogram on primary y-axis
+            n, bins, patches = axes2[i].hist(
+                all_data[key].flatten(),
+                bins=50,
+                color=color,
+                alpha=1.0,
+                label=f'All samples ({num_samples})',
+            )
+            axes2[i].set_ylabel('Frequency (all samples)', color=color)
+            axes2[i].tick_params(axis='y', labelcolor=color)
+
+            # Create a second y-axis for the current sample histogram
+            ax2_twin = axes2[i].twinx()
+            n_sample, _, patches_sample = ax2_twin.hist(
+                data.flatten(),
+                bins=bins,
+                color='orange',
+                alpha=0.4,
+                label='Current sample',
+            )
+            ax2_twin.set_ylabel('Frequency (current sample)', color='orange')
+            ax2_twin.tick_params(axis='y', labelcolor='orange')
+
+            # Add a title and x-label
+            axes2[i].set_title(f'{label} Histogram')
+            axes2[i].set_xlabel('Value')
+
+            # Create a combined legend
+            lines1, labels1 = axes2[i].get_legend_handles_labels()
+            lines2, labels2 = ax2_twin.get_legend_handles_labels()
+            axes2[i].legend(lines1 + lines2, labels1 + labels2, loc='upper right')
+
+            # Add grid
+            axes2[i].grid(True)
+
+        # Set overall titles
+        fig1.suptitle('Raw Signals', fontsize=16)
+        fig2.suptitle('Signal Histograms', fontsize=16)
+
+        # Adjust layout
+        fig1.tight_layout(rect=[0, 0, 1, 0.95])
+        fig2.tight_layout(rect=[0, 0, 1, 0.95])
+
+        # Show the plots
+        plt.show(block=True)
+
+    # Create a function to handle plot close events and show the next sample
+    def show_samples():
+        # Iterate through the dataset
+        for i, batch in enumerate(dataloader):
+            print(f'\nDisplaying sample {i + 1}/{len(dataloader)}')
+
+            # Convert batch dictionary to regular dictionary with numpy arrays
+            sample = {k: v[0].numpy() for k, v in batch.items()}
+
+            # Display the sample (this will block until both windows are closed)
+            display_sample(sample)
+
+            # If we've reached the end of the dataset, break
+            if i == len(dataloader) - 1:
+                break
+
+    # Start the sample display process
+    show_samples()
+
+    print('Dataset inspection complete.')
+
+
+if __name__ == '__main__':
+    inspect_dataset()

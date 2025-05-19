@@ -59,7 +59,7 @@ class scpi:
         return msg
 
     def rx_arb(self):
-        """Receive binary data from scpi server"""
+        """Receive binary data from scpi server."""
         numOfBytes = 0
         data = b''
         while len(data) != 1:
