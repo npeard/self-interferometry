@@ -7,8 +7,8 @@ import yaml
 from biphase_gpt.training import ModelTrainer, TrainingConfig
 
 from signal_analysis.datasets import (
-    create_train_val_test_datasets,
-    create_train_val_test_datasets_from_rp,
+    generate_pretraining_data,
+    generate_training_data_from_rp,
 )
 
 
@@ -28,9 +28,9 @@ def parse_args() -> argparse.Namespace:
         help='Path to checkpoint for testing. If provided, will run in test mode.',
     )
     parser.add_argument(
-        '--regenerate_datasets',
+        '--generate_pretraining',
         action='store_true',
-        help='Regenerate training, validation, and test datasets',
+        help='Generate simulated pretraining datasets using interferometer models',
     )
     parser.add_argument(
         '--acquire_dataset',
@@ -83,7 +83,7 @@ def main():
         base_config.data_config if hasattr(base_config, 'data_config') else None
     )
 
-    if not data_config and (args.regenerate_datasets or args.acquire_dataset):
+    if not data_config and (args.generate_pretraining or args.acquire_dataset):
         # Load data config directly from YAML file
         with open(args.config) as f:
             config_data = yaml.safe_load(f)
@@ -92,13 +92,25 @@ def main():
             else:
                 raise ValueError(f'Could not find data configuration in {args.config}')
 
-    # Regenerate datasets if requested
-    if args.regenerate_datasets:
-        print(f'\nRegenerating datasets with random seed: {seed}')
-        create_train_val_test_datasets(
-            output_dir=data_config['data_dir'], **data_config.get('dataset_params', {})
+    # Generate pretraining datasets if requested
+    if args.generate_pretraining:
+        print(f'\nGenerating pretraining datasets with random seed: {seed}')
+        # Extract dataset parameters
+        dataset_params = data_config.get('dataset_params', {})
+        train_samples = dataset_params.get('train_samples', 1000)
+        val_samples = dataset_params.get('val_samples', 200)
+        test_samples = dataset_params.get('test_samples', 100)
+
+        # Generate pretraining datasets
+        train_path, val_path, test_path = generate_pretraining_data(
+            output_dir=data_config['data_dir'],
+            train_samples=train_samples,
+            val_samples=val_samples,
+            test_samples=test_samples,
+            start_freq=1,
+            end_freq=1000,
         )
-        print('Dataset regeneration complete!\n')
+        print('Pretraining dataset generation complete!\n')
 
     # Acquire real data from Red Pitaya if requested
     if args.acquire_dataset:
@@ -125,7 +137,7 @@ def main():
             test_samples = dataset_params.get('test_samples', 100)
 
             # Create datasets using the new function that accepts a RedPitayaManager
-            create_train_val_test_datasets_from_rp(
+            generate_training_data_from_rp(
                 rp_manager=rp_manager,
                 output_dir=data_config['data_dir'],
                 train_samples=train_samples,
@@ -169,7 +181,7 @@ if __name__ == '__main__':
     # Fine-tuning from checkpoint:
     # python main.py --config path/to/config.yaml --checkpoint path/to/checkpoint.ckpt
 
-    # Regenerating datasets:
-    # python main.py --config path/to/config.yaml --regenerate_datasets
+    # Generating pretraining datasets:
+    # python main.py --config path/to/config.yaml --generate_pretraining
 
     main()

@@ -33,7 +33,7 @@ class TestInterferometerSimulation:
         self.waveform = Waveform(start_freq=1, end_freq=1000)
 
         # Run a simulation to get test data
-        self.time, self.signals, self.displacement, self.velocity = (
+        self.time, self.signals, self.acq_voltage, self.displacement, self.velocity = (
             self.interferometer_array.sample_simulated(
                 start_freq=1, end_freq=1000, coil_driver=self.coil_driver
             )
@@ -45,24 +45,24 @@ class TestInterferometerSimulation:
         buffer_size = self.waveform.BUFFER_SIZE
 
         # Check time array
-        assert len(self.time) <= buffer_size, (
-            f'Time array exceeds buffer size: {len(self.time)} > {buffer_size}'
-        )
+        assert (
+            len(self.time) <= buffer_size
+        ), f'Time array exceeds buffer size: {len(self.time)} > {buffer_size}'
 
         # Check signals
         for i, signal in enumerate(self.signals):
-            assert len(signal) <= buffer_size, (
-                f'Signal {i} exceeds buffer size: {len(signal)} > {buffer_size}'
-            )
+            assert (
+                len(signal) <= buffer_size
+            ), f'Signal {i} exceeds buffer size: {len(signal)} > {buffer_size}'
 
         # Check displacement and velocity
         assert len(self.displacement) <= buffer_size, (
             f'Displacement array exceeds buffer size: {len(self.displacement)} > '
             f'{buffer_size}'
         )
-        assert len(self.velocity) <= buffer_size, (
-            f'Velocity array exceeds buffer size: {len(self.velocity)} > {buffer_size}'
-        )
+        assert (
+            len(self.velocity) <= buffer_size
+        ), f'Velocity array exceeds buffer size: {len(self.velocity)} > {buffer_size}'
 
         # Check that all arrays have the same length
         assert len(self.time) == len(self.displacement) == len(self.velocity), (
@@ -88,16 +88,16 @@ class TestInterferometerSimulation:
         actual_dt = self.time[1] - self.time[0] if len(self.time) > 1 else 0
 
         # Allow for small floating-point differences
-        assert np.isclose(actual_dt, expected_dt, rtol=1e-10), (
-            f"Time step doesn't match acquisition rate: {actual_dt} != {expected_dt}"
-        )
+        assert np.isclose(
+            actual_dt, expected_dt, rtol=1e-10
+        ), f"Time step doesn't match acquisition rate: {actual_dt} != {expected_dt}"
 
         # Check that time array is evenly spaced
         if len(self.time) > 2:
             time_diffs = np.diff(self.time)
-            assert np.allclose(time_diffs, time_diffs[0], rtol=1e-10), (
-                'Time array is not evenly spaced'
-            )
+            assert np.allclose(
+                time_diffs, time_diffs[0], rtol=1e-10
+            ), 'Time array is not evenly spaced'
 
     def test_velocity_displacement_consistency(self):
         """Test that velocity and displacement are consistent with each other."""
@@ -114,9 +114,9 @@ class TestInterferometerSimulation:
         # Check correlation between calculated velocity and velocity from
         # sample_simulated
         correlation = np.corrcoef(calculated_velocity, self.velocity)[0, 1]
-        assert correlation > 0.99, (
-            f'Low correlation between calculated and simulated velocity: {correlation}'
-        )
+        assert (
+            correlation > 0.99
+        ), f'Low correlation between calculated and simulated velocity: {correlation}'
 
         # Check that magnitudes are similar (mean absolute values within 20%)
         calc_vel_mag = np.mean(np.abs(calculated_velocity))

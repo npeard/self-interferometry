@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 
 import h5py
@@ -8,8 +9,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
+from tqdm import tqdm
 
 from redpitaya.manager import RedPitayaManager
+from signal_analysis.interferometers import InterferometerArray, MichelsonInterferometer
 
 
 class H5Dataset(Dataset):
@@ -73,7 +76,7 @@ class H5Dataset(Dataset):
             self.targets = self.h5_file[self.target_key]
             self.opened_flag = True
 
-    def __len__(self):
+    def __len__(self) -> int:
         return self.length
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
@@ -116,8 +119,42 @@ class H5Dataset(Dataset):
         self._cache_keys.append(key)
 
 
+class MultiKeyH5Dataset(Dataset):
+    """Dataset class for HDF5 files that returns all keys as a dictionary.
+
+    This class is useful for inspection and visualization of datasets where
+    you want to access all available keys in the HDF5 file rather than just
+    input/target pairs.
+
+    Args:
+        file_path: Path to HDF5 file
+    """
+
+    def __init__(self, file_path: str | Path):
+        self.file_path = file_path
+        with h5py.File(file_path, 'r') as f:
+            self.keys = list(f.keys())
+            self.length = next(iter(f.values())).shape[0]
+
+    def __len__(self) -> int:
+        return self.length
+
+    def __getitem__(self, idx: int) -> dict[str, np.ndarray]:
+        """Get a single item from the dataset as a dictionary of arrays.
+
+        Args:
+            idx: Index of the item to get
+
+        Returns:
+            Dictionary mapping each key in the HDF5 file to its corresponding
+            array at the given index
+        """
+        with h5py.File(self.file_path, 'r') as f:
+            return {key: f[key][idx] for key in self.keys}
+
+
 def create_dataset(
-    rp_manager,
+    rp_manager: RedPitayaManager,
     output_dir: str | Path,
     dataset_name: str,
     num_samples: int,
@@ -145,7 +182,7 @@ def create_dataset(
     output_dir.mkdir(parents=True, exist_ok=True)
     file_path = output_dir / dataset_name
 
-    print(f'Acquiring {num_samples} samples for dataset: {dataset_name}')
+    print(f'Acquiring {num_samples} samples for dataset: {dataset_name}')  # noqa: T201
 
     # Run multiple shots to acquire the data and save incrementally to HDF5
     rp_manager.run_multiple_shots(
@@ -161,7 +198,7 @@ def create_dataset(
     return str(file_path)
 
 
-def create_train_val_test_datasets_from_rp(
+def generate_training_data_from_rp(
     rp_manager: RedPitayaManager,
     output_dir: str | Path,
     train_samples: int,
@@ -188,7 +225,7 @@ def create_train_val_test_datasets_from_rp(
     dataset_files = ['train.h5', 'val.h5', 'test.h5']
 
     # Create training dataset
-    print('\nGenerating training dataset...')
+    print('\nGenerating training dataset...')  # noqa: T201
     train_path = create_dataset(
         rp_manager=rp_manager,
         output_dir=output_dir,
@@ -198,7 +235,7 @@ def create_train_val_test_datasets_from_rp(
     )
 
     # Create validation dataset
-    print('\nGenerating validation dataset...')
+    print('\nGenerating validation dataset...')  # noqa: T201
     val_path = create_dataset(
         rp_manager=rp_manager,
         output_dir=output_dir,
@@ -208,7 +245,7 @@ def create_train_val_test_datasets_from_rp(
     )
 
     # Create test dataset
-    print('\nGenerating test dataset...')
+    print('\nGenerating test dataset...')  # noqa: T201
     test_path = create_dataset(
         rp_manager=rp_manager,
         output_dir=output_dir,
@@ -220,7 +257,7 @@ def create_train_val_test_datasets_from_rp(
     return train_path, val_path, test_path
 
 
-def inspect_dataset(dataset_path=None, batch_size=1):
+def inspect_dataset(dataset_path: str | Path = None, batch_size: int = 1) -> None:
     """Inspect a dataset by displaying samples and histograms.
 
     This function reads an HDF5 dataset and displays two plot windows:
@@ -230,7 +267,8 @@ def inspect_dataset(dataset_path=None, batch_size=1):
     When the plot windows are closed, it advances to the next sample.
 
     Args:
-        dataset_path: Path to the HDF5 dataset file (defaults to train.h5 in signal_analysis/data)
+        dataset_path: Path to the HDF5 dataset file (defaults to train.h5 in
+            signal_analysis/data)
         batch_size: Batch size for the DataLoader (default: 1)
     """
     # Default to train.h5 in signal_analysis/data if no path is provided
@@ -242,38 +280,23 @@ def inspect_dataset(dataset_path=None, batch_size=1):
     if not dataset_path.exists():
         raise FileNotFoundError(f'Dataset file not found: {dataset_path}')
 
-    print(f'Inspecting dataset: {dataset_path}')
-
-    # Create a custom dataset class for the HDF5 file
-    class RawSignalDataset(Dataset):
-        def __init__(self, file_path):
-            self.file_path = file_path
-            with h5py.File(file_path, 'r') as f:
-                self.length = next(iter(f.values())).shape[0]
-                self.keys = list(f.keys())
-
-        def __len__(self):
-            return self.length
-
-        def __getitem__(self, idx):
-            with h5py.File(self.file_path, 'r') as f:
-                return {key: f[key][idx] for key in self.keys}
+    print(f'Inspecting dataset: {dataset_path}')  # noqa: T201
 
     # Load the entire dataset to compute histograms
     with h5py.File(dataset_path, 'r') as f:
         # Get all keys and their data
         all_data = {key: f[key][:] for key in f.keys()}
         num_samples = next(iter(all_data.values())).shape[0]
-        print(
+        print(  # noqa: T201
             f'Dataset contains {num_samples} samples with keys: {list(all_data.keys())}'
         )
 
-    # Create dataset and dataloader
-    dataset = RawSignalDataset(dataset_path)
+    # Create dataset and dataloader using the MultiKeyH5Dataset class
+    dataset = MultiKeyH5Dataset(dataset_path)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
     # Function to display the plots for a sample
-    def display_sample(sample_data):
+    def display_sample(sample_data: dict[str, np.ndarray]):
         # Create two separate figures
         # Figure 1: Raw signals
         fig1, axes1 = plt.subplots(len(sample_data), 1, figsize=(6, 10), sharex=True)
@@ -363,7 +386,7 @@ def inspect_dataset(dataset_path=None, batch_size=1):
     def show_samples():
         # Iterate through the dataset
         for i, batch in enumerate(dataloader):
-            print(f'\nDisplaying sample {i + 1}/{len(dataloader)}')
+            print(f'\nDisplaying sample {i + 1}/{len(dataloader)}')  # noqa: T201
 
             # Convert batch dictionary to regular dictionary with numpy arrays
             sample = {k: v[0].numpy() for k, v in batch.items()}
@@ -378,8 +401,235 @@ def inspect_dataset(dataset_path=None, batch_size=1):
     # Start the sample display process
     show_samples()
 
-    print('Dataset inspection complete.')
+    print('Dataset inspection complete.')  # noqa: T201
+
+
+def create_pretraining_dataset(
+    interferometer_array: InterferometerArray,
+    output_dir: str | Path,
+    dataset_name: str,
+    num_samples: int,
+    start_freq: float = 1,
+    end_freq: float = 1000,
+    randomize_phase_only: bool = False,
+    random_single_tone: bool = False,
+    normalize_gain: bool = True,
+) -> str:
+    """Create a pretraining dataset using simulated interferometer data.
+
+    This function generates simulated interferometer signals and saves them to an
+    HDF5 file with the same structure as real acquisition data for seamless transfer
+    learning.
+
+    Args:
+        interferometer_array: InterferometerArray instance to use for simulation
+        output_dir: Directory to save the dataset
+        dataset_name: Name of the dataset file (e.g., 'pretrain.h5')
+        num_samples: Number of samples to generate
+        start_freq: The lower bound of the valid frequency range (Hz)
+        end_freq: The upper bound of the valid frequency range (Hz)
+        randomize_phase_only: If True, only randomize phases while keeping spectrum
+            amplitudes constant
+        random_single_tone: If True, generate a single tone at a randomly selected
+            frequency
+        normalize_gain: If True, pre-compensate the spectrum to normalize gain
+            across frequencies
+
+    Returns:
+        Path to the created dataset file
+    """
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    file_path = output_dir / dataset_name
+
+    print(f'Generating {num_samples} simulated samples for dataset: {dataset_name}')  # noqa: T201
+
+    # Create file and initialize with metadata
+    with h5py.File(file_path, 'w') as f:
+        # Store acquisition parameters as attributes
+        sample_rate = 125e6 / 256  # Default decimation in RedPitayaManager
+        f.attrs['sample_rate'] = sample_rate
+        f.attrs['decimation'] = 256  # Default decimation
+        f.attrs['buffer_size'] = 16384  # Default buffer size
+        f.attrs['creation_time'] = datetime.now().isoformat()
+        f.attrs['simulated'] = True
+        f.attrs['num_samples'] = 0  # Will be updated as we add samples
+
+        # Store wavelengths of interferometers
+        wavelengths = [
+            interf.wavelength for interf in interferometer_array.interferometers
+        ]
+        f.attrs['wavelengths'] = wavelengths
+
+        # Create empty datasets for each channel
+        # We'll use the same keys as in real acquisition for compatibility
+        channel_keys = ['RP1_CH1', 'RP1_CH2', 'RP2_CH1', 'RP2_CH2']
+
+        # First sample to determine shapes
+        time, signals, acq_voltage, displacement, velocity = (
+            interferometer_array.sample_simulated(
+                start_freq=start_freq,
+                end_freq=end_freq,
+                randomize_phase_only=randomize_phase_only,
+                random_single_tone=random_single_tone,
+                normalize_gain=normalize_gain,
+            )
+        )
+
+        # Create datasets
+        # RP1_CH1: Speaker drive voltage (from which velocity is computed)
+        # RP1_CH2, RP2_CH1, RP2_CH2: Photodiode signals from interferometers
+        f.create_dataset(
+            channel_keys[0],  # RP1_CH1 - Speaker drive voltage
+            shape=(0, len(acq_voltage)),
+            maxshape=(None, len(acq_voltage)),
+            dtype='float32',
+            chunks=(1, len(acq_voltage)),
+            compression='gzip',
+            compression_opts=4,
+        )
+
+        # Create datasets for interferometer signals
+        for i in range(min(len(signals), 3)):
+            channel_idx = i + 1  # Start from RP1_CH2
+            f.create_dataset(
+                channel_keys[channel_idx],
+                shape=(0, len(signals[i])),
+                maxshape=(None, len(signals[i])),
+                dtype='float32',
+                chunks=(1, len(signals[i])),
+                compression='gzip',
+                compression_opts=4,
+            )
+
+    # Generate and save samples
+    for i in tqdm(range(num_samples)):
+        # Generate a new sample
+        time, signals, acq_voltage, displacement, velocity = (
+            interferometer_array.sample_simulated(
+                start_freq=start_freq,
+                end_freq=end_freq,
+                randomize_phase_only=randomize_phase_only,
+                random_single_tone=random_single_tone,
+                normalize_gain=normalize_gain,
+            )
+        )
+
+        # Prepare data dictionary
+        data = {}
+
+        # RP1_CH1: Speaker drive voltage (from which velocity is computed)
+        data[channel_keys[0]] = acq_voltage
+
+        # Add interferometer signals
+        for j in range(min(len(signals), 3)):
+            channel_idx = j + 1  # Start from RP1_CH2
+            data[channel_keys[channel_idx]] = signals[j]
+
+        # Save to HDF5 file
+        with h5py.File(file_path, 'a') as f:
+            current_size = f.attrs['num_samples']
+
+            # Resize datasets and add new data
+            for key, array in data.items():
+                if key in f:
+                    dataset = f[key]
+                    new_size = current_size + 1
+                    dataset.resize(new_size, axis=0)
+                    dataset[current_size] = array
+
+            # Update sample count
+            f.attrs['num_samples'] = current_size + 1
+
+        if (i + 1) % 10 == 0 or i == 0 or i == num_samples - 1:
+            print(f'Generated {i + 1}/{num_samples} samples')  # noqa: T201
+
+    print(f'Pretraining dataset saved to {file_path}')  # noqa: T201
+    return str(file_path)
+
+
+def generate_pretraining_data(
+    output_dir: str | Path,
+    train_samples: int = 1000,
+    val_samples: int = 200,
+    test_samples: int = 100,
+    start_freq: float = 1,
+    end_freq: float = 1000,
+) -> tuple[str, str, str]:
+    """Generate pretraining datasets using simulated interferometer data.
+
+    This function creates an interferometer array with three interferometers at
+    different wavelengths and generates simulated data for pretraining.
+
+    Args:
+        output_dir: Directory to save the datasets
+        train_samples: Number of training samples to generate
+        val_samples: Number of validation samples to generate
+        test_samples: Number of test samples to generate
+        start_freq: The lower bound of the valid frequency range (Hz)
+        end_freq: The upper bound of the valid frequency range (Hz)
+
+    Returns:
+        Tuple of (train_path, val_path, test_path)
+    """
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create an array of 3 interferometers with different wavelengths
+    interferometers = [
+        MichelsonInterferometer(wavelength=0.635, phase=0),  # 635nm (Red)
+        MichelsonInterferometer(wavelength=0.515, phase=np.pi / 3),  # 515nm (Green)
+        MichelsonInterferometer(wavelength=0.675, phase=np.pi / 2),  # 675nm (Deep Red)
+    ]
+
+    interferometer_array = InterferometerArray(interferometers)
+
+    dataset_files = ['pretrain.h5', 'preval.h5', 'pretest.h5']
+
+    # Create training dataset
+    print('\nGenerating pretraining training dataset...')  # noqa: T201
+    train_path = create_pretraining_dataset(
+        interferometer_array=interferometer_array,
+        output_dir=output_dir,
+        dataset_name=dataset_files[0],
+        num_samples=train_samples,
+        start_freq=start_freq,
+        end_freq=end_freq,
+        randomize_phase_only=False,
+        random_single_tone=False,
+        normalize_gain=True,
+    )
+
+    # Create validation dataset
+    print('\nGenerating pretraining validation dataset...')  # noqa: T201
+    val_path = create_pretraining_dataset(
+        interferometer_array=interferometer_array,
+        output_dir=output_dir,
+        dataset_name=dataset_files[1],
+        num_samples=val_samples,
+        start_freq=start_freq,
+        end_freq=end_freq,
+        randomize_phase_only=False,
+        random_single_tone=False,
+        normalize_gain=True,
+    )
+
+    # Create test dataset
+    print('\nGenerating pretraining test dataset...')  # noqa: T201
+    test_path = create_pretraining_dataset(
+        interferometer_array=interferometer_array,
+        output_dir=output_dir,
+        dataset_name=dataset_files[2],
+        num_samples=test_samples,
+        start_freq=start_freq,
+        end_freq=end_freq,
+        randomize_phase_only=False,
+        random_single_tone=False,
+        normalize_gain=True,
+    )
+
+    return train_path, val_path, test_path
 
 
 if __name__ == '__main__':
-    inspect_dataset()
+    inspect_dataset('./signal_analysis/data/pretrain.h5')

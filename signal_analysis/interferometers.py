@@ -77,9 +77,7 @@ class MichelsonInterferometer:
         # Remember that the actual displacement is half the "displacement" of
         # the returned wave
 
-        signal = E0**2 + ER**2 + 2 * E0 * ER * interference
-
-        return signal
+        return E0**2 + ER**2 + 2 * E0 * ER * interference
 
     def get_simulated_buffer(
         self, displacement: np.ndarray, time: np.ndarray
@@ -332,7 +330,7 @@ class InterferometerArray:
         # Feed the displacement and acquisition time to the interferometer array
         _, signals, _, _ = self.get_simulated_buffer(displacement, acq_time)
 
-        return acq_time, signals, displacement, velocity
+        return acq_time, signals, acq_voltage, displacement, velocity
 
     def plot_buffer(self, displacement: np.ndarray, time: np.ndarray):
         """Plot the signals from all interferometers along with displacement and
@@ -342,7 +340,7 @@ class InterferometerArray:
             displacement: Displacement data array
             time: Time data array
         """
-        time, signals, displacement, velocity = self.get_simulated_buffer(
+        time, signals, acq_voltage, displacement, velocity = self.get_simulated_buffer(
             displacement, time
         )
 
@@ -403,7 +401,9 @@ class InterferometerArray:
         Args:
             **kwargs: Arguments to pass to sample_simulated()
         """
-        time, signals, displacement, velocity = self.sample_simulated(**kwargs)
+        time, signals, acq_voltage, displacement, velocity = self.sample_simulated(
+            **kwargs
+        )
 
         # Create a figure with subplots for each interferometer
         n_interferometers = len(self.interferometers)
@@ -468,8 +468,8 @@ if __name__ == '__main__':
     interferometer_array = InterferometerArray([interferometer1, interferometer2])
 
     # Method 1: Generate a simulated sample and get the data
-    time, signals, displacement, velocity = interferometer_array.sample_simulated(
-        start_freq=1, end_freq=1000
+    time, signals, acq_voltage, displacement, velocity = (
+        interferometer_array.sample_simulated(start_freq=1, end_freq=1000)
     )
 
     # Method 2: Generate and plot in one step

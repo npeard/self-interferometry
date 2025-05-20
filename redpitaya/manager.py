@@ -682,7 +682,7 @@ class RedPitayaManager:
 
                 # Store any other relevant settings
                 for key, value in self.settings.items():
-                    if isinstance(value, (int, float, str, bool)):
+                    if isinstance(value, int | float | str | bool):
                         f.attrs[key] = value
 
             # Find Red Pitaya channel keys (the raw input signals)
@@ -746,8 +746,6 @@ class RedPitayaManager:
 
         print(f'Data saved to {file_path}')
         return str(file_path)
-
-    # Dataset creation methods have been moved to datasets.py
 
     def setup_plot(self):
         """Set up the plot for visualization."""
