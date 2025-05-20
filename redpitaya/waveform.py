@@ -6,6 +6,7 @@ arbitrary waveforms with specific frequency characteristics.
 
 import numpy as np
 from numpy.fft import fft, fftfreq, ifft
+from numpy.random import default_rng
 
 
 class Waveform:
@@ -28,6 +29,7 @@ class Waveform:
         gen_dec: int = 8192,
         acq_dec: int = 256,
         allowed_freqs: list[float] | None = None,
+        seed: int | None = None,
     ):
         """Initialize the Waveform generator.
 
@@ -58,6 +60,9 @@ class Waveform:
         self.spectrum = None
         self.phase = None
 
+        # Initialize random number generator
+        self.rng = default_rng(seed)
+
         # If allowed_freqs is not provided, use all frequencies in the range
         if self.allowed_freqs is None:
             # Calculate valid frequencies based on acquisition sample rate
@@ -87,7 +92,7 @@ class Waveform:
         valid_mask_pos = np.any(np.abs(pos_freqs - valid_freqs) <= 0.5, axis=0)
 
         # Generate spectrum only for positive frequencies
-        spectrum_pos = np.random.uniform(0.0, 1, len(pos_freqs))
+        spectrum_pos = self.rng.uniform(0.0, 1, len(pos_freqs))
         spectrum_pos = np.where(
             (pos_freqs >= self.start_freq)
             & (pos_freqs <= self.end_freq)
@@ -98,16 +103,16 @@ class Waveform:
 
         # Generate random Rayleigh distributed power spectrum for positive frequencies
         delta_f = self.freq[1] - self.freq[0] if len(self.freq) > 1 else 1.0
-        rayleigh_spectrum_pos = np.random.rayleigh(np.sqrt(spectrum_pos * delta_f))
+        rayleigh_spectrum_pos = self.rng.rayleigh(np.sqrt(spectrum_pos * delta_f))
         # See Phys. Rev. A 107, 042611 (2023) and https://doi.org/10.1016/0141-1187(84)90050-6
         # for why we use the Rayleigh distribution here
         # If we want Gaussian distributed a_n, b_n in a Fourier series for cosine and sine components,
         # each with variance_n = S(f_n)*\Delta f_n, then c_n = sqrt(a_n**2 + b_n**2) is Rayleigh distributed
         # with variance_n = S(f_n)*\Delta f_n
-        # np.random.rayleigh(scale) expects a scale parameter = sqrt(variance) as input
+        # rng.rayleigh(scale) expects a scale parameter = sqrt(variance) as input
 
         # Generate random phases for positive frequencies
-        phi_pos = np.random.uniform(0, 2 * np.pi, len(pos_freqs))
+        phi_pos = self.rng.uniform(0, 2 * np.pi, len(pos_freqs))
 
         # Create complex spectrum for positive frequencies
         spectrum_complex_pos = rayleigh_spectrum_pos * np.exp(1j * phi_pos)
@@ -137,7 +142,7 @@ class Waveform:
         amplitudes = np.abs(self.spectrum)
 
         # Generate random phases only for non-negative frequencies
-        phi_pos = np.random.uniform(0, 2 * np.pi, np.sum(pos_freq_mask))
+        phi_pos = self.rng.uniform(0, 2 * np.pi, np.sum(pos_freq_mask))
 
         # Ensure DC component has zero phase if present
         if np.any(self.freq == 0):
@@ -201,7 +206,8 @@ class Waveform:
 
         # Randomly select one of the valid frequencies
         if len(self.valid_freqs) > 0:
-            selected_freq = np.random.choice(self.valid_freqs[self.valid_freqs > 0])
+            positive_freqs = self.valid_freqs[self.valid_freqs > 0]
+            selected_freq = self.rng.choice(positive_freqs)
         else:
             # If no valid frequencies, use the middle of the range
             selected_freq = (self.start_freq + self.end_freq) / 2
@@ -210,7 +216,7 @@ class Waveform:
         freq_idx = np.argmin(np.abs(self.freq - selected_freq))
 
         # Generate a random phase
-        phi = np.random.uniform(0, 2 * np.pi)
+        phi = self.rng.uniform(0, 2 * np.pi)
 
         # Set the amplitude at the selected frequency to 1 with the random phase
         spectrum[freq_idx] = 1.0 * np.exp(1j * phi)
@@ -219,7 +225,10 @@ class Waveform:
         self.spectrum = spectrum
 
     def sample(
-        self, randomize_phase_only=False, random_single_tone=False, test_mode=False
+        self,
+        randomize_phase_only: bool = False,
+        random_single_tone: bool = False,
+        test_mode: bool = False,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Generate a sample waveform using the current configuration.
         Randomizes the spectrum and phases each time it's called.

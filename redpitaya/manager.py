@@ -859,37 +859,35 @@ class RedPitayaManager:
         # Create simulated Michelson signals if displacement data is available
         simulated_signals = {}
         if disp_tf_data is not None:
-            # Convert displacement from microns to meters for the interferometer calculation
-            displacement_meters = disp_tf_data * 1e-6
+            # Displacement is already in microns, no conversion needed
+            displacement_microns = disp_tf_data
 
-            # Create interferometers for each photodiode wavelength
-            interferometer_635 = MichelsonInterferometer(wavelength=635e-9, phase=0)
-            interferometer_674 = MichelsonInterferometer(wavelength=674.8e-9, phase=0)
-            interferometer_515 = MichelsonInterferometer(wavelength=515e-9, phase=0)
+            # Create interferometers for each photodiode wavelength (wavelengths in microns)
+            interferometer_635 = MichelsonInterferometer(wavelength=0.635, phase=0)
+            interferometer_674 = MichelsonInterferometer(wavelength=0.6748, phase=0)
+            interferometer_515 = MichelsonInterferometer(wavelength=0.515, phase=0)
 
             # Generate simulated signals
             _, simulated_signals['L635P5'], _, _ = (
                 interferometer_635.get_simulated_buffer(
-                    displacement=displacement_meters, time=time_data
+                    displacement=displacement_microns, time=time_data
                 )
             )
             _, simulated_signals['HL6748MG'], _, _ = (
                 interferometer_674.get_simulated_buffer(
-                    displacement=displacement_meters, time=time_data
+                    displacement=displacement_microns, time=time_data
                 )
             )
             _, simulated_signals['L515A1'], _, _ = (
                 interferometer_515.get_simulated_buffer(
-                    displacement=displacement_meters, time=time_data
+                    displacement=displacement_microns, time=time_data
                 )
             )
 
             # Scale the simulated signals to match the amplitude of the real signals
-            for key in simulated_signals:
+            for key, signal in simulated_signals.items():
                 # First normalize the simulated signal
-                simulated_signals[key] = simulated_signals[key] / np.max(
-                    np.abs(simulated_signals[key])
-                )
+                simulated_signals[key] = signal / np.max(np.abs(signal))
 
         # Plot each channel and its FFT
         for i, channel_name in enumerate(channel_order):

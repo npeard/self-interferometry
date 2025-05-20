@@ -102,15 +102,18 @@ class CoilDriver:
         # Get the complex transfer function
         transfer_function = self.get_transfer_function(freq)
 
-        # Compute compensation for velocity transform (because velocity is the quantity we care about, we'd like for its
-        # spectrum to be the same shape as the original waveform (flat)
+        # Compute compensation for velocity transform (because velocity is the quantity
+        # we care about, we'd like for its spectrum to be the same shape as the original
+        # waveform (flat)
         velocity_transfer = transfer_function * 1j * 2 * np.pi * freq
-        # We apply a scaling factor here so that we don't have to apply large amounts of gain to the original spectrum
-        # This is OK because ultimately we just want the shape of the velocity spectrum to match the original waveform (flat)
-        # and we don't care so much about the overall scaling as long as it is within the hardware constraints and allows us
-        # to scan over multiple fringes
+        # We apply a scaling factor here so that we don't have to apply large amounts of
+        # gain to the original spectrum. This is OK because ultimately we just want the
+        # shape of the velocity spectrum to match the original waveform (flat) and we
+        # don't care so much about the overall scaling as long as it is within the
+        # hardware constraints and allows us to scan over multiple fringes
         scaling_factor = np.abs(velocity_transfer[freq == waveform.valid_freqs[0]])
-        # The extra factor of 10 here is manually selected and seems to produce voltages in a compatible range
+        # The extra factor of 10 here is manually selected and seems to produce voltages
+        # in a compatible range
         velocity_transfer /= scaling_factor * 10
 
         # Pre-compensate the spectrum by dividing by the complex transfer function
