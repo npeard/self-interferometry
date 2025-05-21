@@ -257,12 +257,330 @@ def generate_training_data_from_rp(
     return train_path, val_path, test_path
 
 
+def display_sample(
+    sample_data: dict[str, np.ndarray],
+    all_data: dict[str, np.ndarray],
+    num_samples: int,
+) -> None:
+    """Display plots for a sample from the dataset.
+
+    Args:
+        sample_data: Dictionary of data for the current sample
+        all_data: Dictionary of all data in the dataset
+        num_samples: Number of samples in the dataset
+    """
+    from scipy.fft import fft, fftfreq
+
+    from redpitaya.coil_driver import CoilDriver
+
+    # Channel labels and colors
+    labels = {
+        'RP1_CH1': 'Speaker Drive Voltage',
+        'RP1_CH2': 'Photodiode 1',
+        'RP2_CH1': 'Photodiode 2',
+        'RP2_CH2': 'Photodiode 3',
+    }
+    colors = ['blue', 'red', 'green', 'purple']
+
+    # Calculate time data (assuming 125MHz/256 sample rate as in RedPitayaManager)
+    sample_rate = 125e6 / 256  # Default decimation in RedPitayaManager
+
+    # Create a coil driver for velocity and displacement calculations
+    coil_driver = CoilDriver()
+
+    # Create two separate figures
+    # Figure 1: Raw signals
+    fig1, axes1 = plt.subplots(len(sample_data), 1, figsize=(10, 10), sharex=True)
+    if len(sample_data) == 1:
+        axes1 = [axes1]  # Make it iterable if there's only one subplot
+
+    # Figure 2: Histograms and Spectra
+    # 2-column layout (2 columns, 4 rows)
+    fig2, axes2 = plt.subplots(4, 2, figsize=(10, 10))
+
+    # Figure 3: Physical Quantities (Velocity and Displacement)
+    fig3, axes3 = plt.subplots(2, 1, figsize=(8, 10))
+
+    # Calculate spectra for all data
+    all_spectra = {}
+    for key, data in all_data.items():
+        # Calculate spectra for each sample
+        spectra = []
+        for i in range(data.shape[0]):
+            sample_data_i = data[i]
+            # Calculate FFT
+            n = len(sample_data_i)
+            fft_data = fft(sample_data_i)
+            # Get positive frequencies only
+            freqs = fftfreq(n, 1 / sample_rate)[: n // 2]
+            fft_mag = 2.0 / n * np.abs(fft_data[: n // 2])
+            spectra.append(fft_mag)
+        all_spectra[key] = np.array(spectra)
+
+    # Calculate velocity and displacement for drive voltage (RP1_CH1)
+    if 'RP1_CH1' in all_data:
+        # Calculate for all samples
+        all_velocity = []
+        all_velocity_spectra = []
+        all_displacement = []
+        all_displacement_spectra = []
+
+        for i in range(all_data['RP1_CH1'].shape[0]):
+            drive_voltage = all_data['RP1_CH1'][i]
+
+            # Get velocity and displacement using CoilDriver
+            velocity, velocity_spectrum, velocity_freqs = coil_driver.get_velocity(
+                drive_voltage, sample_rate
+            )
+            displacement, displacement_spectrum, displacement_freqs = (
+                coil_driver.get_displacement(drive_voltage, sample_rate)
+            )
+
+            all_velocity.append(velocity)
+            all_velocity_spectra.append(np.abs(velocity_spectrum)[velocity_freqs >= 0])
+            all_displacement.append(displacement)
+            all_displacement_spectra.append(
+                np.abs(displacement_spectrum)[displacement_freqs >= 0]
+            )
+
+        # Convert to numpy arrays
+        all_velocity = np.array(all_velocity)
+        all_velocity_spectra = np.array(all_velocity_spectra)
+        all_displacement = np.array(all_displacement)
+        all_displacement_spectra = np.array(all_displacement_spectra)
+
+        # Calculate mean spectra
+        mean_velocity_spectrum = np.mean(all_velocity_spectra, axis=0)
+        mean_displacement_spectrum = np.mean(all_displacement_spectra, axis=0)
+
+        # Store positive frequencies for plotting
+        pos_freqs = velocity_freqs[velocity_freqs >= 0]
+
+    # Keep track of the current row in the plot
+    row_idx = 0
+
+    # Process current sample data
+    for i, (key, data) in enumerate(sample_data.items()):
+        # Get the corresponding color
+        color = colors[i % len(colors)]
+
+        # Get label for the channel
+        label = labels.get(key, key)
+
+        # Plot raw signal
+        time_data = np.linspace(0, len(data) / sample_rate, len(data))
+        axes1[i].plot(time_data * 1000, data, color=color)  # Convert to ms
+        axes1[i].set_ylabel(label)
+        axes1[i].grid(True)
+
+        if i == len(sample_data) - 1:
+            axes1[i].set_xlabel('Time (ms)')
+
+        # Column 1: Plot histograms
+        # Full dataset histogram on primary y-axis
+        n, bins, patches = axes2[row_idx, 0].hist(
+            all_data[key].flatten(),
+            bins=50,
+            color=color,
+            alpha=1.0,
+            label=f'All samples ({num_samples})',
+        )
+        axes2[row_idx, 0].set_ylabel('Frequency (all samples)', color=color)
+        axes2[row_idx, 0].tick_params(axis='y', labelcolor=color)
+
+        # Create a second y-axis for the current sample histogram
+        ax2_twin = axes2[row_idx, 0].twinx()
+        n_sample, _, patches_sample = ax2_twin.hist(
+            data.flatten(), bins=bins, color='orange', alpha=0.4, label='Current sample'
+        )
+        ax2_twin.set_ylabel('Frequency (current sample)', color='orange')
+        ax2_twin.tick_params(axis='y', labelcolor='orange')
+
+        # Add a title and x-label
+        axes2[row_idx, 0].set_title(f'{label} Histogram')
+        axes2[row_idx, 0].set_xlabel('Value')
+
+        # Create a combined legend with smaller font size
+        lines1, labels1 = axes2[row_idx, 0].get_legend_handles_labels()
+        lines2, labels2 = ax2_twin.get_legend_handles_labels()
+        axes2[row_idx, 0].legend(
+            lines1 + lines2, labels1 + labels2, loc='upper right', fontsize='small'
+        )
+
+        # Add grid
+        axes2[row_idx, 0].grid(True)
+
+        # Column 2: Plot spectra
+        # Calculate FFT for current sample
+        n = len(data)
+        fft_data = fft(data)
+        freqs = fftfreq(n, 1 / sample_rate)[: n // 2]
+        fft_mag = 2.0 / n * np.abs(fft_data[: n // 2])
+
+        # Plot mean spectrum from all samples
+        mean_spectrum = np.mean(all_spectra[key], axis=0)
+        axes2[row_idx, 1].semilogy(
+            freqs, mean_spectrum, color=color, label=f'Mean {label} Spectrum'
+        )
+
+        # Plot current sample spectrum
+        axes2[row_idx, 1].semilogy(
+            freqs, fft_mag, color='orange', alpha=0.7, label='Current Sample Spectrum'
+        )
+
+        axes2[row_idx, 1].set_title(f'{label} Spectrum')
+        axes2[row_idx, 1].set_xlabel('Frequency (Hz)')
+        axes2[row_idx, 1].set_ylabel('Magnitude')
+        axes2[row_idx, 1].grid(True, which='both', ls='-', alpha=0.5)
+        axes2[row_idx, 1].legend(loc='upper right', fontsize='small')
+        axes2[row_idx, 1].set_xlim(0, min(2000, freqs[-1]))
+
+        # No third column in fig2 anymore
+
+        # If this is drive voltage, add velocity and displacement in the third figure
+        if key == 'RP1_CH1' and 'RP1_CH1' in all_data:
+            # Calculate velocity and displacement for current sample
+            velocity, velocity_spectrum, velocity_freqs = coil_driver.get_velocity(
+                data, sample_rate
+            )
+            displacement, displacement_spectrum, displacement_freqs = (
+                coil_driver.get_displacement(data, sample_rate)
+            )
+
+            # Get positive frequency components
+            velocity_spectrum_pos = np.abs(velocity_spectrum)[velocity_freqs >= 0]
+            displacement_spectrum_pos = np.abs(displacement_spectrum)[
+                displacement_freqs >= 0
+            ]
+
+            # Plot displacement in the first subplot of figure 3
+            axes3[0].semilogy(
+                pos_freqs,
+                mean_displacement_spectrum,
+                color='cyan',
+                label='Mean Displacement Spectrum',
+            )
+            axes3[0].semilogy(
+                pos_freqs,
+                displacement_spectrum_pos,
+                color='blue',
+                alpha=0.7,
+                label='Current Displacement Spectrum',
+            )
+
+            # Set proper title and labels with larger font size
+            axes3[0].set_title('Displacement Spectrum', fontsize=14, fontweight='bold')
+            axes3[0].set_xlabel('Frequency (Hz)', fontsize=12)
+            axes3[0].set_ylabel('Magnitude (µm)', fontsize=12)
+
+            # Add grid lines for both major and minor ticks
+            axes3[0].grid(True, which='major', ls='-', alpha=0.7)
+            axes3[0].grid(True, which='minor', ls='--', alpha=0.4)
+
+            # Ensure ticks are visible on both axes and increase tick label size
+            axes3[0].tick_params(
+                axis='both', which='both', direction='in', labelsize=10
+            )
+
+            # Add legend with appropriate font
+            axes3[0].legend(loc='upper right', fontsize='medium')
+
+            # Set frequency range limit
+            axes3[0].set_xlim(0, min(2000, pos_freqs[-1]))
+
+            # Plot velocity in the second subplot of figure 3
+            axes3[1].semilogy(
+                pos_freqs,
+                mean_velocity_spectrum,
+                color='orange',
+                label='Mean Velocity Spectrum',
+            )
+            axes3[1].semilogy(
+                pos_freqs,
+                velocity_spectrum_pos,
+                color='red',
+                alpha=0.7,
+                label='Current Velocity Spectrum',
+            )
+
+            # Set proper title and labels with larger font size
+            axes3[1].set_title('Velocity Spectrum', fontsize=14, fontweight='bold')
+            axes3[1].set_xlabel('Frequency (Hz)', fontsize=12)
+            axes3[1].set_ylabel('Magnitude (µm/s)', fontsize=12)
+
+            # Add grid lines for both major and minor ticks
+            axes3[1].grid(True, which='major', ls='-', alpha=0.7)
+            axes3[1].grid(True, which='minor', ls='--', alpha=0.4)
+
+            # Ensure ticks are visible on both axes and increase tick label size
+            axes3[1].tick_params(
+                axis='both', which='both', direction='in', labelsize=10
+            )
+
+            # Add legend with appropriate font
+            axes3[1].legend(loc='upper right', fontsize='medium')
+
+            # Set frequency range limit
+            axes3[1].set_xlim(0, min(2000, pos_freqs[-1]))
+
+        # Move to the next row
+        row_idx += 1
+
+    # Set overall titles
+    fig1.suptitle('Raw Signals', fontsize=16)
+    fig2.suptitle('Signal Analysis', fontsize=16)
+    fig3.suptitle('Physical Quantities', fontsize=16)
+
+    # Adjust layout with more space
+    fig1.tight_layout(rect=[0, 0, 1, 0.95])
+    fig2.tight_layout(rect=[0, 0, 1, 0.95])
+    fig3.tight_layout(rect=[0, 0, 1, 0.95])
+
+    # Ensure all subplot borders are visible
+    for ax in axes2.flatten():
+        for spine in ax.spines.values():
+            spine.set_visible(True)
+
+    for ax in axes3.flatten():
+        for spine in ax.spines.values():
+            spine.set_visible(True)
+
+    # Show the plots
+    plt.show(block=True)
+
+
+def show_samples(dataloader, all_data, num_samples):
+    """Iterate through the dataset and display each sample.
+
+    Args:
+        dataloader: DataLoader for the dataset
+        all_data: Dictionary of all data in the dataset
+        num_samples: Number of samples in the dataset
+    """
+    # Iterate through the dataset
+    for i, batch in enumerate(dataloader):
+        print(f'\nDisplaying sample {i + 1}/{len(dataloader)}')  # noqa: T201
+
+        # Convert batch dictionary to regular dictionary with numpy arrays
+        sample = {k: v[0].numpy() for k, v in batch.items()}
+
+        # Display the sample (this will block until both windows are closed)
+        display_sample(sample, all_data, num_samples)
+
+        # If we've reached the end of the dataset, break
+        if i == len(dataloader) - 1:
+            break
+
+
 def inspect_dataset(dataset_path: str | Path, batch_size: int = 1) -> None:
     """Inspect a dataset by displaying samples and histograms.
 
     This function reads an HDF5 dataset and displays two plot windows:
     1. Raw signals from the dataset with appropriate labels
-    2. Histograms of the entire dataset with overlaid histograms for the current sample
+    2. Analysis plots including:
+       - Histograms of the entire dataset with overlaid histograms for the current sample
+       - Spectra of each channel with overlay of the current sample spectrum
+       - Velocity and displacement spectra derived from the drive voltage
 
     When the plot windows are closed, it advances to the next sample.
 
@@ -290,111 +608,8 @@ def inspect_dataset(dataset_path: str | Path, batch_size: int = 1) -> None:
     dataset = MultiKeyH5Dataset(dataset_path)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
-    # Function to display the plots for a sample
-    def display_sample(sample_data: dict[str, np.ndarray]):
-        # Create two separate figures
-        # Figure 1: Raw signals
-        fig1, axes1 = plt.subplots(len(sample_data), 1, figsize=(6, 10), sharex=True)
-        if len(sample_data) == 1:
-            axes1 = [axes1]  # Make it iterable if there's only one subplot
-
-        # Figure 2: Histograms
-        fig2, axes2 = plt.subplots(len(sample_data), 1, figsize=(6, 10))
-        if len(sample_data) == 1:
-            axes2 = [axes2]  # Make it iterable if there's only one subplot
-
-        # Channel labels and colors
-        labels = {
-            'RP1_CH1': 'Speaker Drive Voltage',
-            'RP1_CH2': 'Photodiode 1',
-            'RP2_CH1': 'Photodiode 2',
-            'RP2_CH2': 'Photodiode 3',
-        }
-        colors = ['blue', 'red', 'green', 'purple']
-
-        # Calculate time data (assuming 125MHz/256 sample rate as in RedPitayaManager)
-        sample_rate = 125e6 / 256  # Default decimation in RedPitayaManager
-        for i, (key, data) in enumerate(sample_data.items()):
-            # Get the corresponding color
-            color = colors[i % len(colors)]
-
-            # Get label for the channel
-            label = labels.get(key, key)
-
-            # Plot raw signal
-            time_data = np.linspace(0, len(data) / sample_rate, len(data))
-            axes1[i].plot(time_data * 1000, data, color=color)  # Convert to ms
-            axes1[i].set_ylabel(label)
-            axes1[i].grid(True)
-
-            if i == len(sample_data) - 1:
-                axes1[i].set_xlabel('Time (ms)')
-
-            # Plot histograms
-            # Full dataset histogram on primary y-axis
-            n, bins, patches = axes2[i].hist(
-                all_data[key].flatten(),
-                bins=50,
-                color=color,
-                alpha=1.0,
-                label=f'All samples ({num_samples})',
-            )
-            axes2[i].set_ylabel('Frequency (all samples)', color=color)
-            axes2[i].tick_params(axis='y', labelcolor=color)
-
-            # Create a second y-axis for the current sample histogram
-            ax2_twin = axes2[i].twinx()
-            n_sample, _, patches_sample = ax2_twin.hist(
-                data.flatten(),
-                bins=bins,
-                color='orange',
-                alpha=0.4,
-                label='Current sample',
-            )
-            ax2_twin.set_ylabel('Frequency (current sample)', color='orange')
-            ax2_twin.tick_params(axis='y', labelcolor='orange')
-
-            # Add a title and x-label
-            axes2[i].set_title(f'{label} Histogram')
-            axes2[i].set_xlabel('Value')
-
-            # Create a combined legend
-            lines1, labels1 = axes2[i].get_legend_handles_labels()
-            lines2, labels2 = ax2_twin.get_legend_handles_labels()
-            axes2[i].legend(lines1 + lines2, labels1 + labels2, loc='upper right')
-
-            # Add grid
-            axes2[i].grid(True)
-
-        # Set overall titles
-        fig1.suptitle('Raw Signals', fontsize=16)
-        fig2.suptitle('Signal Histograms', fontsize=16)
-
-        # Adjust layout
-        fig1.tight_layout(rect=[0, 0, 1, 0.95])
-        fig2.tight_layout(rect=[0, 0, 1, 0.95])
-
-        # Show the plots
-        plt.show(block=True)
-
-    # Create a function to handle plot close events and show the next sample
-    def show_samples():
-        # Iterate through the dataset
-        for i, batch in enumerate(dataloader):
-            print(f'\nDisplaying sample {i + 1}/{len(dataloader)}')  # noqa: T201
-
-            # Convert batch dictionary to regular dictionary with numpy arrays
-            sample = {k: v[0].numpy() for k, v in batch.items()}
-
-            # Display the sample (this will block until both windows are closed)
-            display_sample(sample)
-
-            # If we've reached the end of the dataset, break
-            if i == len(dataloader) - 1:
-                break
-
     # Start the sample display process
-    show_samples()
+    show_samples(dataloader, all_data, num_samples)
 
     print('Dataset inspection complete.')  # noqa: T201
 
@@ -594,6 +809,9 @@ def generate_pretraining_data(
         random_single_tone=False,
         normalize_gain=True,
     )
+    # We do want normalize_gain=True, because we are using CoilDriver's transfer
+    # functions to calculate voltage, displacement, and velocity in
+    # InterferometerArray.sample_simulated(), so we should get a flat velocity spectrum.
 
     # Create validation dataset
     print('\nGenerating pretraining validation dataset...')  # noqa: T201
@@ -608,6 +826,9 @@ def generate_pretraining_data(
         random_single_tone=False,
         normalize_gain=True,
     )
+    # We do want normalize_gain=True, because we are using CoilDriver's transfer
+    # functions to calculate voltage, displacement, and velocity in
+    # InterferometerArray.sample_simulated(), so we should get a flat velocity spectrum.
 
     # Create test dataset
     print('\nGenerating pretraining test dataset...')  # noqa: T201
@@ -622,6 +843,9 @@ def generate_pretraining_data(
         random_single_tone=False,
         normalize_gain=True,
     )
+    # We do want normalize_gain=True, because we are using CoilDriver's transfer
+    # functions to calculate voltage, displacement, and velocity in
+    # InterferometerArray.sample_simulated(), so we should get a flat velocity spectrum.
 
     return train_path, val_path, test_path
 

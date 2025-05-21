@@ -13,6 +13,7 @@ class CNNConfig:
     output_size: int = 1
     activation: str = 'LeakyReLU'
     in_channels: int = 1
+    dropout: float = 0.1
 
 
 class CNN(nn.Module):
@@ -35,7 +36,7 @@ class CNN(nn.Module):
             act_fn_by_name[config.activation],
             nn.MaxPool1d(2),
             # Lout = 26, given L = 53
-            nn.Dropout(0.1),
+            nn.Dropout(config.dropout),
             nn.Conv1d(64, 64, kernel_size=7),
             # Lout = 20, given L = 26
             act_fn_by_name[config.activation],

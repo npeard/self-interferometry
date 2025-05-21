@@ -84,13 +84,13 @@ def test_reconstructed_waveforms():
     reconstructed_velocity = np.real(np.fft.ifft(velocity_spectrum, norm='ortho'))
 
     # Check that the reconstructed waveforms match the original ones
-    assert np.allclose(
-        displacement, reconstructed_displacement
-    ), 'Reconstructed displacement does not match original'
+    assert np.allclose(displacement, reconstructed_displacement), (
+        'Reconstructed displacement does not match original'
+    )
 
-    assert np.allclose(
-        velocity, reconstructed_velocity
-    ), 'Reconstructed velocity does not match original'
+    assert np.allclose(velocity, reconstructed_velocity), (
+        'Reconstructed velocity does not match original'
+    )
 
 
 def test_manual_transfer_function_computation():
@@ -130,13 +130,13 @@ def test_manual_transfer_function_computation():
     expected_vel_transfer = expected_disp_transfer * test_freq * 2 * np.pi * 1j
 
     # Check that the manually computed transfer functions match the expected values
-    assert np.allclose(
-        displacement_transfer[test_freq_idx], expected_disp_transfer
-    ), 'Manually computed displacement transfer function does not match expected'
+    assert np.allclose(displacement_transfer[test_freq_idx], expected_disp_transfer), (
+        'Manually computed displacement transfer function does not match expected'
+    )
 
-    assert np.allclose(
-        velocity_transfer[test_freq_idx], expected_vel_transfer
-    ), 'Manually computed velocity transfer function does not match expected'
+    assert np.allclose(velocity_transfer[test_freq_idx], expected_vel_transfer), (
+        'Manually computed velocity transfer function does not match expected'
+    )
 
     # Also verify that the velocity is the derivative of displacement
     # For a sinusoidal displacement x(t) = A*sin(ω*t + φ), the velocity is
@@ -179,9 +179,9 @@ def test_displacement_velocity_relationship():
     )
 
     # Check that the velocity spectrum matches the expected value
-    assert np.allclose(
-        velocity_spectrum, expected_velocity_spectrum
-    ), 'Velocity spectrum is not the derivative of displacement spectrum'
+    assert np.allclose(velocity_spectrum, expected_velocity_spectrum), (
+        'Velocity spectrum is not the derivative of displacement spectrum'
+    )
 
 
 def test_integrated_velocity_and_derivative_displacement():
@@ -235,9 +235,9 @@ def test_integrated_velocity_and_derivative_displacement():
     # Don't compare the end elements, not accurately computed at the edges
     # TODO: why doesn't rtol alone seem to work here? These are consistent in
     # plotting...
-    assert np.allclose(
-        derived_velocity[1:-1], velocity[1:-1], atol=10, rtol=0.05
-    ), 'Derivative of displacement does not match velocity from transfer function'
+    assert np.allclose(derived_velocity[1:-1], velocity[1:-1], atol=10, rtol=0.05), (
+        'Derivative of displacement does not match velocity from transfer function'
+    )
 
 
 def test_coil_driver_sample_spectrum_hermitian():

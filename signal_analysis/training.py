@@ -10,10 +10,9 @@ from typing import Any, Union
 import lightning as L
 import torch
 import yaml
-from biphase_gpt.datasets import create_data_loaders
-from biphase_gpt.lightning_config import BaseLightningModule, GPTDecoder
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
+from models import CNN, CNNConfig
 
 
 @dataclass
@@ -47,7 +46,7 @@ class TrainingConfig:
         self.training_config.setdefault('batch_size', 64)
 
         # Data defaults
-        self.data_config.setdefault('data_dir', './biphase_gpt/data')
+        self.data_config.setdefault('data_dir', './signal_analysis/data')
         self.data_config.setdefault('train_file', 'train.h5')
         self.data_config.setdefault('val_file', 'val.h5')
         self.data_config.setdefault('test_file', 'test.h5')

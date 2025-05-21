@@ -49,9 +49,9 @@ def test_waveform_sample_spectrum_consistency():
         voltage_mag_fft = np.abs(spectrum_fft)
         voltage_mag_sample = np.abs(voltage_spectrum)[: len(voltage_mag_fft)]
 
-        assert np.allclose(
-            voltage_mag_sample, voltage_mag_fft, rtol=0.1
-        ), f'Test {i + 1}: Spectrum magnitude mismatch'
+        assert np.allclose(voltage_mag_sample, voltage_mag_fft, rtol=0.1), (
+            f'Test {i + 1}: Spectrum magnitude mismatch'
+        )
 
         print(f'Completed test iteration {i + 1}/{num_tests}')  # noqa: T201
 
@@ -68,9 +68,9 @@ def test_waveform_sample_reproducibility():
     _, voltage2, _ = waveform.sample()
 
     # They should be different (random generation)
-    assert not np.allclose(
-        voltage1, voltage2
-    ), 'Consecutive samples should be different'
+    assert not np.allclose(voltage1, voltage2), (
+        'Consecutive samples should be different'
+    )
 
 
 def test_waveform_frequency_range():
@@ -118,9 +118,9 @@ def test_waveform_output_range():
     # Generate multiple waveforms and check their ranges
     for i in range(5):
         _, voltage, _ = waveform.sample()
-        assert (
-            np.max(np.abs(voltage)) <= 1.0
-        ), f'Test {i + 1}: Voltage exceeds normalized range [-1, 1]'
+        assert np.max(np.abs(voltage)) <= 1.0, (
+            f'Test {i + 1}: Voltage exceeds normalized range [-1, 1]'
+        )
 
 
 def test_waveform_length_consistency():
@@ -131,9 +131,9 @@ def test_waveform_length_consistency():
     # Generate multiple waveforms and check their lengths
     for i in range(5):
         t, voltage, voltage_spectrum = waveform.sample()
-        assert len(t) == len(
-            voltage
-        ), f'Test {i + 1}: Time and voltage arrays have different lengths'
+        assert len(t) == len(voltage), (
+            f'Test {i + 1}: Time and voltage arrays have different lengths'
+        )
 
 
 def test_waveform_reconstruction():
@@ -149,9 +149,9 @@ def test_waveform_reconstruction():
     reconstructed = np.fft.fftshift(reconstructed)
 
     # The reconstructed signal should be normalized
-    assert (
-        np.max(np.abs(reconstructed)) <= 1.0
-    ), 'Reconstructed signal exceeds normalized range'
+    assert np.max(np.abs(reconstructed)) <= 1.0, (
+        'Reconstructed signal exceeds normalized range'
+    )
 
     # The reconstructed signal should be close to the original signal
     assert np.allclose(voltage, reconstructed, rtol=0.1), 'Signal reconstruction failed'
@@ -224,9 +224,9 @@ def test_waveform_statistics():
     )
 
     # Test 1: Check that the mean of the time-domain voltage values is close to zero
-    assert np.isclose(
-        np.mean(all_voltages), 0, atol=0.05
-    ), f'Mean of voltage values ({np.mean(all_voltages)}) is not close to zero'
+    assert np.isclose(np.mean(all_voltages), 0, atol=0.05), (
+        f'Mean of voltage values ({np.mean(all_voltages)}) is not close to zero'
+    )
 
     # Test 2: Check that the empirical variance of the time-domain voltage values is
     # close to the computed noise variance
@@ -275,15 +275,15 @@ def test_waveform_statistics():
     q1, q2, q3 = np.percentile(normalized_voltages, [25, 50, 75])
 
     # Check against theoretical quartiles with some tolerance
-    assert np.isclose(
-        q1, -0.67, atol=0.1
-    ), f'First quartile ({q1}) is not close to expected value (-0.67)'
-    assert np.isclose(
-        q2, 0.0, atol=0.1
-    ), f'Median ({q2}) is not close to expected value (0.0)'
-    assert np.isclose(
-        q3, 0.67, atol=0.1
-    ), f'Third quartile ({q3}) is not close to expected value (0.67)'
+    assert np.isclose(q1, -0.67, atol=0.1), (
+        f'First quartile ({q1}) is not close to expected value (-0.67)'
+    )
+    assert np.isclose(q2, 0.0, atol=0.1), (
+        f'Median ({q2}) is not close to expected value (0.0)'
+    )
+    assert np.isclose(q3, 0.67, atol=0.1), (
+        f'Third quartile ({q3}) is not close to expected value (0.67)'
+    )
 
     # Test 6: Check that the range of the data is reasonable for a Gaussian
     # For a large sample from a Gaussian, we expect most values to be within ±3 standard
