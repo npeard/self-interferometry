@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from torch import nn
+from torch import Tensor, nn
 
 act_fn_by_name = {'LeakyReLU': nn.LeakyReLU(), 'ReLU': nn.ReLU()}
 
@@ -17,9 +17,8 @@ class CNNConfig:
 
 class CNN(nn.Module):
     def __init__(self, config: CNNConfig):
-        super(CNN, self).__init__()
+        super().__init__()
         self.in_channels = config.in_channels
-        print('self.in_channels = ', self.in_channels)
         self.conv_layers = nn.Sequential(
             nn.Conv1d(self.in_channels, 16, kernel_size=7),
             # Lout = 250, given L = 256
@@ -50,13 +49,7 @@ class CNN(nn.Module):
             nn.Linear(16, config.output_size),
         )
 
-    def forward(self, x):
-        # print("x.shape", x.shape)
-        out = self.conv_layers(x)
-        # print(f"post conv out size: {out.size()}")  # [128, 64, 10]
-        out = out.view(out.size(0), 1, -1)
-        # print(f"post conv out reshaped size: {out.size()}")  # confirmed [
-        # 128, 1, 640]
-        out = self.fc_layers(out)  # expect out [128, 1, 1]
-        # print(f"post fc out size: {out.size()}") # confirmed: [128, 1, 1]
-        return out
+    def forward(self, x: Tensor) -> Tensor:
+        out = self.conv_layers(x)  # expect out [128, 64, 10]
+        out = out.view(out.size(0), 1, -1)  # expect out [128, 1, 640]
+        return self.fc_layers(out)  # expect out [128, 1, 1]

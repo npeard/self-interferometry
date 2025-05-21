@@ -84,13 +84,13 @@ def test_reconstructed_waveforms():
     reconstructed_velocity = np.real(np.fft.ifft(velocity_spectrum, norm='ortho'))
 
     # Check that the reconstructed waveforms match the original ones
-    assert np.allclose(displacement, reconstructed_displacement), (
-        'Reconstructed displacement does not match original'
-    )
+    assert np.allclose(
+        displacement, reconstructed_displacement
+    ), 'Reconstructed displacement does not match original'
 
-    assert np.allclose(velocity, reconstructed_velocity), (
-        'Reconstructed velocity does not match original'
-    )
+    assert np.allclose(
+        velocity, reconstructed_velocity
+    ), 'Reconstructed velocity does not match original'
 
 
 def test_manual_transfer_function_computation():
@@ -109,13 +109,9 @@ def test_manual_transfer_function_computation():
 
     # Manually compute displacement transfer function
     displacement_transfer = amplitude_transfer * np.exp(1j * phase_transfer)
-    displacement_transfer_mod = np.abs(displacement_transfer)
-    displacement_transfer_phase = np.angle(displacement_transfer)
 
     # Manually compute velocity transfer function
     velocity_transfer = displacement_transfer * freqs * 2 * np.pi * 1j
-    velocity_transfer_mod = np.abs(velocity_transfer)
-    velocity_transfer_phase = np.angle(velocity_transfer)
 
     # Test a specific frequency to verify calculations
     test_freq_idx = 500  # Middle of the range
@@ -134,21 +130,23 @@ def test_manual_transfer_function_computation():
     expected_vel_transfer = expected_disp_transfer * test_freq * 2 * np.pi * 1j
 
     # Check that the manually computed transfer functions match the expected values
-    assert np.allclose(displacement_transfer[test_freq_idx], expected_disp_transfer), (
-        'Manually computed displacement transfer function does not match expected'
-    )
+    assert np.allclose(
+        displacement_transfer[test_freq_idx], expected_disp_transfer
+    ), 'Manually computed displacement transfer function does not match expected'
 
-    assert np.allclose(velocity_transfer[test_freq_idx], expected_vel_transfer), (
-        'Manually computed velocity transfer function does not match expected'
-    )
+    assert np.allclose(
+        velocity_transfer[test_freq_idx], expected_vel_transfer
+    ), 'Manually computed velocity transfer function does not match expected'
 
     # Also verify that the velocity is the derivative of displacement
-    # For a sinusoidal displacement x(t) = A*sin(ω*t + φ), the velocity is v(t) = A*ω*cos(ω*t + φ)
+    # For a sinusoidal displacement x(t) = A*sin(ω*t + φ), the velocity is
+    # v(t) = A*ω*cos(ω*t + φ)
     # In the frequency domain, this is equivalent to multiplying by iω = i*2*π*f
     assert np.allclose(
         velocity_transfer, displacement_transfer * freqs * 2 * np.pi * 1j
     ), (
-        'Velocity transfer function is not consistent with displacement transfer function'
+        'Velocity transfer function is not consistent with displacement transfer '
+        'function'
     )
 
 
@@ -181,18 +179,16 @@ def test_displacement_velocity_relationship():
     )
 
     # Check that the velocity spectrum matches the expected value
-    assert np.allclose(velocity_spectrum, expected_velocity_spectrum), (
-        'Velocity spectrum is not the derivative of displacement spectrum'
-    )
+    assert np.allclose(
+        velocity_spectrum, expected_velocity_spectrum
+    ), 'Velocity spectrum is not the derivative of displacement spectrum'
 
 
 def test_integrated_velocity_and_derivative_displacement():
-    """Test that:
-    1. The integrated velocity matches the displacement from the transfer function
-    2. The derivative of displacement matches the velocity from the transfer function
-
-    This test verifies the consistency between the time-domain and frequency-domain
-    approaches for calculating velocity and displacement.
+    """Verifies that: 1. The integrated velocity matches the displacement from the
+    transfer function. 2. The derivative of displacement matches the velocity from the
+    transfer function. This test verifies the consistency between the time-domain and
+    frequency-domain approaches for calculating velocity and displacement.
     """
     # Create a waveform generator with test parameters
     waveform = Waveform(start_freq=10, end_freq=1000, gen_dec=8192, acq_dec=256)
@@ -216,12 +212,10 @@ def test_integrated_velocity_and_derivative_displacement():
 
     # Test 1: Integrated velocity should match displacement from transfer function
     # Integrate velocity using the same method as in CoilDriver.integrate_velocity
-    # with high_pass_freq=0.0 (default in the updated code)
-    displacement_integrated = coil_driver.integrate_velocity(
-        velocity, sample_rate, high_pass_freq=0.0
-    )
+    displacement_integrated = coil_driver.integrate_velocity(velocity, sample_rate)
 
-    # Ensure displacement starts at zero (as done in RedPitayaManager.get_displacement_data)
+    # Ensure displacement starts at zero (as done in
+    # RedPitayaManager.get_displacement_data)
     displacement_zeroed = displacement - displacement[0]
     displacement_integrated = displacement_integrated - displacement_integrated[0]
 
@@ -231,24 +225,28 @@ def test_integrated_velocity_and_derivative_displacement():
     ), 'Integrated velocity does not match displacement from transfer function'
 
     # Test 2: Derivative of displacement should match velocity from transfer function
-    # Calculate derivative of displacement using the same method as in RedPitayaManager.get_velocity_data
+    # Calculate derivative of displacement using the same method as in
+    # RedPitayaManager.get_velocity_data
     derived_velocity = coil_driver.derivative_displacement(
         displacement_zeroed, sample_rate
     )
 
     # Compare the derivative of displacement with the velocity from transfer function
     # Don't compare the end elements, not accurately computed at the edges
-    # TODO: why doesn't rtol alone seem to work here? These are consistent in plotting...
-    assert np.allclose(derived_velocity[1:-1], velocity[1:-1], atol=10, rtol=0.05), (
-        'Derivative of displacement does not match velocity from transfer function'
-    )
+    # TODO: why doesn't rtol alone seem to work here? These are consistent in
+    # plotting...
+    assert np.allclose(
+        derived_velocity[1:-1], velocity[1:-1], atol=10, rtol=0.05
+    ), 'Derivative of displacement does not match velocity from transfer function'
 
 
 def test_coil_driver_sample_spectrum_hermitian():
-    """Test that the spectrum returned by CoilDriver.sample() with equalize_gain=True is Hermitian.
+    """Test that the spectrum returned by CoilDriver.sample() with equalize_gain=True is
+    Hermitian.
 
-    A Hermitian spectrum has the property that S(-f) = S(f)*, where * denotes complex conjugation.
-    This ensures that the inverse FFT will yield a real-valued signal.
+    A Hermitian spectrum has the property that S(-f) = S(f)*, where * denotes
+    complex conjugation. This ensures that the inverse FFT will yield a real-valued
+    signal.
 
     This test:
     1. Creates a Waveform instance and a CoilDriver instance
@@ -284,30 +282,36 @@ def test_coil_driver_sample_spectrum_hermitian():
                     neg_idx = neg_idx[0]
                     # Check that S(-f) = S(f)*
                     assert np.isclose(spectrum[neg_idx], np.conj(spectrum[j])), (
-                        f'Sample {i + 1}, Frequency {freq[j]} Hz: Spectrum is not Hermitian. S(-f)={spectrum[neg_idx]}, S(f)*={np.conj(spectrum[j])}'
+                        f'Sample {i + 1}, Frequency {freq[j]} Hz: Spectrum is not '
+                        f'Hermitian. '
+                        f'S(-f)={spectrum[neg_idx]}, S(f)*={np.conj(spectrum[j])}'
                     )
 
-        # Also verify that the inverse FFT of the spectrum has negligible imaginary components
+        # Also verify that the inverse FFT of the spectrum has negligible imaginary
+        # components
         ifft_result = np.fft.ifft(spectrum, norm='ortho')
         real_energy = np.sum(np.real(ifft_result) ** 2)
         imag_energy = np.sum(np.imag(ifft_result) ** 2)
 
         # The imaginary energy should be negligible compared to the real energy
         assert imag_energy < 1e-10 * real_energy, (
-            f'Sample {i + 1}: Inverse FFT has significant imaginary components. Real energy: {real_energy}, Imag energy: {imag_energy}'
+            f'Sample {i + 1}: Inverse FFT has significant imaginary components. '
+            f'Real energy: {real_energy}, Imag energy: {imag_energy}'
         )
 
 
 def test_gain_normalization():
-    """This test verifies that the shape of the velocity spectrum of the speaker surface matches the shape of the waveform
-    spectrum. The speaker velocity spectrum exhibits a lot of gain near resonance, so the waveform spectrum that is
-    sent to the device needs to be divided by the velocity transfer function to counteract this gain.
+    """Verifies that the shape of the velocity spectrum of the speaker surface matches
+    the shape of the waveform spectrum. The speaker velocity spectrum exhibits a lot of
+    gain near resonance, so the waveform spectrum that is sent to the device needs to be
+    divided by the velocity transfer function to counteract this gain.
 
     This test:
     1. Creates a Waveform instance and a CoilDriver instance
     2. Generates a standard waveform and an equalized waveform
     3. Calculates velocity for both waveforms
-    4. Verifies that the normalized equalized velocity spectrum shape matches the normalized standard voltage spectrum shape
+    4. Verifies that the normalized equalized velocity spectrum shape matches the
+    normalized standard voltage spectrum shape
     """
     # Create a waveform generator
     waveform = Waveform(start_freq=1, end_freq=100, gen_dec=8192, acq_dec=256)
@@ -352,7 +356,8 @@ def test_gain_normalization():
         voltage_fft_normalized,
         rtol=0.2,  # Tolerance for numerical differences
     ), (
-        'Normalized equalized velocity FFT shape does not match normalized standard voltage FFT shape'
+        'Normalized equalized velocity FFT shape does not match normalized standard '
+        'voltage FFT shape'
     )
 
     # Compare the spectra from CoilDriver
@@ -373,7 +378,9 @@ def test_gain_normalization():
         voltage_spectrum_normalized,
         rtol=0.2,  # Tolerance for numerical differences
     ), (
-        'Normalized equalized velocity spectrum shape does not match normalized standard voltage spectrum shape'
+        'Normalized equalized velocity spectrum shape does not match normalized '
+        'standard '
+        'voltage spectrum shape'
     )
 
     # Normalize the velocity FFT and spectrum to compare their shapes
@@ -384,13 +391,15 @@ def test_gain_normalization():
         np.abs(velocity_spectrum_eq[pos_freq_mask_coil])
     )
 
-    # Verify that the normalized equalized velocity FFT shape matches the normalized equalized velocity spectrum shape
+    # Verify that the normalized equalized velocity FFT shape matches the normalized
+    # equalized velocity spectrum shape
     assert np.allclose(
         velocity_fft_norm,
         velocity_spectrum_norm,
         rtol=0.2,  # Tolerance for numerical differences
     ), (
-        'Normalized equalized velocity FFT shape does not match normalized equalized velocity spectrum shape'
+        'Normalized equalized velocity FFT shape does not match normalized equalized '
+        'velocity spectrum shape'
     )
 
     # Normalize the voltage FFT and spectrum to compare their shapes
@@ -401,13 +410,15 @@ def test_gain_normalization():
         np.abs(voltage_spectrum_std[pos_freq_mask_coil])
     )
 
-    # Verify that the normalized standard voltage FFT shape matches the normalized standard voltage spectrum shape
+    # Verify that the normalized standard voltage FFT shape matches the normalized
+    # standard voltage spectrum shape
     assert np.allclose(
         voltage_fft_norm,
         voltage_spectrum_norm,
         rtol=0.2,  # Tolerance for numerical differences
     ), (
-        'Normalized standard voltage FFT shape does not match normalized standard voltage spectrum shape'
+        'Normalized standard voltage FFT shape does not match normalized standard '
+        'voltage spectrum shape'
     )
 
 

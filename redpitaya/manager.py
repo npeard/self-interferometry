@@ -521,11 +521,11 @@ class RedPitayaManager:
                         )
                         data[f'{primary_name}_CH{chan}'] = channel_data
                         print(
-                            f'Successfully acquired data from {primary_name} Channel {chan}'  # noqa: T201
+                            f'Successfully acquired data from {primary_name} Channel {chan}'
                         )
                     except Exception as e:
                         print(
-                            f'Error acquiring data from {primary_name}, channel {chan}: {e}'  # noqa: T201
+                            f'Error acquiring data from {primary_name}, channel {chan}: {e}'
                         )
         except Exception as e:
             print(f'Error during data acquisition from primary device: {e}')  # noqa: T201
@@ -540,11 +540,11 @@ class RedPitayaManager:
                                 device.acq_data(chan=chan, convert=True)
                             )
                             data[f'{name}_CH{chan}'] = channel_data
-                            print( # noqa: T201
+                            print(  # noqa: T201
                                 f'Successfully acquired data from {name} Channel {chan}'
                             )
                         except Exception as e:
-                            print( # noqa: T201
+                            print(  # noqa: T201
                                 f'Error acquiring data from {name}, channel {chan}: {e}'
                             )
             except Exception as e:

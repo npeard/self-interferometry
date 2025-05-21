@@ -47,8 +47,7 @@ class MichelsonInterferometer:
 
         This method implements the core interferometer physics, calculating the
         intensity of the interference pattern based on the mirror displacement.
-        The calculation uses the standard interferometer equation with fixed
-        amplitudes for the reference and measurement beams.
+        We only return the interference term, as if we had applied LayerNorm.
 
         Args:
             displacement: Array of mirror displacements in microns (μm).
@@ -61,16 +60,7 @@ class MichelsonInterferometer:
             displacement value, in the same format as the input (NumPy or PyTorch).
             The signal represents the detected light intensity at the
             interferometer output.
-
-        Note:
-            - E0 represents the amplitude of the measurement beam (set to 1)
-            - ER represents the amplitude of the reference beam (set to 0.1)
-            - The factor of 2 in the cosine argument accounts for the round trip of
-            light
         """
-        E0 = 1
-        ER = 0.1
-
         # Determine whether we're using NumPy or PyTorch based on input type
         if isinstance(displacement, torch.Tensor):
             # Use PyTorch operations for tensor inputs
@@ -81,16 +71,7 @@ class MichelsonInterferometer:
             cos = np.cos
             pi = np.pi
 
-        # Interference term
-        # Convert wavelength from microns to same unit as displacement (microns)
-        # No conversion needed as both are in microns now
-        interference = cos(
-            2 * pi / self.wavelength * 2 * displacement + self.phase
-        )
-        # Remember that the actual displacement is half the "displacement" of
-        # the returned wave
-
-        return E0**2 + ER**2 + 2 * E0 * ER * interference
+        return cos(2 * pi / self.wavelength * 2 * displacement + self.phase)
 
     def get_simulated_buffer(
         self, displacement: np.ndarray, time: np.ndarray
@@ -183,41 +164,65 @@ class InterferometerArray:
         self.interferometers = interferometers
 
     def get_simulated_buffer(
-        self, displacement: np.ndarray, time: np.ndarray
-    ) -> tuple[np.ndarray, list[np.ndarray], np.ndarray, np.ndarray]:
+        self,
+        displacement: np.ndarray | torch.Tensor,
+        time: np.ndarray | torch.Tensor | None = None,
+    ) -> tuple[
+        np.ndarray | torch.Tensor,
+        list[np.ndarray | torch.Tensor],
+        np.ndarray | torch.Tensor,
+        np.ndarray | torch.Tensor,
+    ]:
         """Get simulated buffer data from all interferometers.
 
         This method feeds the same displacement and time data to all interferometers
-        and collects their output signals.
+        and collects their output signals. It works with both NumPy arrays and
+        PyTorch tensors.
 
         Args:
-            displacement: Displacement data array
-            time: Time data array
+            displacement: Displacement data array or tensor
+            time: Time data array or tensor. If None, only interferometer outputs are
+                calculated without velocity computation (PyTorch mode for loss
+                functions)
 
         Returns:
-            Tuple containing:
-            - time: Time data array
-            - signals: List of signal arrays from each interferometer
-            - displacement: Displacement data array
-            - velocity: Velocity data calculated from displacement
+            If time is provided (NumPy mode):
+                Tuple containing:
+                - time: Time data array
+                - signals: List of signal arrays from each interferometer
+                - displacement: Displacement data array
+                - velocity: Velocity data calculated from displacement
+            If time is None (PyTorch mode):
+                List of signal tensors from each interferometer
         """
-        # Get signals from each interferometer using their own get_simulated_buffer
-        # method
+        # Check if we're in PyTorch mode (time=None)
+        pytorch_mode = time is None
+
+        # Get signals from each interferometer
         signals = []
         velocity = None
 
-        for interferometer in self.interferometers:
-            # Get processed signal from each interferometer
-            _, signal, _, interferometer_velocity = interferometer.get_simulated_buffer(
-                displacement, time
-            )
-            signals.append(signal)
+        if pytorch_mode:
+            # PyTorch mode: just get interferometer outputs directly
+            for interferometer in self.interferometers:
+                signal = interferometer.get_interferometer_output(displacement)
+                signals.append(signal)
+            return signals
+        else:
+            # NumPy mode: use the full get_simulated_buffer method
+            for interferometer in self.interferometers:
+                # Get processed signal from each interferometer
+                _, signal, _, interferometer_velocity = (
+                    interferometer.get_simulated_buffer(displacement, time)
+                )
+                signals.append(signal)
 
-            # Store velocity from the first interferometer (they should all be the same)
-            if velocity is None:
-                velocity = interferometer_velocity
+                # Store velocity from the first interferometer (they should all be
+                # the same)
+                if velocity is None:
+                    velocity = interferometer_velocity
 
-        return time, signals, displacement, velocity
+            return time, signals, displacement, velocity
 
     def sample_simulated(
         self,
