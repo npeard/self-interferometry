@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
@@ -15,37 +14,51 @@ from redpitaya.manager import RedPitayaManager
 from signal_analysis.interferometers import InterferometerArray, MichelsonInterferometer
 
 
-class H5Dataset(Dataset):
-    """Base class for HDF5 datasets.
+class StandardVelocityDataset(Dataset):
+    """Dataset class for standard velocity prediction from photodiode signals.
+
+    This dataset is designed to work with HDF5 files containing Red Pitaya channel data
+    with the following structure:
+    - RP1_CH1: Speaker drive voltage (from which velocity is computed)
+    - RP1_CH2, RP2_CH1, RP2_CH2: Photodiode signals from interferometers
+
+    The dataset returns:
+    - inputs: Photodiode signals (1-3 channels based on num_pd_channels)
+    - targets: Velocity computed from speaker drive voltage
 
     Args:
         file_path: Path to HDF5 file
-        input_key: Key for input data in HDF5 file
-        target_key: Key for target data in HDF5 file
-        transform: Optional transform to apply to inputs
-        target_transform: Optional transform to apply to targets
+        num_pd_channels: Number of photodiode channels to use (1-3)
         cache_size: Number of items to cache in memory (0 for no caching)
+        sample_rate: Sample rate of the data in Hz
     """
 
     def __init__(
         self,
-        file_path: str,
-        input_key: str = 'inputs',
-        target_key: str = 'targets',
-        transform: Callable | None = None,
-        target_transform: Callable | None = None,
+        file_path: str | Path,
+        num_pd_channels: int = 3,
         cache_size: int = 0,
+        sample_rate: float = 125e6,
     ):
         self.file_path = file_path
-        self.input_key = input_key
-        self.target_key = target_key
-        self.transform = transform
-        self.target_transform = target_transform
+        self.num_pd_channels = min(max(1, num_pd_channels), 3)  # Ensure between 1 and 3
         self.cache_size = cache_size
+        self.sample_rate = sample_rate
+
+        # Channel keys for photodiode signals
+        self.pd_channel_keys = ['RP1_CH2', 'RP2_CH1', 'RP2_CH2'][: self.num_pd_channels]
+
+        # Channel key for speaker drive voltage
+        self.voltage_key = 'RP1_CH1'
 
         # Initialize cache
         self._cache = {}
         self._cache_keys = []
+
+        # Initialize CoilDriver for velocity calculation
+        from redpitaya.coil_driver import CoilDriver
+
+        self.coil_driver = CoilDriver()
 
         # Validate file and get dataset info
         with h5py.File(self.file_path, 'r') as f:
@@ -56,14 +69,16 @@ class H5Dataset(Dataset):
 
     def _validate_file_structure(self, f: h5py.File) -> None:
         """Validate the HDF5 file has required datasets."""
-        if self.input_key not in f:
-            raise ValueError(f"Input key '{self.input_key}' not found in file")
-        if self.target_key not in f:
-            raise ValueError(f"Target key '{self.target_key}' not found in file")
+        if self.voltage_key not in f:
+            raise ValueError(f"Voltage key '{self.voltage_key}' not found in file")
+
+        for key in self.pd_channel_keys:
+            if key not in f:
+                raise ValueError(f"Photodiode channel key '{key}' not found in file")
 
     def _get_dataset_length(self, f: h5py.File) -> int:
         """Get the length of the dataset."""
-        return len(f[self.target_key])
+        return len(f[self.voltage_key])
 
     def open_hdf5(self):
         """Open HDF5 file for reading.
@@ -72,15 +87,21 @@ class H5Dataset(Dataset):
         """
         if not self.opened_flag:
             self.h5_file = h5py.File(self.file_path, 'r')
-            self.inputs = self.h5_file[self.input_key]
-            self.targets = self.h5_file[self.target_key]
+            self.voltage_data = self.h5_file[self.voltage_key]
+            self.pd_data = [self.h5_file[key] for key in self.pd_channel_keys]
             self.opened_flag = True
 
     def __len__(self) -> int:
         return self.length
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
-        """Get a single item from the dataset."""
+        """Get a single item from the dataset.
+
+        Returns:
+            Tuple of (inputs, targets) where:
+            - inputs: Tensor of shape (num_pd_channels, signal_length) containing photodiode signals
+            - targets: Tensor of shape (signal_length,) containing velocity
+        """
         # Check cache first
         if idx in self._cache:
             inputs, targets = self._cache[idx]
@@ -88,15 +109,16 @@ class H5Dataset(Dataset):
             # Lazy loading of HDF5 file
             self.open_hdf5()
 
-            # Load data
-            inputs = self.inputs[idx]
-            targets = self.targets[idx]
+            # Load photodiode signals
+            pd_signals = [self.pd_data[i][idx] for i in range(len(self.pd_data))]
 
-            # Apply transforms if specified
-            if self.transform is not None:
-                inputs = self.transform(inputs)
-            if self.target_transform is not None:
-                targets = self.target_transform(targets)
+            # Load voltage and compute velocity
+            voltage = self.voltage_data[idx]
+            velocity, _, _ = self.coil_driver.get_velocity(voltage, self.sample_rate)
+
+            # Stack photodiode signals into a single tensor
+            inputs = np.stack(pd_signals)
+            targets = velocity
 
             # Add to cache
             if self.cache_size > 0:

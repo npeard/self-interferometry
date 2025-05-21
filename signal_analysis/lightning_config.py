@@ -40,7 +40,52 @@ class Standard(L.LightningModule):
         torch.set_float32_matmul_precision('high')
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.model(x)
+        """Forward pass through the model.
+
+        This method handles the case where the CNN model produces one velocity value
+        for every 256 input signal points. It uses zero padding at the ends of the input
+        signal buffers and scans along the input to produce velocity_hat buffers with
+        the same length as the original input.
+
+        Args:
+            x: Input tensor of shape [batch_size, num_channels, signal_length]
+
+        Returns:
+            Tensor of shape [batch_size, signal_length] containing predicted velocity
+        """
+        batch_size, num_channels, signal_length = x.shape
+
+        # Define the window size (number of input points that produce one output point)
+        window_size = 256
+
+        # Create output tensor to store results
+        velocity_hat = torch.zeros((batch_size, signal_length), device=x.device)
+
+        # Add zero padding to handle the edges
+        padding = window_size // 2
+        padded_x = torch.nn.functional.pad(
+            x, (padding, padding), mode='constant', value=0
+        )
+
+        # Scan through the signal with the appropriate stride
+        for i in range(signal_length):
+            # Extract window centered at position i
+            start_idx = i
+            end_idx = i + window_size
+            window = padded_x[:, :, start_idx:end_idx]
+
+            # Skip if window is not complete (should not happen with padding)
+            if window.shape[2] < window_size:
+                continue
+
+            # Get model prediction for this window
+            with torch.set_grad_enabled(self.training):
+                pred = self.model(window)
+
+            # Store the prediction in the output tensor
+            velocity_hat[:, i] = pred.squeeze()
+
+        return velocity_hat
 
     def configure_optimizers(self) -> dict[str, Any]:
         """Configure optimizer and learning rate scheduler."""
