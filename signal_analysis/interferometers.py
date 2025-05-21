@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-
-
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 
 from redpitaya.coil_driver import CoilDriver
 from redpitaya.waveform import Waveform
@@ -41,7 +40,9 @@ class MichelsonInterferometer:
         self.wavelength = wavelength  # in microns
         self.phase = phase  # in radians, stands for random position offset
 
-    def get_interferometer_output(self, displacement: np.ndarray) -> np.ndarray:
+    def get_interferometer_output(
+        self, displacement: np.ndarray | torch.Tensor
+    ) -> np.ndarray | torch.Tensor:
         """Calculate the interference signal for a given displacement array.
 
         This method implements the core interferometer physics, calculating the
@@ -53,26 +54,38 @@ class MichelsonInterferometer:
             displacement: Array of mirror displacements in microns (μm).
                 The displacement represents the physical movement of the mirror,
                 not the optical path difference (which is twice the displacement).
+                Can be either a NumPy array or a PyTorch tensor.
 
         Returns:
             Array of interference signal intensities corresponding to each
-            displacement value.
+            displacement value, in the same format as the input (NumPy or PyTorch).
             The signal represents the detected light intensity at the
             interferometer output.
 
         Note:
             - E0 represents the amplitude of the measurement beam (set to 1)
             - ER represents the amplitude of the reference beam (set to 0.1)
-            - The factor of 2 in the cosine argument accounts for the round trip of light
+            - The factor of 2 in the cosine argument accounts for the round trip of
+            light
         """
         E0 = 1
         ER = 0.1
 
+        # Determine whether we're using NumPy or PyTorch based on input type
+        if isinstance(displacement, torch.Tensor):
+            # Use PyTorch operations for tensor inputs
+            cos = torch.cos
+            pi = torch.pi
+        else:
+            # Use NumPy operations for array inputs
+            cos = np.cos
+            pi = np.pi
+
         # Interference term
         # Convert wavelength from microns to same unit as displacement (microns)
         # No conversion needed as both are in microns now
-        interference = np.cos(
-            2 * np.pi / self.wavelength * 2 * displacement + self.phase
+        interference = cos(
+            2 * pi / self.wavelength * 2 * displacement + self.phase
         )
         # Remember that the actual displacement is half the "displacement" of
         # the returned wave

@@ -1,6 +1,7 @@
 import argparse
 import random
 import time
+from pathlib import Path
 
 import numpy as np
 import yaml
@@ -35,20 +36,34 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--acquire_dataset',
         action='store_true',
-        help='Acquire real data from Red Pitaya for training, validation, and test datasets',
+        help='Acquire real data from Red Pitaya for training, validation, and test '
+        'datasets',
     )
     # IP address is now handled by RedPitayaManager defaults
     return parser.parse_args()
 
 
 def setup_random_seed(seed: int | None = None) -> int:
-    """Set random seed for reproducibility."""
-    if seed is None:
-        # Generate a random seed between 0 and 2^32 - 1
-        seed = random.randint(0, 2**32 - 1)
+    """Set random seed for reproducibility using NumPy's default_rng.
 
+    Args:
+        seed: Optional seed value. If None, a random seed will be generated.
+
+    Returns:
+        The seed value used.
+    """
+    if seed is None:
+        # Create a non-seeded RNG to generate a seed
+        temp_rng = np.random.default_rng()
+        # Generate a random seed between 0 and 2^32 - 1
+        seed = temp_rng.integers(0, 2**32 - 1)
+
+    # Set seeds for both random and numpy
     random.seed(seed)
-    np.random.seed(seed)
+    # Create a properly seeded RNG and make it the global default
+    rng = np.random.default_rng(seed)
+    np.random.set_rng(rng)
+
     return seed
 
 
@@ -57,8 +72,8 @@ def main():
 
     # For testing mode (checkpoint provided), config is not necessary
     if args.checkpoint:
-        print('Loading from checkpoint for quick plotting...')
-        print(args.checkpoint)
+        print('Loading from checkpoint for quick plotting...')  # noqa: T201
+        print(args.checkpoint)  # noqa: T201
         model_trainer = ModelTrainer(
             TrainingConfig({}, {}, {}, {}), experiment_name='checkpoint_eval'
         )
@@ -85,7 +100,7 @@ def main():
 
     if not data_config and (args.generate_pretraining or args.acquire_dataset):
         # Load data config directly from YAML file
-        with open(args.config) as f:
+        with Path(args.config).open() as f:
             config_data = yaml.safe_load(f)
             if 'data' in config_data:
                 data_config = config_data['data']
@@ -94,7 +109,7 @@ def main():
 
     # Generate pretraining datasets if requested
     if args.generate_pretraining:
-        print(f'\nGenerating pretraining datasets with random seed: {seed}')
+        print(f'\nGenerating pretraining datasets with random seed: {seed}')  # noqa: T201
         # Extract dataset parameters
         dataset_params = data_config.get('dataset_params', {})
         train_samples = dataset_params.get('train_samples', 1000)
@@ -110,13 +125,13 @@ def main():
             start_freq=1,
             end_freq=1000,
         )
-        print('Pretraining dataset generation complete!\n')
+        print('Pretraining dataset generation complete!\n')  # noqa: T201
 
     # Acquire real data from Red Pitaya if requested
     if args.acquire_dataset:
         from redpitaya.manager import RedPitayaManager
 
-        print('\nAcquiring datasets from Red Pitaya using default connection')
+        print('\nAcquiring datasets from Red Pitaya using default connection')  # noqa: T201
         # Create Red Pitaya Manager with default connection settings
         rp_manager = RedPitayaManager(
             ['rp-f0c04a.local', 'rp-f0c026.local'],
@@ -127,7 +142,7 @@ def main():
         # Configure the Red Pitaya for acquisition
         try:
             # Configure the Red Pitaya for acquisition
-            print('Configuring Red Pitaya for data acquisition...')
+            print('Configuring Red Pitaya for data acquisition...')  # noqa: T201
             rp_manager.reset_all()
 
             # Extract dataset parameters
@@ -148,7 +163,7 @@ def main():
                 delay_between_shots=0.5,
                 timeout=5,
             )
-            print('Dataset acquisition complete!\n')
+            print('Dataset acquisition complete!\n')  # noqa: T201
         finally:
             # Ensure we close the connection to the Red Pitaya
             rp_manager.close_all()

@@ -257,7 +257,7 @@ def generate_training_data_from_rp(
     return train_path, val_path, test_path
 
 
-def inspect_dataset(dataset_path: str | Path = None, batch_size: int = 1) -> None:
+def inspect_dataset(dataset_path: str | Path, batch_size: int = 1) -> None:
     """Inspect a dataset by displaying samples and histograms.
 
     This function reads an HDF5 dataset and displays two plot windows:
@@ -267,15 +267,10 @@ def inspect_dataset(dataset_path: str | Path = None, batch_size: int = 1) -> Non
     When the plot windows are closed, it advances to the next sample.
 
     Args:
-        dataset_path: Path to the HDF5 dataset file (defaults to train.h5 in
-            signal_analysis/data)
+        dataset_path: Path to the HDF5 dataset file
         batch_size: Batch size for the DataLoader (default: 1)
     """
-    # Default to train.h5 in signal_analysis/data if no path is provided
-    if dataset_path is None:
-        dataset_path = Path(__file__).parent / 'data' / 'train.h5'
-    else:
-        dataset_path = Path(dataset_path)
+    dataset_path = Path(dataset_path)
 
     if not dataset_path.exists():
         raise FileNotFoundError(f'Dataset file not found: {dataset_path}')
@@ -285,7 +280,7 @@ def inspect_dataset(dataset_path: str | Path = None, batch_size: int = 1) -> Non
     # Load the entire dataset to compute histograms
     with h5py.File(dataset_path, 'r') as f:
         # Get all keys and their data
-        all_data = {key: f[key][:] for key in f.keys()}
+        all_data = {key: f[key][:] for key in f}
         num_samples = next(iter(all_data.values())).shape[0]
         print(  # noqa: T201
             f'Dataset contains {num_samples} samples with keys: {list(all_data.keys())}'

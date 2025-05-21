@@ -421,14 +421,14 @@ class RedPitayaManager:
                 secondary_names.append(self.device_names[i])
 
         # Wait for primary device trigger with timeout
-        print(f'Waiting for {primary_name} trigger (timeout: {timeout}s)...')
+        print(f'Waiting for {primary_name} trigger (timeout: {timeout}s)...')  # noqa: T201
         start_time = time.time()
         triggered = False
 
         while time.time() - start_time < timeout:
             primary_device.tx_txt('ACQ:TRig:STAT?')
             status = primary_device.rx_txt()
-            print(f'Trigger status: {status}')
+            print(f'Trigger status: {status}')  # noqa: T201
 
             if status == 'TD':  # Triggered
                 triggered = True
@@ -436,22 +436,22 @@ class RedPitayaManager:
             time.sleep(0.5)  # Check every half second
 
         if not triggered:
-            print(f'Timeout waiting for {primary_name} trigger')
+            print(f'Timeout waiting for {primary_name} trigger')  # noqa: T201
             # Try to recover by forcing a trigger
             primary_device.tx_txt('ACQ:TRig NOW')
             time.sleep(1)
         else:
-            print(f'Trigger detected on {primary_name}')
+            print(f'Trigger detected on {primary_name}')  # noqa: T201
 
         # Wait for primary device buffer fill with timeout
-        print(f'Waiting for {primary_name} buffer to fill (timeout: {timeout}s)...')
+        print(f'Waiting for {primary_name} buffer to fill (timeout: {timeout}s)...')  # noqa: T201
         start_time = time.time()
         filled = False
 
         while time.time() - start_time < timeout:
             primary_device.tx_txt('ACQ:TRig:FILL?')
             fill_status = primary_device.rx_txt()
-            print(f'Fill status: {fill_status}')
+            print(f'Fill status: {fill_status}')  # noqa: T201
 
             if fill_status == '1':  # Buffer filled
                 filled = True
@@ -459,21 +459,21 @@ class RedPitayaManager:
             time.sleep(0.5)  # Check every half second
 
         if not filled:
-            print(f'Timeout waiting for {primary_name} buffer to fill')
+            print(f'Timeout waiting for {primary_name} buffer to fill')  # noqa: T201
         else:
-            print(f'Buffer filled on {primary_name}')
+            print(f'Buffer filled on {primary_name}')  # noqa: T201
 
         # Wait for secondary devices with timeout
         for device, name in zip(secondary_devices, secondary_names, strict=False):
             # Wait for trigger
-            print(f'Waiting for {name} trigger (timeout: {timeout}s)...')
+            print(f'Waiting for {name} trigger (timeout: {timeout}s)...')  # noqa: T201
             start_time = time.time()
             triggered = False
 
             while time.time() - start_time < timeout:
                 device.tx_txt('ACQ:TRig:STAT?')
                 status = device.rx_txt()
-                print(f'Trigger status: {status}')
+                print(f'Trigger status: {status}')  # noqa: T201
 
                 if status == 'TD':  # Triggered
                     triggered = True
@@ -481,22 +481,22 @@ class RedPitayaManager:
                 time.sleep(0.5)  # Check every half second
 
             if not triggered:
-                print(f'Timeout waiting for {name} trigger')
+                print(f'Timeout waiting for {name} trigger')  # noqa: T201
                 # Try to recover by forcing a trigger
                 device.tx_txt('ACQ:TRig NOW')
                 time.sleep(1)
             else:
-                print(f'Trigger detected on {name}')
+                print(f'Trigger detected on {name}')  # noqa: T201
 
             # Wait for buffer fill
-            print(f'Waiting for {name} buffer to fill (timeout: {timeout}s)...')
+            print(f'Waiting for {name} buffer to fill (timeout: {timeout}s)...')  # noqa: T201
             start_time = time.time()
             filled = False
 
             while time.time() - start_time < timeout:
                 device.tx_txt('ACQ:TRig:FILL?')
                 fill_status = device.rx_txt()
-                print(f'Fill status: {fill_status}')
+                print(f'Fill status: {fill_status}')  # noqa: T201
 
                 if fill_status == '1':  # Buffer filled
                     filled = True
@@ -504,9 +504,9 @@ class RedPitayaManager:
                 time.sleep(0.5)  # Check every half second
 
             if not filled:
-                print(f'Timeout waiting for {name} buffer to fill')
+                print(f'Timeout waiting for {name} buffer to fill')  # noqa: T201
             else:
-                print(f'Buffer filled on {name}')
+                print(f'Buffer filled on {name}')  # noqa: T201
 
         # Get data from all devices
         data = {}
@@ -521,14 +521,14 @@ class RedPitayaManager:
                         )
                         data[f'{primary_name}_CH{chan}'] = channel_data
                         print(
-                            f'Successfully acquired data from {primary_name} Channel {chan}'
+                            f'Successfully acquired data from {primary_name} Channel {chan}'  # noqa: T201
                         )
                     except Exception as e:
                         print(
-                            f'Error acquiring data from {primary_name}, channel {chan}: {e}'
+                            f'Error acquiring data from {primary_name}, channel {chan}: {e}'  # noqa: T201
                         )
         except Exception as e:
-            print(f'Error during data acquisition from primary device: {e}')
+            print(f'Error during data acquisition from primary device: {e}')  # noqa: T201
 
         # Get data from secondary devices
         for device, name in zip(secondary_devices, secondary_names, strict=False):
@@ -540,15 +540,15 @@ class RedPitayaManager:
                                 device.acq_data(chan=chan, convert=True)
                             )
                             data[f'{name}_CH{chan}'] = channel_data
-                            print(
+                            print( # noqa: T201
                                 f'Successfully acquired data from {name} Channel {chan}'
                             )
                         except Exception as e:
-                            print(
+                            print( # noqa: T201
                                 f'Error acquiring data from {name}, channel {chan}: {e}'
                             )
             except Exception as e:
-                print(f'Error during data acquisition from {name}: {e}')
+                print(f'Error during data acquisition from {name}: {e}')  # noqa: T201
 
         return data
 
@@ -692,7 +692,7 @@ class RedPitayaManager:
                     channel_keys.append(key)
 
             if not channel_keys:
-                print('Warning: No Red Pitaya channel data found in acquisition')
+                print('Warning: No Red Pitaya channel data found in acquisition')  # noqa: T201
                 return str(file_path)
 
             # Get current dataset size if file exists
@@ -709,10 +709,10 @@ class RedPitayaManager:
                         channel_shape = data[key].shape
                         f.create_dataset(
                             key,
-                            shape=(0,) + channel_shape,
-                            maxshape=(None,) + channel_shape,
+                            shape=(0, *channel_shape),
+                            maxshape=(None, *channel_shape),
                             dtype='float32',
-                            chunks=(1,) + channel_shape,
+                            chunks=(1, *channel_shape),
                             compression='gzip',
                             compression_opts=4,
                         )
@@ -724,10 +724,10 @@ class RedPitayaManager:
                     channel_shape = data[key].shape
                     f.create_dataset(
                         key,
-                        shape=(0,) + channel_shape,
-                        maxshape=(None,) + channel_shape,
+                        shape=(0, *channel_shape),
+                        maxshape=(None, *channel_shape),
                         dtype='float32',
-                        chunks=(1,) + channel_shape,
+                        chunks=(1, *channel_shape),
                         compression='gzip',
                         compression_opts=4,
                     )
@@ -744,7 +744,7 @@ class RedPitayaManager:
             # Update the number of samples attribute
             f.attrs['num_samples'] = current_size + 1
 
-        print(f'Data saved to {file_path}')
+        print(f'Data saved to {file_path}')  # noqa: T201
         return str(file_path)
 
     def setup_plot(self):
