@@ -130,10 +130,6 @@ class RedPitayaManager:
 
     def __del__(self):
         """Clean up resources when the object is destroyed."""
-        self.close_all()
-
-    def close_all(self):
-        """Close all device connections."""
         for device in self.devices:
             with contextlib.suppress(Exception):
                 device.close()
@@ -1283,7 +1279,7 @@ class RedPitayaManager:
                         gaussian,
                         'r-',
                         linewidth=2,
-                        label=r'Gaussian ($\sigma={std_dev:.4f}$)',
+                        label=r'Gaussian ($\sigma$' + f'={std_dev:.4f})',
                     )
                     self.hist_axes[0, 0].legend(loc='upper right')
 
@@ -1336,7 +1332,7 @@ class RedPitayaManager:
                         gaussian,
                         'r-',
                         linewidth=2,
-                        label=r'Gaussian ($\sigma={std_dev:.4f}$)',
+                        label=r'Gaussian ($\sigma$=' + f'{std_dev:.4f})',
                     )
                     self.hist_axes[0, 1].legend(loc='upper right')
 
@@ -1389,7 +1385,7 @@ class RedPitayaManager:
                         gaussian,
                         'r-',
                         linewidth=2,
-                        label=r'Gaussian ($\sigma={std_dev:.4f}$)',
+                        label=r'Gaussian ($\sigma$=' + f'{std_dev:.4f})',
                     )
                     self.hist_axes[0, 2].legend(loc='upper right')
 
