@@ -10,6 +10,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
+from redpitaya.coil_driver import CoilDriver
 from redpitaya.manager import RedPitayaManager
 from signal_analysis.interferometers import InterferometerArray, MichelsonInterferometer
 
@@ -56,8 +57,6 @@ class StandardVelocityDataset(Dataset):
         self._cache_keys = []
 
         # Initialize CoilDriver for velocity calculation
-        from redpitaya.coil_driver import CoilDriver
-
         self.coil_driver = CoilDriver()
 
         # Validate file and get dataset info
@@ -140,6 +139,77 @@ class StandardVelocityDataset(Dataset):
 
         self._cache[key] = value
         self._cache_keys.append(key)
+
+
+class TeacherDataset(StandardVelocityDataset):
+    """Dataset class for teacher model training with velocity, displacement, and
+    signals.
+
+    This dataset extends StandardVelocityDataset to return additional data needed for
+    the Teacher model's loss function, which includes velocity, displacement, and the
+    original photodiode signals.
+
+    The dataset returns:
+    - inputs: Photodiode signals (1-3 channels based on num_pd_channels)
+    - targets: Tuple of (velocity, displacement, signals) where:
+      - velocity: Velocity computed from speaker drive voltage
+      - displacement: Displacement computed by integrating velocity
+      - signals: Original photodiode signals (same as inputs)
+
+    Args:
+        file_path: Path to HDF5 file
+        num_pd_channels: Number of photodiode channels to use (1-3)
+        cache_size: Number of items to cache in memory (0 for no caching)
+        sample_rate: Sample rate of the data in Hz
+    """
+
+    def __getitem__(
+        self, idx: int
+    ) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
+        """Get a single item from the dataset with additional displacement and signal
+        data.
+
+        Returns:
+            Tuple of (inputs, targets) where:
+            - inputs: Tensor of shape (num_pd_channels, signal_length) containing
+              photodiode signals
+            - targets: Tuple of (velocity, displacement, signals) where:
+              - velocity: Tensor of shape (signal_length,) containing velocity
+              - displacement: Tensor of shape (signal_length,) containing displacement
+              - signals: Same as inputs, for convenience in the loss function
+        """
+        # Check cache first
+        if idx in self._cache:
+            inputs, velocity = self._cache[idx]
+        else:
+            # Lazy loading of HDF5 file
+            self.open_hdf5()
+
+            # Load photodiode signals
+            pd_signals = [self.pd_data[i][idx] for i in range(len(self.pd_data))]
+
+            # Load voltage and compute velocity
+            voltage = self.voltage_data[idx]
+            velocity, _, _ = self.coil_driver.get_velocity(voltage, self.sample_rate)
+
+            # Stack photodiode signals into a single tensor
+            signals = np.stack(pd_signals)
+
+            # Add to cache
+            if self.cache_size > 0:
+                self._add_to_cache(idx, (signals, velocity))
+
+        # Convert to PyTorch tensors
+        signals_tensor = torch.FloatTensor(signals)
+        velocity_tensor = torch.FloatTensor(velocity)
+
+        # Calculate displacement by integrating velocity
+        displacement_tensor = CoilDriver.integrate_velocity(
+            velocity_tensor, self.sample_rate
+        )
+
+        # Return inputs and the tuple of targets
+        return signals_tensor, velocity_tensor, displacement_tensor
 
 
 def get_data_loaders(
@@ -631,7 +701,7 @@ def display_sample(
     plt.show(block=True)
 
 
-def show_samples(dataloader, all_data, num_samples):
+def show_samples(dataloader: DataLoader, all_data: dict, num_samples: int) -> None:
     """Iterate through the dataset and display each sample.
 
     Args:

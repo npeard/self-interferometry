@@ -386,6 +386,131 @@ class Teacher(Standard):
 
         return loss_dict
 
+    def training_step(
+        self,
+        batch: tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor, torch.Tensor]],
+        batch_idx: int,
+    ) -> torch.Tensor:
+        """Training step for Teacher model.
+
+        Args:
+            batch: Tuple of (inputs, targets) where targets is a tuple of
+                  (velocity, displacement, signals)
+            batch_idx: Index of current batch
+
+        Returns:
+            Total loss value for backpropagation
+        """
+        # Unpack the batch
+        signals, velocity_target, displacement_target = batch
+
+        # Forward pass
+        velocity_hat = self(signals)
+
+        # Calculate loss
+        loss_dict = self.loss_function(
+            velocity_hat, velocity_target, displacement_target, signals
+        )
+
+        # Log each loss component with train_ prefix
+        for loss_name, loss_value in loss_dict.items():
+            self.log(
+                f'train_{loss_name}_loss',
+                loss_value,
+                prog_bar=(loss_name == 'total'),  # Only show total loss in progress bar
+                on_epoch=True,
+            )
+
+        # Return the total loss for backpropagation
+        return loss_dict['total']
+
+    def validation_step(
+        self,
+        batch: tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor, torch.Tensor]],
+        batch_idx: int,
+    ) -> None:
+        """Validation step for Teacher model.
+
+        Args:
+            batch: Tuple of (inputs, targets) where targets is a tuple of
+                  (velocity, displacement, signals)
+            batch_idx: Index of current batch
+        """
+        # Unpack the batch
+        signals, velocity_target, displacement_target = batch
+
+        # Forward pass
+        velocity_hat = self(signals)
+
+        # Calculate loss
+        loss_dict = self.loss_function(
+            velocity_hat, velocity_target, displacement_target, signals
+        )
+
+        # Log each loss component with val_ prefix
+        for loss_name, loss_value in loss_dict.items():
+            self.log(
+                f'val_{loss_name}_loss',
+                loss_value,
+                prog_bar=(loss_name == 'total'),  # Only show total loss in progress bar
+                sync_dist=True,
+            )
+
+    def test_step(
+        self,
+        batch: tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor, torch.Tensor]],
+        batch_idx: int,
+    ) -> None:
+        """Test step for Teacher model.
+
+        Args:
+            batch: Tuple of (inputs, targets) where targets is a tuple of
+                  (velocity, displacement, signals)
+            batch_idx: Index of current batch
+        """
+        # Unpack the batch
+        signals, velocity_target, displacement_target = batch
+
+        # Forward pass
+        velocity_hat = self(signals)
+
+        # Calculate loss
+        loss_dict = self.loss_function(
+            velocity_hat, velocity_target, displacement_target, signals
+        )
+
+        # Log each loss component with test_ prefix
+        for loss_name, loss_value in loss_dict.items():
+            self.log(f'test_{loss_name}_loss', loss_value, sync_dist=True)
+
+    def predict_step(
+        self,
+        batch: tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor, torch.Tensor]],
+        batch_idx: int,
+        dataloader_idx: int = 0,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Prediction step for Teacher model. Return all relevant quantities for plotting.
+
+        Args:
+            batch: Tuple of (inputs, targets) where targets is a tuple of
+                  (velocity, displacement, signals)
+            batch_idx: Index of current batch
+            dataloader_idx: Index of dataloader
+
+        Returns:
+            Tuple of (velocity_hat, velocity_target, displacement_target, signals)
+        """
+        signals, velocity_target, displacement_target = batch
+        velocity_hat = self(signals)
+        displacement_hat = CoilDriver.integrate_velocity(velocity_hat)
+        return (
+            velocity_hat,
+            velocity_target,
+            displacement_hat,
+            displacement_target,
+            signals,
+        )
+
 
 class Student(Standard):
     def __init__(
