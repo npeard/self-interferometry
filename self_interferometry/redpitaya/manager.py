@@ -1531,7 +1531,7 @@ class RedPitayaManager:
         self.configure_acquisition()
 
         # Start acquisition on all devices
-        self.start_acquisition(device_idx=device_idx, timeout=timeout)
+        self.start_acquisition(device_idx=device_idx)
 
         # Enable output on the primary device
         self.enable_output(device_idx=device_idx)
@@ -1806,9 +1806,8 @@ if __name__ == '__main__':
 
     # Run multiple acquisitions
     rp_manager.run_multiple_shots(
-        num_shots=10,
+        num_shots=1,
         delay_between_shots=1.0,
-        store_data=False,
         plot_data=True,
         keep_final_plot=True,  # Keep the final plot open
     )
