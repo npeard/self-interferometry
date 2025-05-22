@@ -22,6 +22,8 @@ dependencies = [
     "lightning",
     "h5py",
     "tqdm",
+    "pyyaml",
+    "scipy",
 ]
 
 [project.urls]
