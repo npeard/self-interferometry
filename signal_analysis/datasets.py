@@ -99,7 +99,8 @@ class StandardVelocityDataset(Dataset):
 
         Returns:
             Tuple of (inputs, targets) where:
-            - inputs: Tensor of shape (num_pd_channels, signal_length) containing photodiode signals
+            - inputs: Tensor of shape (num_pd_channels, signal_length) containing
+            photodiode signals
             - targets: Tensor of shape (signal_length,) containing velocity
         """
         # Check cache first
@@ -139,6 +140,65 @@ class StandardVelocityDataset(Dataset):
 
         self._cache[key] = value
         self._cache_keys.append(key)
+
+
+def get_data_loaders(
+    train_path: str,
+    val_path: str,
+    test_path: str,
+    batch_size: int,
+    num_workers: int = 4,
+    **dataset_kwargs: dict[str],
+) -> tuple[DataLoader, DataLoader, DataLoader]:
+    """Create DataLoaders for training, validation, and testing.
+
+    Args:
+        train_path: Path to training data HDF5 file
+        val_path: Path to validation data HDF5 file
+        test_path: Path to test data HDF5 file
+        batch_size: Batch size for all dataloaders
+        num_workers: Number of worker processes for data loading
+        **dataset_kwargs: Additional arguments to pass to the dataset class
+
+    Returns:
+        Tuple of (train_loader, val_loader, test_loader)
+    """
+    if Path(train_path).name == 'pretrain.h5':
+        # train_dataset = TeacherDataset(train_path, **dataset_kwargs)
+        raise NotImplementedError('Pretraining for Teacher not implemented yet')
+    train_dataset = StandardVelocityDataset(train_path, **dataset_kwargs)
+
+    val_dataset = StandardVelocityDataset(val_path, **dataset_kwargs)
+    test_dataset = StandardVelocityDataset(test_path, **dataset_kwargs)
+
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        persistent_workers=True,
+        pin_memory=True,
+    )
+
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        persistent_workers=True,
+        pin_memory=True,
+    )
+
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        persistent_workers=True,
+        pin_memory=True,
+    )
+
+    return train_loader, val_loader, test_loader
 
 
 class MultiKeyH5Dataset(Dataset):
@@ -600,7 +660,8 @@ def inspect_dataset(dataset_path: str | Path, batch_size: int = 1) -> None:
     This function reads an HDF5 dataset and displays two plot windows:
     1. Raw signals from the dataset with appropriate labels
     2. Analysis plots including:
-       - Histograms of the entire dataset with overlaid histograms for the current sample
+       - Histograms of the entire dataset with overlaid histograms for the current
+    sample
        - Spectra of each channel with overlay of the current sample spectrum
        - Velocity and displacement spectra derived from the drive voltage
 

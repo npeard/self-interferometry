@@ -5,12 +5,12 @@ from pathlib import Path
 
 import numpy as np
 import yaml
-from biphase_gpt.training import ModelTrainer, TrainingConfig
 
 from signal_analysis.datasets import (
     generate_pretraining_data,
     generate_training_data_from_rp,
 )
+from signal_analysis.training import ModelTrainer, TrainingConfig
 
 
 def parse_args() -> argparse.Namespace:
@@ -60,9 +60,7 @@ def setup_random_seed(seed: int | None = None) -> int:
 
     # Set seeds for both random and numpy
     random.seed(seed)
-    # Create a properly seeded RNG and make it the global default
-    rng = np.random.default_rng(seed)
-    np.random.set_rng(rng)
+    np.random.default_rng(seed)
 
     return seed
 
@@ -168,22 +166,22 @@ def main():
             # Ensure we close the connection to the Red Pitaya
             rp_manager.close_all()
 
-    # # Train with each configuration
-    # for idx, train_config in enumerate(configs):
-    #     print(f'\nStarting training run {idx + 1}/{len(configs)}')
-    #     # Create trainer
-    #     trainer = ModelTrainer(
-    #         config=train_config,
-    #         experiment_name=train_config.training_config.get('experiment_name'),
-    #         checkpoint_dir=train_config.training_config.get('checkpoint_dir'),
-    #     )
+    # Train with each configuration
+    for idx, train_config in enumerate(configs):
+        print(f'\nStarting training run {idx + 1}/{len(configs)}')  # noqa: T201
+        # Create trainer
+        trainer = ModelTrainer(
+            config=train_config,
+            experiment_name=train_config.training_config.get('experiment_name'),
+            checkpoint_dir=train_config.training_config.get('checkpoint_dir'),
+        )
 
-    #     # Start training
-    #     trainer.train()
-    #     trainer.test()
-    #     # Close the wandb logger if it was configured
-    #     if trainer.config.training_config.get('use_logging', False):
-    #         trainer.trainer.loggers[0].experiment.finish()
+        # Start training
+        trainer.train()
+        trainer.test()
+        # Close the wandb logger if it was configured
+        if trainer.config.training_config.get('use_logging', False):
+            trainer.trainer.loggers[0].experiment.finish()
 
 
 if __name__ == '__main__':

@@ -7,6 +7,7 @@ import torch
 from torch import nn, optim
 
 from redpitaya.coil_driver import CoilDriver
+from signal_analysis.models import CNN, CNNConfig
 
 
 class Standard(L.LightningModule):
@@ -14,30 +15,46 @@ class Standard(L.LightningModule):
 
     def __init__(
         self,
-        model: torch.nn.Module | None = None,
+        model_hparams: dict | None = None,
         optimizer_hparams: dict | None = None,
         scheduler_hparams: dict | None = None,
         loss_hparams: dict | None = None,
     ):
         """Args:
-        model: PyTorch model to train
+        model_hparams: Hyperparameters for the model
         optimizer_hparams: Hyperparameters for the optimizer
         scheduler_hparams: Hyperparameters for the learning rate scheduler
         loss_hparams: Hyperparameters for the loss function.
         """
         super().__init__()
+        self.model_hparams = model_hparams
+        self.optimizer_hparams = optimizer_hparams
+        self.scheduler_hparams = scheduler_hparams
+        self.loss_hparams = loss_hparams
         self.save_hyperparameters(ignore=['model'])
-        self.model = model
-
-        # Set default optimizer hyperparameters if none provided
-        self.optimizer_hparams = optimizer_hparams or {'lr': 1e-3, 'weight_decay': 1e-5}
-        self.scheduler_hparams = scheduler_hparams or {
-            'milestones': [250, 450],
-            'gamma': 0.1,
-        }
-        self.loss_hparams = loss_hparams or {}
+        self.model = self.create_model()
 
         torch.set_float32_matmul_precision('high')
+
+    def _create_cnn_config(self) -> CNNConfig:
+        """Create CNNConfig from model configuration."""
+        return CNNConfig(
+            input_size=256,
+            output_size=1,
+            activation=self.model_hparams.get('activation', 'LeakyReLU'),
+            in_channels=self.model_hparams.get('in_channels', 1),
+            dropout=self.model_hparams.get('dropout', 0.1),
+        )
+
+    def create_model(self) -> CNN:
+        """Create model instance based on config."""
+        model_type = self.model_hparams.get('type')
+        if model_type == 'CNN':
+            print('Creating CNN model...')  # noqa: T201
+            self.model_config = self._create_cnn_config()
+            return CNN(self.model_config)
+        else:
+            raise ValueError(f'Unknown model type: {model_type}')
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through the model.
@@ -56,7 +73,7 @@ class Standard(L.LightningModule):
         batch_size, num_channels, signal_length = x.shape
 
         # Define the window size (number of input points that produce one output point)
-        window_size = 256
+        window_size = self.model_config.input_size
 
         # Create output tensor to store results
         velocity_hat = torch.zeros((batch_size, signal_length), device=x.device)
@@ -90,15 +107,15 @@ class Standard(L.LightningModule):
     def configure_optimizers(self) -> dict[str, Any]:
         """Configure optimizer and learning rate scheduler."""
         # Configure optimizer
-        if self.hparams.optimizer_name == 'Adam':
+        optimizer_name = self.optimizer_hparams.pop('name')
+        if optimizer_name == 'Adam':
             optimizer = optim.AdamW(self.parameters(), **self.optimizer_hparams)
-        elif self.hparams.optimizer_name == 'SGD':
+        elif optimizer_name == 'SGD':
             optimizer = optim.SGD(self.parameters(), **self.optimizer_hparams)
         else:
-            raise ValueError(f'Unknown optimizer: {self.hparams.optimizer_name}')
+            raise ValueError(f'Unknown optimizer: {optimizer_name}')
 
         # Configure scheduler
-        # scheduler = optim.lr_scheduler.MultiStepLR(optimizer, **self.scheduler_hparams)
         scheduler = optim.lr_scheduler.CosineAnnealingLR(
             optimizer, **self.scheduler_hparams
         )
@@ -219,7 +236,7 @@ class Standard(L.LightningModule):
             dataloader_idx: Index of dataloader
         """
         signals, velocity_target = batch
-        return self.model(signals)
+        return self.model(signals), velocity_target, signals
 
 
 class Teacher(Standard):

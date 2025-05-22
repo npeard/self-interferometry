@@ -1,23 +1,26 @@
 #!/usr/bin/env python
 
-import os
+import contextlib
 import random
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from itertools import product
 from pathlib import Path
 from typing import Any, Union
 
 import lightning as L
+import matplotlib.pyplot as plt
 import torch
 import yaml
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
-from models import CNN, CNNConfig
+
+from signal_analysis.datasets import get_data_loaders
+from signal_analysis.lightning_config import Standard
 
 
 @dataclass
 class TrainingConfig:
-    """Configuration class for training parameters"""
+    """Configuration class for training parameters."""
 
     model_config: dict[str, Any]
     training_config: dict[str, Any]
@@ -31,12 +34,10 @@ class TrainingConfig:
         need all config variables.
         """
         if self.model_config == {}:
-            print('TrainingConfig in checkpoint mode...')
+            print('TrainingConfig in checkpoint mode...')  # noqa: T201
             self._set_checkpoint_defaults()
         else:
-            print('TrainingConfig in training mode...')
-            print('Creating CNNConfig...')
-            self.cnn_config = self._create_cnn_config()
+            print('TrainingConfig in training mode...')  # noqa: T201
 
     def _set_checkpoint_defaults(self):
         """Set default values for running checkpoints. Check points do not
@@ -51,21 +52,6 @@ class TrainingConfig:
         self.data_config.setdefault('val_file', 'val.h5')
         self.data_config.setdefault('test_file', 'test.h5')
         self.data_config.setdefault('num_workers', 4)
-        self.data_config.setdefault(
-            'dataset_params',
-            {
-                'train_samples': 10000,
-                'val_samples': 1000,
-                'test_samples': 1000,
-                'num_pix': 21,
-            },
-        )
-
-    def _create_cnn_config(self) -> CNNConfig:
-        """Create CNNConfig from model configuration"""
-        return CNNConfig(
-            input_size=256, output_size=1, activation='LeakyReLU', in_channels=1
-        )
 
     @classmethod
     def from_yaml(
@@ -79,7 +65,7 @@ class TrainingConfig:
         Args:
             config_path: Path to YAML configuration file
         """
-        with open(config_path) as f:
+        with Path(config_path).open() as f:
             config_dict = yaml.safe_load(f)
 
         # Check if this is a hyperparameter search config
@@ -101,7 +87,7 @@ class TrainingConfig:
     def _create_search_configs(
         cls, config_dict: dict[str, Any]
     ) -> list['TrainingConfig']:
-        """Create multiple configurations for hyperparameter search"""
+        """Create multiple configurations for hyperparameter search."""
         # Separate list and non-list parameters
         model_lists = {
             k: v for k, v in config_dict['model'].items() if isinstance(v, list)
@@ -178,7 +164,7 @@ class TrainingConfig:
 
 
 class ModelTrainer:
-    """Main trainer class for managing model training"""
+    """Main trainer class for managing model training."""
 
     def __init__(
         self,
@@ -189,52 +175,53 @@ class ModelTrainer:
         """Args:
         config: Training configuration
         experiment_name: Name for logging and checkpointing
-        checkpoint_dir: Directory for saving checkpoints
+        checkpoint_dir: Directory for saving checkpoints.
         """
         self.config = config
         self.experiment_name = experiment_name or config.model_config['type']
         self.checkpoint_dir = checkpoint_dir or './checkpoints'
 
         # Create checkpoint directory
-        os.makedirs(self.checkpoint_dir, exist_ok=True)
+        Path(self.checkpoint_dir).mkdir(parents=True, exist_ok=True)
 
         if experiment_name != 'checkpoint_eval':
             # Setup data
             self.setup_data()
 
-            # Create model and lightning module
-            self.model = self.create_model()
+            # Create Lightning module
             self.lightning_module = self.create_lightning_module()
 
             # Setup training
             self.trainer = self.setup_trainer()
 
         # Check what version of PyTorch is installed
-        print(torch.__version__)
+        print(torch.__version__)  # noqa: T201
 
         # Check the current CUDA version being used
-        print('CUDA Version: ', torch.version.cuda)
+        print('CUDA Version: ', torch.version.cuda)  # noqa: T201
 
         if torch.version.cuda is not None:
             # Check if CUDA is available and if so, print the device name
-            print('Device name:', torch.cuda.get_device_properties('cuda').name)
+            print('Device name:', torch.cuda.get_device_properties('cuda').name)  # noqa: T201
 
             # Check if FlashAttention is available
-            print('FlashAttention available:', torch.backends.cuda.flash_sdp_enabled())
+            print('FlashAttention available:', torch.backends.cuda.flash_sdp_enabled())  # noqa: T201
 
-    def setup_data(self, unpack_diagonals: bool = None, unpack_orders: bool = None):
-        """Setup data loaders"""
+    def setup_data(self):
+        """Setup data loaders."""
         # Convert data_dir to absolute path
         base_dir = Path(__file__).parent.parent  # Go up two levels from training.py
 
-        def resolve_path(data_dir: str, filename: str = None) -> str:
-            """Resolve path relative to project root, optionally joining with filename"""
+        def resolve_path(data_dir: str, filename: str | None = None) -> str:
+            """Resolve path relative to project root, optionally joining with
+            filename.
+            """
             # Remove leading './' if present
             data_dir = str(data_dir).lstrip('./')
             abs_dir = base_dir / data_dir
 
             # Create directory if it doesn't exist
-            os.makedirs(abs_dir, exist_ok=True)
+            Path(abs_dir).mkdir(parents=True, exist_ok=True)
 
             # If filename is provided, join it with the directory
             return str(abs_dir / filename) if filename else str(abs_dir)
@@ -243,11 +230,30 @@ class ModelTrainer:
         data_dir = self.config.data_config['data_dir']
 
         # Resolve paths for data files
-        train_path = resolve_path(data_dir, self.config.data_config.get('train_file'))
-        val_path = resolve_path(data_dir, self.config.data_config.get('val_file'))
-        test_path = resolve_path(data_dir, self.config.data_config.get('test_file'))
+        # Use real data inputs for the student and standard model
+        # Student model uses targets from teacher
+        if self.config.model_config.get('role') in ['standard', 'student']:
+            train_path = resolve_path(
+                data_dir, self.config.data_config.get('train_file')
+            )
+            val_path = resolve_path(data_dir, self.config.data_config.get('val_file'))
+            test_path = resolve_path(data_dir, self.config.data_config.get('test_file'))
+        # Use simulated data inputs and targets for the teacher model
+        elif self.config.model_config.get('role') == 'teacher':
+            train_path = resolve_path(
+                data_dir, self.config.data_config.get('pretrain_file')
+            )
+            # Use real data inputs for validation and testing
+            # We need to understand how well the teacher will predict
+            # targets given real inputs
+            val_path = resolve_path(data_dir, self.config.data_config.get('val_file'))
+            test_path = resolve_path(data_dir, self.config.data_config.get('test_file'))
+        else:
+            raise ValueError(
+                f'Unknown model role: {self.config.model_config.get("role")}'
+            )
 
-        self.train_loader, self.val_loader, self.test_loader = create_data_loaders(
+        self.train_loader, self.val_loader, self.test_loader = get_data_loaders(
             train_path=train_path,
             val_path=val_path,
             test_path=test_path,
@@ -255,53 +261,28 @@ class ModelTrainer:
             num_workers=self.config.data_config['num_workers'],
         )
 
-    def create_model(self) -> BaseLightningModule:
-        """Create model instance based on config"""
-        model_type = self.config.model_config.get('type')
-        if model_type == 'CNN':
-            print('Creating CNN model...')
-            return CNN(self.config.cnn_config)
-        else:
-            raise ValueError(f'Unknown model type: {model_type}')
-
-    def create_lightning_module(self) -> BaseLightningModule:
-        """Create lightning module based on model type"""
-        if isinstance(self.model, CNN):
-            return CNNDecoder(
-                model_type='CNN',
-                model_hparams=asdict(self.config.cnn_config),
-                optimizer_name=self.config.training_config['optimizer'],
+    def create_lightning_module(self) -> Standard:
+        """Create lightning module based on model type."""
+        if self.config.model_config.get('role') == 'standard':
+            return Standard(
+                model_hparams=self.config.model_config,
                 optimizer_hparams={
+                    'name': self.config.training_config.get('optimizer', 'Adam'),
                     # TODO: why is this loaded as a string?
-                    'lr': eval(self.config.training_config['learning_rate'])
+                    'lr': eval(self.config.training_config.get('learning_rate', 5e-4)),
                 },
                 scheduler_hparams={
-                    'T_max': self.config.training_config['T_max'],
-                    'eta_min': self.config.training_config['eta_min'],
+                    'T_max': self.config.training_config.get('T_max', 500),
+                    'eta_min': self.config.training_config.get('eta_min', 0),
                 },
                 loss_hparams=self.config.loss_config,
             )
         else:
-            raise ValueError("Unknown model type, can't initialize Lightning.")
+            raise TypeError("Unknown model type, can't initialize Lightning.")
 
     def setup_trainer(self) -> L.Trainer:
-        """Setup Lightning trainer with callbacks and loggers"""
-        # Callbacks
-        callbacks = [
-            # ModelCheckpoint(
-            #     dirpath=os.path.join(self.checkpoint_dir, self.experiment_name),
-            #     filename='{epoch}-{val_loss:.4f}',
-            #     monitor='val_loss',
-            #     mode='min',
-            #     save_top_k=-1,
-            # ),
-            # EarlyStopping(
-            #     monitor='val_loss',
-            #     patience=10,
-            #     mode='min'
-            # ),
-        ]
-
+        """Setup Lightning trainer with callbacks and loggers."""
+        callbacks = []
         # Add WandB logger if configured
         if self.config.training_config.get('use_logging', False):
             loggers = [
@@ -316,7 +297,7 @@ class ModelTrainer:
             callbacks.append(LearningRateMonitor())
             callbacks.append(
                 ModelCheckpoint(
-                    dirpath=os.path.join(self.checkpoint_dir, self.experiment_name),
+                    dirpath=Path(self.checkpoint_dir) / self.experiment_name,
                     filename=str(loggers[0].experiment.id) + '_{epoch}-{val_loss:.4f}',
                     monitor='val_loss',
                     mode='min',
@@ -332,11 +313,8 @@ class ModelTrainer:
 
         # Convert devices to proper type if it's a string
         if isinstance(devices, str):
-            try:
+            with contextlib.suppress(ValueError):
                 devices = int(devices)
-            except ValueError:
-                # If it can't be converted to int, keep as string (e.g. for specific GPU like '0')
-                pass
 
         return L.Trainer(
             max_epochs=self.config.training_config['max_epochs'],
@@ -348,7 +326,7 @@ class ModelTrainer:
         )
 
     def train(self):
-        """Train the model"""
+        """Train the model."""
         self.trainer.fit(
             self.lightning_module,
             train_dataloaders=self.train_loader,
@@ -359,59 +337,76 @@ class ModelTrainer:
         #     self.trainer.loggers[0].experiment.finish()
 
     def test(self):
-        """Test the model"""
+        """Test the model."""
         if hasattr(self, 'test_loader'):
             self.trainer.test(self.lightning_module, dataloaders=self.test_loader)
 
     def plot_predictions_from_checkpoint(self, checkpoint_path: str):
-        """Plot predictions from a checkpoint"""
-        import matplotlib.pyplot as plt
-        import numpy as np
+        """Plot predictions from a checkpoint.
 
-        model = GPTDecoder.load_from_checkpoint(checkpoint_path)
+        Creates a plot with up to 4 rows:
+        1. Predicted velocities vs targets
+        2-4. Input signals (up to 3 photodiode channels)
+
+        Args:
+            checkpoint_path: Path to the checkpoint file
+        """
+        # Load the model from checkpoint
+        model = Standard.load_from_checkpoint(checkpoint_path)
         trainer = L.Trainer(accelerator='cpu', logger=[])
 
-        # setup dataloaders with correct unpacking
-        self.setup_data(
-            unpack_diagonals=model.loss_hparams['unpack_diagonals'],
-            unpack_orders=model.loss_hparams['unpack_orders'],
-        )
+        # Setup data loaders
+        self.setup_data()
 
+        # Get predictions
         predictions = trainer.predict(model, self.test_loader)
 
-        print(predictions[0][0].numpy().shape)
-        print(predictions[0][2].numpy().shape)
-        # y[batch_idx][return_idx], return_idx 0...3:
-        # 0: Predictions, 1: Targets, 2: Encoded, 3: Inputs
-        batch_len = len(predictions[0][0].numpy()[:, 0])
-        y_hat = predictions[0][0].numpy()
-        y = predictions[0][1].numpy()
-        encoded = predictions[0][2].numpy()
-        inputs = predictions[0][3].numpy()
+        # Process the first batch of predictions
+        # predictions[batch_idx] returns a tuple of (velocity_hat,
+        # velocity_target, signals)
+        batch_idx = 0
+        velocity_hat = predictions[batch_idx][0].cpu().numpy()  # Predicted velocities
+        velocity_target = predictions[batch_idx][1].cpu().numpy()  # Target velocities
+        signals = predictions[batch_idx][2].cpu().numpy()  # Input signals
 
-        for i in range(batch_len):
-            fig = plt.figure(figsize=(7, 7))
-            (ax1, ax2), (ax3, ax4) = fig.subplots(2, 2)
+        # Get the number of samples in the batch and number of PD channels
+        batch_size, num_channels, signal_length = signals.shape
 
-            im1 = ax1.imshow(inputs[i, :, :], origin='lower')
-            ax1.set_title('Inputs')
-            plt.colorbar(im1, ax=ax1)
+        # Plot for each sample in the batch
+        for i in range(
+            min(batch_size, 5)
+        ):  # Limit to 5 samples to avoid too many plots
+            # Create a figure with subplots - one for velocities and up to 3 for signals
+            fig, axs = plt.subplots(1 + num_channels, 1, figsize=(10, 8), sharex=True)
 
-            ax2.plot(y[i, :], label='Targets')
-            ax2.plot(y_hat[i, :], label='Predictions')
-            ax2.legend()
+            # Plot predicted vs target velocities
+            axs[0].plot(velocity_target[i], label='Target Velocity', color='blue')
+            axs[0].plot(
+                velocity_hat[i], label='Predicted Velocity', color='red', linestyle='--'
+            )
+            axs[0].set_title('Velocity Comparison')
+            axs[0].set_ylabel('Velocity (μm/s)')
+            axs[0].legend()
+            axs[0].grid(True)
 
-            im3 = ax3.imshow(encoded[i, :, :], origin='lower')
-            ax3.set_title('Encoded')
-            plt.colorbar(im3, ax=ax3)
+            # Plot each input signal channel
+            for j in range(num_channels):
+                channel_names = ['PD1 (RP1_CH2)', 'PD2 (RP2_CH1)', 'PD3 (RP2_CH2)']
+                axs[j + 1].plot(signals[i, j, :], label=f'Channel {j + 1}')
+                axs[j + 1].set_title(f'Input Signal - {channel_names[j]}')
+                axs[j + 1].set_ylabel('Amplitude')
+                axs[j + 1].grid(True)
 
-            # TODO: currently, _encode returns abs(Phi) and not the sign info
-            # So this plot shows nothing for now.
-            im4 = ax4.imshow(np.sign(encoded[i, :, :]), origin='lower')
-            ax4.set_title('Sign Encoded')
-            plt.colorbar(im4, ax=ax4)
+            # Set x-axis label for the bottom subplot
+            axs[-1].set_xlabel('Sample')
 
-            # TODO: print some extra config info here
-
+            # Add overall title
+            plt.suptitle(f'Sample {i + 1} from Batch {batch_idx + 1}')
             plt.tight_layout()
             plt.show()
+
+            # Ask if user wants to continue to the next sample
+            if i < min(batch_size, 5) - 1:
+                user_input = input("Press Enter to view next sample, or 'q' to quit: ")
+                if user_input.lower() == 'q':
+                    break
