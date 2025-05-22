@@ -50,8 +50,6 @@ dev = [
     "nbstripout",
 ]
 
-[tool.flit.module]
-name = "signal_analysis"
 
 [tool.black]
 line-length = 88
