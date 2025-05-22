@@ -127,7 +127,7 @@ def main():
 
     # Acquire real data from Red Pitaya if requested
     if args.acquire_dataset:
-        from redpitaya.manager import RedPitayaManager
+        from self_interferometry.redpitaya.manager import RedPitayaManager
 
         print('\nAcquiring datasets from Red Pitaya using default connection')  # noqa: T201
         # Create Red Pitaya Manager with default connection settings
@@ -156,10 +156,6 @@ def main():
                 train_samples=train_samples,
                 val_samples=val_samples,
                 test_samples=test_samples,
-                # Additional parameters for acquisition
-                device_idx=0,
-                delay_between_shots=0.5,
-                timeout=5,
             )
             print('Dataset acquisition complete!\n')  # noqa: T201
         finally:

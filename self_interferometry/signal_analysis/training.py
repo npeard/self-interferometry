@@ -47,7 +47,9 @@ class TrainingConfig:
         self.training_config.setdefault('batch_size', 64)
 
         # Data defaults
-        self.data_config.setdefault('data_dir', './signal_analysis/data')
+        self.data_config.setdefault(
+            'data_dir', './self_interferometry/signal_analysis/data'
+        )
         self.data_config.setdefault('train_file', 'train.h5')
         self.data_config.setdefault('val_file', 'val.h5')
         self.data_config.setdefault('test_file', 'test.h5')

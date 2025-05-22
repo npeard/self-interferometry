@@ -677,19 +677,19 @@ class RedPitayaManager:
         # Open file in appropriate mode
         mode = 'a' if file_exists else 'w'
         with h5py.File(file_path, mode) as f:
-            # If creating a new file, store acquisition parameters as attributes
+            # Store acquisition parameters as attributes (always update these)
+            f.attrs['sample_rate'] = self.SAMPLE_RATE_DEC1 / self.settings['acq_dec']
+            f.attrs['decimation'] = self.settings['acq_dec']
+            f.attrs['buffer_size'] = self.BUFFER_SIZE
+
+            # Only set creation_time when creating a new file
             if not file_exists:
-                f.attrs['sample_rate'] = (
-                    self.SAMPLE_RATE_DEC1 / self.settings['acq_dec']
-                )
-                f.attrs['decimation'] = self.settings['acq_dec']
-                f.attrs['buffer_size'] = self.BUFFER_SIZE
                 f.attrs['creation_time'] = datetime.now().isoformat()
 
-                # Store any other relevant settings
-                for key, value in self.settings.items():
-                    if isinstance(value, int | float | str | bool):
-                        f.attrs[key] = value
+            # Store any other relevant settings
+            for key, value in self.settings.items():
+                if isinstance(value, int | float | str | bool):
+                    f.attrs[key] = value
 
             # Find Red Pitaya channel keys (the raw input signals)
             channel_keys = []

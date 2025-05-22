@@ -14,97 +14,16 @@ from self_interferometry.signal_analysis.interferometers import (
 )
 
 
-def create_dataset(
-    rp_manager: RedPitayaManager,
-    output_dir: str | Path,
-    dataset_name: str,
-    num_samples: int,
-    device_idx: int = 0,
-    delay_between_shots: float = 0.5,
-    timeout: int = 5,
-) -> str:
-    """Create a dataset by acquiring multiple samples and saving them incrementally.
-
-    This method uses run_multiple_shots to acquire data and saves it to an HDF5 file.
-
-    Args:
-        rp_manager: RedPitayaManager instance to use for data acquisition
-        output_dir: Directory to save the dataset
-        dataset_name: Name of the dataset file (e.g., 'train.h5')
-        num_samples: Number of samples to acquire
-        device_idx: Index of the device to use for acquisition
-        delay_between_shots: Delay between shots in seconds
-        timeout: Timeout for acquisition in seconds
-
-    Returns:
-        Path to the created dataset file
-    """
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    file_path = output_dir / dataset_name
-
-    print(f'Acquiring {num_samples} samples for dataset: {dataset_name}')  # noqa: T201
-
-    # Create file and initialize with metadata
-    with h5py.File(file_path, 'w') as f:
-        # Store acquisition parameters as attributes
-        f.attrs['sample_rate'] = rp_manager.get_sample_rate(device_idx)
-        f.attrs['decimation'] = rp_manager.get_decimation(device_idx)
-        f.attrs['buffer_size'] = rp_manager.get_buffer_size(device_idx)
-        f.attrs['creation_time'] = datetime.now().isoformat()
-        f.attrs['num_samples'] = 0  # Will be updated as we add samples
-
-        # Create empty datasets for each channel
-        channel_keys = rp_manager.get_channel_keys()
-        first_sample = rp_manager.run_one_shot(device_idx=device_idx, timeout=timeout)
-
-        for key, array in first_sample.items():
-            f.create_dataset(
-                key,
-                shape=(0, len(array)),
-                maxshape=(None, len(array)),
-                dtype='float32',
-                chunks=(1, len(array)),
-                compression='gzip',
-                compression_opts=4,
-            )
-
-    # Acquire samples and save them incrementally
-    for i in tqdm(range(num_samples)):
-        # Acquire a new sample
-        sample = rp_manager.run_one_shot(device_idx=device_idx, timeout=timeout)
-
-        # Save the sample to the HDF5 file
-        with h5py.File(file_path, 'r+') as f:
-            current_size = f.attrs['num_samples']
-
-            # Add each channel's data
-            for key, array in sample.items():
-                dataset = f[key]
-                new_size = current_size + 1
-                dataset.resize(new_size, axis=0)
-                dataset[current_size] = array
-
-            # Update sample count
-            f.attrs['num_samples'] = current_size + 1
-
-        # Delay between shots
-        if i < num_samples - 1 and delay_between_shots > 0:
-            rp_manager.delay(delay_between_shots)
-
-    print(f'Dataset saved to {file_path}')  # noqa: T201
-    return str(file_path)
-
-
 def generate_training_data_from_rp(
     rp_manager: RedPitayaManager,
     output_dir: str | Path,
     train_samples: int,
     val_samples: int,
     test_samples: int,
-    **kwargs,
 ) -> tuple[str, str, str]:
     """Create train, validation, and test datasets from Red Pitaya data.
+    RedPitayaManager handles saving to HDF5 internally shot by shot, to protect against
+    connection loss. See RedPitayaManager.save_data for more details.
 
     Args:
         rp_manager: RedPitayaManager instance to use for data acquisition
@@ -112,7 +31,6 @@ def generate_training_data_from_rp(
         train_samples: Number of training samples to acquire
         val_samples: Number of validation samples to acquire
         test_samples: Number of test samples to acquire
-        **kwargs: Additional arguments to pass to create_dataset
 
     Returns:
         Tuple of (train_path, val_path, test_path)
@@ -121,36 +39,21 @@ def generate_training_data_from_rp(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     dataset_files = ['train.h5', 'val.h5', 'test.h5']
+    train_path = output_dir / dataset_files[0]
+    val_path = output_dir / dataset_files[1]
+    test_path = output_dir / dataset_files[2]
 
     # Create training dataset
     print('\nAcquiring training dataset...')  # noqa: T201
-    train_path = create_dataset(
-        rp_manager=rp_manager,
-        output_dir=output_dir,
-        dataset_name=dataset_files[0],
-        num_samples=train_samples,
-        **kwargs,
-    )
+    _ = rp_manager.run_multiple_shots(num_shots=train_samples, hdf5_file=train_path)
 
     # Create validation dataset
     print('\nAcquiring validation dataset...')  # noqa: T201
-    val_path = create_dataset(
-        rp_manager=rp_manager,
-        output_dir=output_dir,
-        dataset_name=dataset_files[1],
-        num_samples=val_samples,
-        **kwargs,
-    )
+    _ = rp_manager.run_multiple_shots(num_shots=val_samples, hdf5_file=val_path)
 
     # Create test dataset
     print('\nAcquiring test dataset...')  # noqa: T201
-    test_path = create_dataset(
-        rp_manager=rp_manager,
-        output_dir=output_dir,
-        dataset_name=dataset_files[2],
-        num_samples=test_samples,
-        **kwargs,
-    )
+    _ = rp_manager.run_multiple_shots(num_shots=test_samples, hdf5_file=test_path)
 
     return train_path, val_path, test_path
 

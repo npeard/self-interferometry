@@ -260,4 +260,4 @@ def inspect_dataset(dataset_path: str | Path, batch_size: int = 1):
 
 if __name__ == '__main__':
     # Example usage
-    inspect_dataset('./signal_analysis/data/pretrain.h5')
+    inspect_dataset('./self_interferometry/signal_analysis/data/pretrain.h5')
