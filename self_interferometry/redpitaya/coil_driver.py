@@ -324,7 +324,8 @@ class CoilDriver:
             Displacement waveform (microns) in the same format as input
         """
         # Check if input is a PyTorch tensor
-        is_torch = hasattr(velocity_waveform, 'device')
+        # More robust check using module name instead of attribute
+        is_torch = 'torch' in str(type(velocity_waveform).__module__)
 
         if is_torch:
             # Get the shape for proper reshaping after integration
