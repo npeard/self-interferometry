@@ -43,7 +43,7 @@ class RedPitayaManager:
     def __init__(
         self,
         ip_addresses: str | list[str],
-        data_save_path: str = None,
+        data_save_path: str | None = None,
         blink_on_connect: bool = False,
     ):
         """Initialize the Red Pitaya Manager.
@@ -66,14 +66,14 @@ class RedPitayaManager:
                 device = scpi.scpi(ip)
                 self.devices.append(device)
                 self.device_names.append(f'RP{i + 1}')
-                print(f'Connected to {ip} as {self.device_names[-1]}')
+                print(f'Connected to {ip} as {self.device_names[-1]}')  # noqa: T201
 
                 # Blink LED 0 if requested for connectivity confirmation
                 if blink_on_connect:
                     self.blink_led(device_idx=i, led_num=0, num_blinks=3, period=0.5)
 
             except Exception as e:
-                print(f'Failed to connect to {ip}: {e}')
+                print(f'Failed to connect to {ip}: {e}')  # noqa: T201
 
         # Set data save path
         if data_save_path:
@@ -175,9 +175,9 @@ class RedPitayaManager:
         print(
             f'Primary device ({self.device_names[primary_idx]}) daisy chain configured:'
         )
-        print(f'  Trig: {primary.txrx_txt("DAISY:SYNC:TRig?")}')
-        print(f'  CLK: {primary.txrx_txt("DAISY:SYNC:CLK?")}')
-        print(f'  Sour: {primary.txrx_txt("DAISY:TRIG_O:SOUR?")}')
+        print(f'  Trig: {primary.txrx_txt("DAISY:SYNC:TRig?")}')  # noqa: T201
+        print(f'  CLK: {primary.txrx_txt("DAISY:SYNC:CLK?")}')  # noqa: T201
+        print(f'  Sour: {primary.txrx_txt("DAISY:TRIG_O:SOUR?")}')  # noqa: T201
 
         # Configure secondary units
         for idx in secondary_indices:
@@ -187,26 +187,27 @@ class RedPitayaManager:
             secondary.tx_txt('DAISY:TRIG_O:SOUR ADC')
             secondary.tx_txt('DIG:PIN LED5,1')  # LED Indicator
 
-            print(f'Secondary device ({self.device_names[idx]}) daisy chain configured')
+            print(f'Secondary device ({self.device_names[idx]}) daisy chain configured')  # noqa: T201
 
     def configure_generation(
         self,
         device_idx: int = 0,
         channel: int = 1,
-        wave_form: str = None,
-        start_freq: int = None,
-        end_freq: int = None,
-        gen_dec: int = None,
-        burst_mode: bool = None,
-        burst_count: int = None,
-        burst_period: int = None,
+        wave_form: str | None = None,
+        start_freq: int | None = None,
+        end_freq: int | None = None,
+        gen_dec: int | None = None,
+        burst_mode: bool | None = None,
+        burst_count: int | None = None,
+        burst_period: int | None = None,
     ):
         """Configure signal generation on a device.
 
         Args:
             device_idx: Index of the device to configure
             channel: Output channel (1 or 2)
-            wave_form: Waveform type (SINE, SQUARE, TRIANGLE, SAWU, SAWD, PWM, ARBITRARY, DC, DC_NEG)
+            wave_form: Waveform type (SINE, SQUARE, TRIANGLE, SAWU, SAWD, PWM,
+                ARBITRARY, DC, DC_NEG)
             start_freq: Start frequency for frequency sweep
             end_freq: End frequency for frequency sweep
             gen_dec: Decimation for generation
@@ -255,13 +256,15 @@ class RedPitayaManager:
                 allowed_freqs=None,  # Use all valid frequencies in the range
             )
 
-            # Generate waveform, passing through CoilDriver.sample() to precompensate gain
+            # Generate waveform, passing through CoilDriver.sample() to
+            # precompensate gain
             _, y, _ = self.coil_driver.sample(waveform_generator, normalize_gain=True)
 
             # Validate waveform amplitude
             if np.max(np.abs(y)) > 1.0:
                 raise ValueError(
-                    'Waveform amplitude exceeds 1.0. The waveform must be normalized to [-1, 1] range.'
+                    'Waveform amplitude exceeds 1.0. The waveform must '
+                    'be normalized to [-1, 1] range.'
                 )
 
             # Configure source with arbitrary waveform (amplitude fixed at 1.0)
@@ -288,7 +291,8 @@ class RedPitayaManager:
             )
 
         print(
-            f'Generation configured on {self.device_names[device_idx]}, channel {channel}'
+            f'Generation configured on {self.device_names[device_idx]}, '
+            f'channel {channel}'
         )
 
     def enable_output(self, device_idx: int = 0, channel: int = 1, enable: bool = True):
@@ -306,12 +310,12 @@ class RedPitayaManager:
 
         if enable:
             device.tx_txt(f'OUTPUT{channel}:STATE ON')
-            print(
+            print(  # noqa: T201
                 f'Output enabled on {self.device_names[device_idx]}, channel {channel}'
             )
         else:
             device.tx_txt(f'OUTPUT{channel}:STATE OFF')
-            print(
+            print(  # noqa: T201
                 f'Output disabled on {self.device_names[device_idx]}, channel {channel}'
             )
 
@@ -328,10 +332,13 @@ class RedPitayaManager:
         device = self.devices[device_idx]
         device.tx_txt(f'SOUR{channel}:TRig:INT')
         print(
-            f'Generation triggered on {self.device_names[device_idx]}, channel {channel}'
+            f'Generation triggered on {self.device_names[device_idx]}, '
+            f'channel {channel}'
         )
 
-    def configure_acquisition(self, acq_dec: int = None, trigger_delay: int = None):
+    def configure_acquisition(
+        self, acq_dec: int | None = None, trigger_delay: int | None = None
+    ):
         """Configure acquisition on all devices.
 
         Args:
@@ -351,9 +358,9 @@ class RedPitayaManager:
             device.acq_set(
                 dec=self.settings['acq_dec'], trig_delay=self.settings['trigger_delay']
             )
-            print(f'Acquisition configured on {device_name}')
+            print(f'Acquisition configured on {device_name}')  # noqa: T201
 
-    def start_acquisition(self, device_idx: int = 0, timeout: int = 5):
+    def start_acquisition(self, device_idx: int = 0):
         """Start acquisition on all devices.
 
         For multiple devices, we start acquisition on secondary devices first,
@@ -361,7 +368,6 @@ class RedPitayaManager:
 
         Args:
             device_idx: Index of the device to use as primary
-            timeout: Timeout in seconds for waiting for triggers
         """
         # Check if device index is valid
         if device_idx >= len(self.devices):
@@ -384,13 +390,13 @@ class RedPitayaManager:
             device.tx_txt('ACQ:START')
             time.sleep(0.2)
             device.tx_txt('ACQ:TRig EXT_NE')
-            print(f'Acquisition started on {name} with trigger EXT_NE')
+            print(f'Acquisition started on {name} with trigger EXT_NE')  # noqa: T201
 
         # Start acquisition on primary device
         primary_device.tx_txt('ACQ:START')
         time.sleep(0.2)
         primary_device.tx_txt('ACQ:TRig CH1_PE')
-        print(f'Acquisition started on {primary_name} with trigger CH1_PE')
+        print(f'Acquisition started on {primary_name} with trigger CH1_PE')  # noqa: T201
 
         # Store the primary device index for later use
         self._primary_device_idx = device_idx
@@ -520,11 +526,11 @@ class RedPitayaManager:
                             primary_device.acq_data(chan=chan, convert=True)
                         )
                         data[f'{primary_name}_CH{chan}'] = channel_data
-                        print(
+                        print(  # noqa: T201
                             f'Successfully acquired data from {primary_name} Channel {chan}'
                         )
                     except Exception as e:
-                        print(
+                        print(  # noqa: T201
                             f'Error acquiring data from {primary_name}, channel {chan}: {e}'
                         )
         except Exception as e:
@@ -763,7 +769,8 @@ class RedPitayaManager:
         if len(self.device_names) > 1:
             num_rows += 2  # Add 2 more rows for secondary device channels
 
-        # Create a new figure with 3 columns: raw signals with velocity, displacement comparison, and FFTs
+        # Create a new figure with 3 columns: raw signals with velocity,
+        # displacement comparison, and FFTs
         # Increase figure height for better spacing between subplots
         self.fig, self.axes = plt.subplots(num_rows, 3, figsize=(18, 12), sharex='col')
 
@@ -860,7 +867,8 @@ class RedPitayaManager:
             # Displacement is already in microns, no conversion needed
             displacement_microns = disp_tf_data
 
-            # Create interferometers for each photodiode wavelength (wavelengths in microns)
+            # Create interferometers for each photodiode wavelength
+            # (wavelengths in microns)
             interferometer_635 = MichelsonInterferometer(wavelength=0.635, phase=0)
             interferometer_674 = MichelsonInterferometer(wavelength=0.6748, phase=0)
             interferometer_515 = MichelsonInterferometer(wavelength=0.515, phase=0)
@@ -928,9 +936,11 @@ class RedPitayaManager:
                 )
                 self.axes[i, 0].set_title(label)
 
-                # Add simulated Michelson signal if this is a photodiode and we have displacement data
+                # Add simulated Michelson signal if this is a photodiode and we have
+                # displacement data
                 if pd_type in simulated_signals and disp_tf_data is not None:
-                    # Scale the simulated signal to match the amplitude of the real signal
+                    # Scale the simulated signal to match the amplitude of the
+                    # real signal
                     real_signal_amplitude = np.max(np.abs(channel_values))
                     scaled_simulated_signal = (
                         simulated_signals[pd_type] * real_signal_amplitude
@@ -984,7 +994,8 @@ class RedPitayaManager:
 
                     # Add simulated Michelson signal if this is a photodiode
                     if pd_type in simulated_signals:
-                        # Scale the simulated signal to match the amplitude of the real signal
+                        # Scale the simulated signal to match the amplitude of the
+                        # real signal
                         real_signal_amplitude = np.max(np.abs(channel_values))
                         scaled_simulated_signal = (
                             simulated_signals[pd_type] * real_signal_amplitude
@@ -1078,7 +1089,7 @@ class RedPitayaManager:
         plt.draw()
         plt.pause(0.001)  # Small pause to update the plot
 
-    def show_plot(self, block=False):
+    def show_plot(self, block: bool = False):
         """Show the plot.
 
         Args:
@@ -1095,7 +1106,7 @@ class RedPitayaManager:
             else:
                 plt.pause(0.01)  # Small pause to update plot
         except Exception as e:
-            print(f'Error in show_plot: {e}')
+            print(f'Error in show_plot: {e}')  # noqa: T201
 
     def setup_histograms(self):
         """Set up the histogram and spectrum plots for signal visualization."""
@@ -1111,7 +1122,12 @@ class RedPitayaManager:
                 ax.grid(True, alpha=0.3)
             plt.tight_layout(pad=3.0)
 
-    def update_histograms(self, data, vel_tf_data=None, disp_tf_data=None):
+    def update_histograms(
+        self,
+        data: dict[str, np.ndarray],
+        vel_tf_data: np.ndarray | None = None,
+        disp_tf_data: np.ndarray | None = None,
+    ):
         """Update histograms and spectra with new data and display accumulated results.
 
         Args:
@@ -1267,7 +1283,7 @@ class RedPitayaManager:
                         gaussian,
                         'r-',
                         linewidth=2,
-                        label=f'Gaussian (σ={std_dev:.4f})',
+                        label=r'Gaussian ($\sigma={std_dev:.4f}$)',
                     )
                     self.hist_axes[0, 0].legend(loc='upper right')
 
@@ -1320,7 +1336,7 @@ class RedPitayaManager:
                         gaussian,
                         'r-',
                         linewidth=2,
-                        label=f'Gaussian (σ={std_dev:.4f})',
+                        label=r'Gaussian ($\sigma={std_dev:.4f}$)',
                     )
                     self.hist_axes[0, 1].legend(loc='upper right')
 
@@ -1373,7 +1389,7 @@ class RedPitayaManager:
                         gaussian,
                         'r-',
                         linewidth=2,
-                        label=f'Gaussian (σ={std_dev:.4f})',
+                        label=r'Gaussian ($\sigma={std_dev:.4f}$)',
                     )
                     self.hist_axes[0, 2].legend(loc='upper right')
 
@@ -1465,7 +1481,8 @@ class RedPitayaManager:
         # Update the figure
         plt.figure(self.hist_fig.number)
         plt.tight_layout()
-        # Don't call plt.draw() or plt.pause() here - we'll do that in the calling function
+        # Don't call plt.draw() or plt.pause() here - we'll do that in the
+        # calling function
 
     def show_histograms(self, block=False):
         """Show the histograms plot.
@@ -1484,7 +1501,7 @@ class RedPitayaManager:
             else:
                 plt.pause(0.1)  # Increase pause time to ensure plot updates
         except Exception as e:
-            print(f'Error in show_histograms: {e}')
+            print(f'Error in show_histograms: {e}')  # noqa: T201
 
     def run_one_shot(
         self,
@@ -1505,7 +1522,7 @@ class RedPitayaManager:
             Dictionary of acquired data
         """
         # Configure all devices
-        print(f'Configuring {len(self.devices)} device(s)...')
+        print(f'Configuring {len(self.devices)} device(s)...')  # noqa: T201
 
         # Configure generation on the primary device
         self.configure_generation(device_idx=device_idx)
@@ -1522,12 +1539,13 @@ class RedPitayaManager:
         # Trigger generation on the primary device
         self.trigger_generation(device_idx=device_idx)
 
-        print('ACQ start')
+        print('ACQ start')  # noqa: T201
 
         # Get the data
         data = self.get_acquisition_data(timeout=timeout)
 
-        # Process velocity and displacement data from Channel 1 of RP1 (speaker drive voltage)
+        # Process velocity and displacement data from Channel 1 of RP1 (speaker
+        # drive voltage)
         speaker_data = data.get(f'{self.device_names[device_idx]}_CH1')
         vel_tf_data = None
         vel_derivative_data = None
@@ -1539,12 +1557,14 @@ class RedPitayaManager:
 
         if speaker_data is not None:
             try:
-                # Process velocity data (returns velocity from transfer function, velocity from derivative, spectrum, freqs)
+                # Process velocity data (returns velocity from transfer function,
+                # velocity from derivative, spectrum, freqs)
                 vel_tf_data, vel_derivative_data, vel_fft, freqs = (
                     self.get_velocity_data(speaker_data)
                 )
 
-                # Process displacement data (returns displacement from transfer function, integrated displacement, spectrum, freqs)
+                # Process displacement data (returns displacement from transfer
+                # function, integrated displacement, spectrum, freqs)
                 disp_tf_data, disp_integrated_data, disp_fft, _ = (
                     self.get_displacement_data(speaker_data)
                 )
@@ -1564,9 +1584,9 @@ class RedPitayaManager:
                 data['Displacement_FFT'] = disp_fft  # Displacement spectrum
                 data['Frequencies'] = freqs  # Frequency array
             except Exception as e:
-                print(f'Error processing data: {e}')
+                print(f'Error processing data: {e}')  # noqa: T201
         else:
-            print(
+            print(  # noqa: T201
                 f'Warning: No speaker data found for {self.device_names[device_idx]}_CH1'
             )
 
@@ -1602,7 +1622,7 @@ class RedPitayaManager:
                         plt.draw()
                     plt.pause(0.01)  # Small pause to update both plots
             except Exception as e:
-                print(f'Error updating plots: {e}')
+                print(f'Error updating plots: {e}')  # noqa: T201
 
         return data
 
@@ -1630,9 +1650,9 @@ class RedPitayaManager:
         Returns:
             List of dictionaries of acquired data
         """
-        print(f'Starting {num_shots} acquisition cycles')
+        print(f'Starting {num_shots} acquisition cycles')  # noqa: T201
         start_time = datetime.now()
-        print(f'Start time: {start_time.strftime("%H:%M:%S.%f")}')  # Start time
+        print(f'Start time: {start_time.strftime("%H:%M:%S.%f")}')  # noqa: T201
 
         all_data = []
 
@@ -1656,7 +1676,7 @@ class RedPitayaManager:
 
         try:
             for i in range(num_shots):
-                print(
+                print(  # noqa: T201
                     f'Shot {i}/{num_shots} at {datetime.now().strftime("%H:%M:%S.%f")}'
                 )
 
@@ -1678,7 +1698,7 @@ class RedPitayaManager:
                         try:
                             self.save_data(shot_data, hdf5_file)
                         except Exception as e:
-                            print(f'Error saving data to HDF5 file: {e}')
+                            print(f'Error saving data to HDF5 file: {e}')  # noqa: T201
 
                     all_data.append(shot_data)
 
@@ -1687,12 +1707,12 @@ class RedPitayaManager:
                         time.sleep(delay_between_shots)
 
                 except Exception as e:
-                    print(f'Error in shot {i}: {e}')
+                    print(f'Error in shot {i}: {e}')  # noqa: T201
                     # Continue with next shot instead of stopping
                     continue
 
         except KeyboardInterrupt:
-            print('Acquisition interrupted by user')
+            print('Acquisition interrupted by user')  # noqa: T201
 
         finally:
             # Make sure to reset devices
@@ -1718,11 +1738,11 @@ class RedPitayaManager:
                             'velocity': [],
                         }
                 except Exception as e:
-                    print(f'Error cleaning up plots: {e}')
+                    print(f'Error cleaning up plots: {e}')  # noqa: T201
 
             end_time = datetime.now()
-            print(f'Completed {len(all_data)} acquisition cycles')
-            print(f'End time: {end_time.strftime("%H:%M:%S.%f")}')
+            print(f'Completed {len(all_data)} acquisition cycles')  # noqa: T201
+            print(f'End time: {end_time.strftime("%H:%M:%S.%f")}')  # noqa: T201
 
             return all_data
 
@@ -1742,13 +1762,13 @@ class RedPitayaManager:
             period: Period of each blink in seconds
         """
         if len(self.devices) <= device_idx:
-            print(f'No device at index {device_idx}')
+            print(f'No device at index {device_idx}')  # noqa: T201
             return
 
         device = self.devices[device_idx]
         device_name = self.device_names[device_idx]
 
-        print(f'Blinking LED[{led_num}] on {device_name} {num_blinks} times')
+        print(f'Blinking LED[{led_num}] on {device_name} {num_blinks} times')  # noqa: T201
 
         try:
             for i in range(num_blinks):
@@ -1760,9 +1780,9 @@ class RedPitayaManager:
                 device.tx_txt(f'DIG:PIN LED{led_num},0')
                 time.sleep(period / 2.0)
 
-            print(f'Finished blinking LED on {device_name}')
+            print(f'Finished blinking LED on {device_name}')  # noqa: T201
         except Exception as e:
-            print(f'Error blinking LED on {device_name}: {e}')
+            print(f'Error blinking LED on {device_name}: {e}')  # noqa: T201
 
 
 # Example usage

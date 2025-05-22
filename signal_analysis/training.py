@@ -290,7 +290,9 @@ class ModelTrainer:
                     'eta_min': self.config.training_config.get('eta_min', 0),
                 },
                 loss_hparams=self.config.loss_config,
-                interferometer_config=self.config.data_config.get('interferometer_config'),
+                interferometer_config=self.config.data_config.get(
+                    'interferometer_config'
+                ),
             )
         else:
             raise TypeError("Unknown model type, can't initialize Lightning.")

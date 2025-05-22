@@ -206,7 +206,9 @@ class Standard(L.LightningModule):
         Returns:
             Total loss value for backpropagation
         """
-        signals, velocity_target, _ = batch  # Ignore displacement_target for Standard model
+        signals, velocity_target, _ = (
+            batch  # Ignore displacement_target for Standard model
+        )
         velocity_hat = self(signals)
         loss_dict = self.loss_function(velocity_hat, velocity_target)
 
@@ -231,7 +233,9 @@ class Standard(L.LightningModule):
             batch: Tuple of (signals, velocity_target, displacement_target)
             batch_idx: Index of current batch
         """
-        signals, velocity_target, _ = batch  # Ignore displacement_target for Standard model
+        signals, velocity_target, _ = (
+            batch  # Ignore displacement_target for Standard model
+        )
         velocity_hat = self(signals)
         loss_dict = self.loss_function(velocity_hat, velocity_target)
 
@@ -253,7 +257,9 @@ class Standard(L.LightningModule):
             batch: Tuple of (signals, velocity_target, displacement_target)
             batch_idx: Index of current batch
         """
-        signals, velocity_target, _ = batch  # Ignore displacement_target for Standard model
+        signals, velocity_target, _ = (
+            batch  # Ignore displacement_target for Standard model
+        )
         velocity_hat = self(signals)
         loss_dict = self.loss_function(velocity_hat, velocity_target)
 
@@ -262,7 +268,10 @@ class Standard(L.LightningModule):
             self.log(f'test_{loss_name}_loss', loss_value, sync_dist=True)
 
     def predict_step(
-        self, batch: tuple[torch.Tensor, torch.Tensor, torch.Tensor], batch_idx: int, dataloader_idx: int = 0
+        self,
+        batch: tuple[torch.Tensor, torch.Tensor, torch.Tensor],
+        batch_idx: int,
+        dataloader_idx: int = 0,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Prediction step for model. Return all relevant quantities for plotting.
 

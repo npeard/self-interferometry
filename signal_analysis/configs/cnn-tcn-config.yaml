@@ -1,7 +1,7 @@
 model:
   # Common parameters for all model types
-  role: "teacher"
-  type: "TCN"  # Change to "TCN" to use the TCN model
+  role: "standard"
+  type: "TCN"  # "CNN" or "TCN"
   activation: "LeakyReLU"
   in_channels: 3
   dropout: 0.1
@@ -13,7 +13,7 @@ model:
 
 training:
   max_epochs: 500
-  batch_size: 64
+  batch_size: 1
   optimizer: "Adam"
   learning_rate: 5e-4
   T_max: 500
