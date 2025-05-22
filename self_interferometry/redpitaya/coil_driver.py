@@ -12,7 +12,7 @@ import numpy as np
 import torch
 from numpy.fft import fft, fftfreq, ifft
 
-from redpitaya.waveform import Waveform
+from self_interferometry.redpitaya.waveform import Waveform
 
 
 @dataclass

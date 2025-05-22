@@ -14,12 +14,12 @@ import numpy as np
 from numpy.fft import fft
 
 # Import the scpi module directly
-from redpitaya import scpi
-from redpitaya.coil_driver import CoilDriver
+from self_interferometry.redpitaya import scpi
+from self_interferometry.redpitaya.coil_driver import CoilDriver
 
 # Import our custom classes
-from redpitaya.waveform import Waveform
-from signal_analysis.interferometers import MichelsonInterferometer
+from self_interferometry.redpitaya.waveform import Waveform
+from self_interferometry.signal_analysis.interferometers import MichelsonInterferometer
 
 
 class RedPitayaManager:

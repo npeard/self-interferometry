@@ -6,8 +6,8 @@ import lightning as L
 import torch
 from torch import nn, optim
 
-from redpitaya.coil_driver import CoilDriver
-from signal_analysis.models import CNN, TCN, CNNConfig, TCNConfig
+from self_interferometry.redpitaya.coil_driver import CoilDriver
+from self_interferometry.signal_analysis.models import CNN, TCN, CNNConfig, TCNConfig
 
 
 class Standard(L.LightningModule):
@@ -312,7 +312,6 @@ class Teacher(Standard):
                 wavelengths.
         """
         import numpy as np
-
         from signal_analysis.interferometers import (
             InterferometerArray,
             MichelsonInterferometer,

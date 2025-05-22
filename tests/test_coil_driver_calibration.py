@@ -11,8 +11,8 @@ import numpy as np
 import pytest
 from plot_waveforms import calculate_fft
 
-from redpitaya.coil_driver import CoilDriver
-from redpitaya.waveform import Waveform
+from self_interferometry.redpitaya.coil_driver import CoilDriver
+from self_interferometry.redpitaya.waveform import Waveform
 
 
 def test_spectra_consistency():

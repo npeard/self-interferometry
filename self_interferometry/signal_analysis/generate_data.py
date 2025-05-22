@@ -7,8 +7,11 @@ import h5py
 import numpy as np
 from tqdm import tqdm
 
-from redpitaya.manager import RedPitayaManager
-from signal_analysis.interferometers import InterferometerArray, MichelsonInterferometer
+from self_interferometry.redpitaya.manager import RedPitayaManager
+from self_interferometry.signal_analysis.interferometers import (
+    InterferometerArray,
+    MichelsonInterferometer,
+)
 
 
 def create_dataset(

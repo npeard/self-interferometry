@@ -51,6 +51,9 @@ dev = [
 ]
 
 
+[tool.flit.module]
+name = "self_interferometry"
+
 [tool.black]
 line-length = 88
 target-version = ["py312"]

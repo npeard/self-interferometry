@@ -3,8 +3,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from redpitaya.coil_driver import CoilDriver
-from redpitaya.waveform import Waveform
+from self_interferometry.redpitaya.coil_driver import CoilDriver
+from self_interferometry.redpitaya.waveform import Waveform
 
 
 class MichelsonInterferometer:

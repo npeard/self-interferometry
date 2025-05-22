@@ -130,7 +130,6 @@ dmypy.json
 .pyre/
 
 # training data
-data/*
-checkpoints/*
-lightning_logs/*
-signal_analysis/data/*
+**/data/*
+**/checkpoints/*
+**/lightning_logs/*
