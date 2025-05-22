@@ -195,18 +195,18 @@ class Standard(L.LightningModule):
         return loss_dict
 
     def training_step(
-        self, batch: tuple[torch.Tensor, torch.Tensor], batch_idx: int
+        self, batch: tuple[torch.Tensor, torch.Tensor, torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
         """Training step for model.
 
         Args:
-            batch: Tuple of (inputs, targets)
+            batch: Tuple of (signals, velocity_target, displacement_target)
             batch_idx: Index of current batch
 
         Returns:
             Total loss value for backpropagation
         """
-        signals, velocity_target = batch
+        signals, velocity_target, _ = batch  # Ignore displacement_target for Standard model
         velocity_hat = self(signals)
         loss_dict = self.loss_function(velocity_hat, velocity_target)
 
@@ -223,15 +223,15 @@ class Standard(L.LightningModule):
         return loss_dict['total']
 
     def validation_step(
-        self, batch: tuple[torch.Tensor, torch.Tensor], batch_idx: int
+        self, batch: tuple[torch.Tensor, torch.Tensor, torch.Tensor], batch_idx: int
     ) -> None:
         """Validation step for model.
 
         Args:
-            batch: Tuple of (inputs, targets)
+            batch: Tuple of (signals, velocity_target, displacement_target)
             batch_idx: Index of current batch
         """
-        signals, velocity_target = batch
+        signals, velocity_target, _ = batch  # Ignore displacement_target for Standard model
         velocity_hat = self(signals)
         loss_dict = self.loss_function(velocity_hat, velocity_target)
 
@@ -245,15 +245,15 @@ class Standard(L.LightningModule):
             )
 
     def test_step(
-        self, batch: tuple[torch.Tensor, torch.Tensor], batch_idx: int
+        self, batch: tuple[torch.Tensor, torch.Tensor, torch.Tensor], batch_idx: int
     ) -> None:
         """Test step for model.
 
         Args:
-            batch: Tuple of (inputs, targets)
+            batch: Tuple of (signals, velocity_target, displacement_target)
             batch_idx: Index of current batch
         """
-        signals, velocity_target = batch
+        signals, velocity_target, _ = batch  # Ignore displacement_target for Standard model
         velocity_hat = self(signals)
         loss_dict = self.loss_function(velocity_hat, velocity_target)
 
@@ -262,17 +262,18 @@ class Standard(L.LightningModule):
             self.log(f'test_{loss_name}_loss', loss_value, sync_dist=True)
 
     def predict_step(
-        self, batch: torch.Tensor, batch_idx: int, dataloader_idx: int = 0
-    ) -> torch.Tensor:
-        """Prediction step for GPT model. Return all relevant quantities for plotting.
+        self, batch: tuple[torch.Tensor, torch.Tensor, torch.Tensor], batch_idx: int, dataloader_idx: int = 0
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Prediction step for model. Return all relevant quantities for plotting.
 
         Args:
-            batch: Input tensor
+            batch: Tuple of (signals, velocity_target, displacement_target)
             batch_idx: Index of current batch
             dataloader_idx: Index of dataloader
         """
-        signals, velocity_target = batch
-        return self.model(signals), velocity_target, signals
+        signals, velocity_target, displacement_target = batch
+        velocity_hat = self.model(signals)
+        return velocity_hat, velocity_target, signals
 
 
 class Teacher(Standard):
