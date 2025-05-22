@@ -15,7 +15,7 @@ from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 
 from signal_analysis.datasets import get_data_loaders
-from signal_analysis.lightning_config import Standard
+from signal_analysis.lightning_config import Standard, Teacher
 
 
 @dataclass
@@ -276,6 +276,21 @@ class ModelTrainer:
                     'eta_min': self.config.training_config.get('eta_min', 0),
                 },
                 loss_hparams=self.config.loss_config,
+            )
+        elif self.config.model_config.get('role') == 'teacher':
+            return Teacher(
+                model_hparams=self.config.model_config,
+                optimizer_hparams={
+                    'name': self.config.training_config.get('optimizer', 'Adam'),
+                    # TODO: why is this loaded as a string?
+                    'lr': eval(self.config.training_config.get('learning_rate', 5e-4)),
+                },
+                scheduler_hparams={
+                    'T_max': self.config.training_config.get('T_max', 500),
+                    'eta_min': self.config.training_config.get('eta_min', 0),
+                },
+                loss_hparams=self.config.loss_config,
+                interferometer_config=self.config.data_config.get('interferometer_config'),
             )
         else:
             raise TypeError("Unknown model type, can't initialize Lightning.")

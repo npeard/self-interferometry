@@ -841,9 +841,6 @@ def create_pretraining_dataset(
             # Update sample count
             f.attrs['num_samples'] = current_size + 1
 
-        if (i + 1) % 10 == 0 or i == 0 or i == num_samples - 1:
-            print(f'Generated {i + 1}/{num_samples} samples')  # noqa: T201
-
     print(f'Pretraining dataset saved to {file_path}')  # noqa: T201
     return str(file_path)
 

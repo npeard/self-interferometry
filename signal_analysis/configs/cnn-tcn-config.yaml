@@ -1,6 +1,6 @@
 model:
   # Common parameters for all model types
-  role: "standard"
+  role: "teacher"
   type: "TCN"  # Change to "TCN" to use the TCN model
   activation: "LeakyReLU"
   in_channels: 3
@@ -13,7 +13,7 @@ model:
 
 training:
   max_epochs: 500
-  batch_size: 1
+  batch_size: 64
   optimizer: "Adam"
   learning_rate: 5e-4
   T_max: 500
@@ -39,6 +39,6 @@ data:
   pretest_file: "pretest.h5"
   num_workers: 7
   dataset_params:
-    train_samples: 10
-    val_samples: 1
-    test_samples: 1
+    train_samples: 1000
+    val_samples: 100
+    test_samples: 100

@@ -279,20 +279,18 @@ class Standard(L.LightningModule):
 class Teacher(Standard):
     def __init__(
         self,
-        model: torch.nn.Module,
+        model_hparams: dict,
         optimizer_hparams: dict | None = None,
         scheduler_hparams: dict | None = None,
         loss_hparams: dict | None = None,
         interferometer_config: dict | None = None,
     ):
         super().__init__(
-            model=model,
+            model_hparams=model_hparams,
             optimizer_hparams=optimizer_hparams,
             scheduler_hparams=scheduler_hparams,
             loss_hparams=loss_hparams,
         )
-        self.model = model
-
         # Initialize interferometer array for signal simulation
         self._setup_interferometer_array(interferometer_config)
 
