@@ -1,0 +1,38 @@
+name: Python Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  # cancel previous runs of this workflow (only for the same pull request, not for main)
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install flit
+        pip install -e .[dev]
+        python -c "import self_interferometry; print(f'Successfully imported self_interferometry package')"
+
+    - name: Test with pytest
+      run: |
+        task test

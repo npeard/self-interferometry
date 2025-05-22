@@ -1,0 +1,44 @@
+model:
+  # Common parameters for all model types
+  role: "standard"
+  type: "TCN"  # "CNN" or "TCN"
+  activation: "LeakyReLU"
+  in_channels: 3
+  dropout: 0.1
+
+  # TCN-specific parameters (used when type is "TCN")
+  input_size: 16384
+  output_size: 16384
+  kernel_size: 7
+
+training:
+  max_epochs: 500
+  batch_size: 1
+  optimizer: "Adam"
+  learning_rate: 5e-4
+  T_max: 500
+  eta_min: 0
+  accelerator: "cpu"
+  devices: '1'
+  use_logging: false
+  wandb_project: "self-interferometry"
+  experiment_name: "standard_pipeline"
+  checkpoint_dir: "./signal_analysis/checkpoints"
+
+loss:
+  physics_weight: 1.0
+
+data:
+  data_dir: "./signal_analysis/data"
+  train_file: "train.h5"
+  val_file: "val.h5"
+  test_file: "test.h5"
+  # pretraining data is simulated, mainly used for training teacher model
+  pretrain_file: "pretrain.h5"
+  preval_file: "preval.h5"
+  pretest_file: "pretest.h5"
+  num_workers: 7
+  dataset_params:
+    train_samples: 1000
+    val_samples: 100
+    test_samples: 100

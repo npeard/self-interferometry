@@ -1,0 +1,113 @@
+[project]
+name = "self-interferometry"
+version = "0.1.0"
+description = "Self-Mixing Interferometry for Rapid Vibration/Acoustic Spectrograms"
+authors = [
+    {name = "Nolan Peard", email = "nolan.peard@gmail.com"},
+]
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "numpy",
+    "matplotlib",
+    "numba",
+    "torch",
+    "lightning",
+    "h5py",
+    "tqdm",
+    "pyyaml",
+    "scipy",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/npeard/self-interferometry"
+"Bug Tracker" = "https://github.com/npeard/self-interferometry/issues"
+
+[build-system]
+requires = ["flit_core>=3.9.0,<4"]
+build-backend = "flit_core.buildapi"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+addopts = "--verbose"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "black",
+    "ruff",
+    "codespell",
+    "taskipy",
+    "pre-commit",
+    "nbstripout",
+]
+
+
+[tool.flit.module]
+name = "self_interferometry"
+
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+include = '\.pyi?$'
+
+[tool.ruff.format]
+quote-style = "single"
+docstring-code-format = true
+skip-magic-trailing-comma = true
+
+[tool.ruff.lint]
+select = [
+    "F", "E", "W", "C90", "I", "D", "UP", "YTT", "ANN", "BLE", "B", "A", "C4", "FA",
+    "INP", "NPY201", "PIE", "T20", "PYI", "PT", "RSE", "RET", "SLF", "SIM", "INT",
+    "ARG", "PTH", "PL", "TRY", "FLY", "NPY", "RUF",
+]
+extend-select = ["D204", "D400", "D404", "D406", "D410"]
+ignore = [
+    "F403", "F405",
+    "E203", "E731", "E741",
+    "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107", "D205", "D405", "D417",
+    "ANN002", "ANN003", "ANN401",
+    "ARG001",
+    "RET505", "RUF022",
+    "TRY003",
+    "PLR0913", "PLR2004",
+    "SLF001",
+]
+
+[tool.ruff.lint.isort]
+split-on-trailing-comma = false
+
+[tool.ruff.lint.flake8-annotations]
+suppress-none-returning = true
+
+[tool.ruff.lint.flake8-comprehensions]
+allow-dict-calls-with-keyword-arguments = true
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"docs/**.py" = ["INP001", "ARG001", "ANN"]
+"conftest.py" = ["ANN"]
+"tests/**.py" = ["ANN"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.codespell]
+skip = ".git,*.ipynb"
+
+[tool.taskipy.tasks]
+test = "pytest"
+lint = "ruff check ."
+format = "ruff format . && ruff check --fix ."
+spell = "codespell ."
+precommit = "pre-commit run --all-files"
+all = "task format && task lint && task test"
