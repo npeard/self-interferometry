@@ -5,11 +5,12 @@ from pathlib import Path
 
 import numpy as np
 import yaml
-from signal_analysis.generate_data import (
+
+from self_interferometry.signal_analysis.generate_data import (
     generate_pretraining_data,
     generate_training_data_from_rp,
 )
-from signal_analysis.training import ModelTrainer, TrainingConfig
+from self_interferometry.signal_analysis.training import ModelTrainer, TrainingConfig
 
 
 def parse_args() -> argparse.Namespace:
@@ -19,7 +20,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--config',
         type=str,
-        default='./signal_analysis/configs/cnn-tcn-config.yaml',
+        default='./self_interferometry/signal_analysis/configs/cnn-tcn-config.yaml',
         help='Path to YAML config file. Required for training, optional for testing.',
     )
     parser.add_argument(
@@ -165,22 +166,24 @@ def main():
             # Ensure we close the connection to the Red Pitaya
             rp_manager.close_all()
 
-    # Train with each configuration
-    for idx, train_config in enumerate(configs):
-        print(f'\nStarting training run {idx + 1}/{len(configs)}')  # noqa: T201
-        # Create trainer
-        trainer = ModelTrainer(
-            config=train_config,
-            experiment_name=train_config.training_config.get('experiment_name'),
-            checkpoint_dir=train_config.training_config.get('checkpoint_dir'),
-        )
+    # If we are not generating pretraining or acquiring datasets, train
+    if not args.generate_pretraining and not args.acquire_dataset:
+        # Train with each configuration
+        for idx, train_config in enumerate(configs):
+            print(f'\nStarting training run {idx + 1}/{len(configs)}')  # noqa: T201
+            # Create trainer
+            trainer = ModelTrainer(
+                config=train_config,
+                experiment_name=train_config.training_config.get('experiment_name'),
+                checkpoint_dir=train_config.training_config.get('checkpoint_dir'),
+            )
 
-        # Start training
-        trainer.train()
-        trainer.test()
-        # Close the wandb logger if it was configured
-        if trainer.config.training_config.get('use_logging', False):
-            trainer.trainer.loggers[0].experiment.finish()
+            # Start training
+            trainer.train()
+            trainer.test()
+            # Close the wandb logger if it was configured
+            if trainer.config.training_config.get('use_logging', False):
+                trainer.trainer.loggers[0].experiment.finish()
 
 
 if __name__ == '__main__':

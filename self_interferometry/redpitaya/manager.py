@@ -130,6 +130,10 @@ class RedPitayaManager:
 
     def __del__(self):
         """Clean up resources when the object is destroyed."""
+        self.close_all()
+
+    def close_all(self):
+        """Close all devices."""
         for device in self.devices:
             with contextlib.suppress(Exception):
                 device.close()
