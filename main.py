@@ -20,7 +20,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--config',
         type=str,
-        default='./signal_analysis/configs/model_config.yaml',
+        default='./signal_analysis/configs/cnn-tcn-config.yaml',
         help='Path to YAML config file. Required for training, optional for testing.',
     )
     parser.add_argument(

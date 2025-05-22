@@ -7,7 +7,7 @@ import torch
 from torch import nn, optim
 
 from redpitaya.coil_driver import CoilDriver
-from signal_analysis.models import CNN, CNNConfig
+from signal_analysis.models import CNN, TCN, CNNConfig, TCNConfig
 
 
 class Standard(L.LightningModule):
@@ -39,30 +39,50 @@ class Standard(L.LightningModule):
     def _create_cnn_config(self) -> CNNConfig:
         """Create CNNConfig from model configuration."""
         return CNNConfig(
-            input_size=256,
-            output_size=1,
+            input_size=self.model_hparams.get('input_size', 256),
+            output_size=self.model_hparams.get('output_size', 1),
             activation=self.model_hparams.get('activation', 'LeakyReLU'),
             in_channels=self.model_hparams.get('in_channels', 1),
             dropout=self.model_hparams.get('dropout', 0.1),
         )
 
-    def create_model(self) -> CNN:
-        """Create model instance based on config."""
+    def _create_tcn_config(self) -> TCNConfig:
+        """Create TCNConfig from model configuration."""
+        return TCNConfig(
+            input_size=self.model_hparams.get('input_size', 16384),
+            output_size=self.model_hparams.get('output_size', 16384),
+            num_channels=self.model_hparams.get('num_channels', [16, 32, 64, 64]),
+            kernel_size=self.model_hparams.get('kernel_size', 7),
+            dropout=self.model_hparams.get('dropout', 0.1),
+            activation=self.model_hparams.get('activation', 'LeakyReLU'),
+            in_channels=self.model_hparams.get('in_channels', 1),
+        )
+
+    def create_model(self) -> nn.Module:
+        """Create model instance based on config.
+
+        Returns:
+            A PyTorch model (CNN or TCN) based on the configuration
+        """
         model_type = self.model_hparams.get('type')
         if model_type == 'CNN':
             print('Creating CNN model...')  # noqa: T201
             self.model_config = self._create_cnn_config()
             return CNN(self.model_config)
+        elif model_type == 'TCN':
+            print('Creating TCN model...')  # noqa: T201
+            self.model_config = self._create_tcn_config()
+            return TCN(self.model_config)
         else:
             raise ValueError(f'Unknown model type: {model_type}')
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through the model.
 
-        This method handles the case where the CNN model produces one velocity value
-        for every 256 input signal points. It uses zero padding at the ends of the input
-        signal buffers and scans along the input to produce velocity_hat buffers with
-        the same length as the original input.
+        This method handles different model architectures:
+        1. For CNN models: Uses a sliding window approach to process each window
+        separately
+        2. For TCN models: Processes the entire sequence at once efficiently
 
         Args:
             x: Input tensor of shape [batch_size, num_channels, signal_length]
@@ -72,37 +92,53 @@ class Standard(L.LightningModule):
         """
         batch_size, num_channels, signal_length = x.shape
 
-        # Define the window size (number of input points that produce one output point)
-        window_size = self.model_config.input_size
-
-        # Create output tensor to store results
-        velocity_hat = torch.zeros((batch_size, signal_length), device=x.device)
-
-        # Add zero padding to handle the edges
-        padding = window_size // 2
-        padded_x = torch.nn.functional.pad(
-            x, (padding, padding), mode='constant', value=0
-        )
-
-        # Scan through the signal with the appropriate stride
-        for i in range(signal_length):
-            # Extract window centered at position i
-            start_idx = i
-            end_idx = i + window_size
-            window = padded_x[:, :, start_idx:end_idx]
-
-            # Skip if window is not complete (should not happen with padding)
-            if window.shape[2] < window_size:
-                continue
-
-            # Get model prediction for this window
+        # Check if we're using a TCN model (which can process the entire sequence at
+        # once)
+        if hasattr(self.model, '__class__') and self.model.__class__.__name__ == 'TCN':
+            # TCN approach - process the entire sequence at once
             with torch.set_grad_enabled(self.training):
-                pred = self.model(window)
+                # TCN returns shape [batch_size, 1, signal_length]
+                output = self.model(x)
 
-            # Store the prediction in the output tensor
-            velocity_hat[:, i] = pred.squeeze()
+                # Reshape to [batch_size, signal_length]
+                velocity_hat = output.squeeze(1)
 
-        return velocity_hat
+            return velocity_hat
+
+        else:
+            # CNN approach - sliding window implementation
+            # Define the window size (number of input points that produce one output
+            # point)
+            window_size = self.model_config.input_size
+
+            # Create output tensor to store results
+            velocity_hat = torch.zeros((batch_size, signal_length), device=x.device)
+
+            # Add zero padding to handle the edges
+            padding = window_size // 2
+            padded_x = torch.nn.functional.pad(
+                x, (padding, padding), mode='constant', value=0
+            )
+
+            # Scan through the signal with the appropriate stride
+            for i in range(signal_length):
+                # Extract window centered at position i
+                start_idx = i
+                end_idx = i + window_size
+                window = padded_x[:, :, start_idx:end_idx]
+
+                # Skip if window is not complete (should not happen with padding)
+                if window.shape[2] < window_size:
+                    continue
+
+                # Get model prediction for this window
+                with torch.set_grad_enabled(self.training):
+                    pred = self.model(window)
+
+                # Store the prediction in the output tensor
+                velocity_hat[:, i] = pred.squeeze()
+
+            return velocity_hat
 
     def configure_optimizers(self) -> dict[str, Any]:
         """Configure optimizer and learning rate scheduler."""

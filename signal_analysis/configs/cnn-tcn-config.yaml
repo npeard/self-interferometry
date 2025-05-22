@@ -1,13 +1,19 @@
 model:
+  # Common parameters for all model types
   role: "standard"
-  type: "CNN"
+  type: "TCN"  # Change to "TCN" to use the TCN model
   activation: "LeakyReLU"
   in_channels: 3
   dropout: 0.1
+  
+  # TCN-specific parameters (used when type is "TCN")
+  input_size: 16384
+  output_size: 16384
+  kernel_size: 7
 
 training:
   max_epochs: 500
-  batch_size: 8
+  batch_size: 1
   optimizer: "Adam"
   learning_rate: 5e-4
   T_max: 500
