@@ -22,13 +22,8 @@ training:
   devices: 1
   use_logging: true
   wandb_project: "self-interferometry"
-<<<<<<< Updated upstream
-  experiment_name: "standard_pipeline"
-  checkpoint_dir: "./self_interferometry/signal_analysis/checkpoints"
-=======
   experiment_name: "standard_training_test"
   checkpoint_dir: "./signal_analysis/checkpoints"
->>>>>>> Stashed changes
 
 loss:
   physics_weight: 1.0
@@ -44,12 +39,6 @@ data:
   pretest_file: "pretest.h5"
   num_workers: 7
   dataset_params:
-<<<<<<< Updated upstream
-    train_samples: 5
-    val_samples: 1
-    test_samples: 1
-=======
     train_samples: 500
     val_samples: 50
     test_samples: 50
->>>>>>> Stashed changes
