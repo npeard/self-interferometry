@@ -317,8 +317,8 @@ class ModelTrainer:
             callbacks.append(
                 ModelCheckpoint(
                     dirpath=Path(self.checkpoint_dir) / self.experiment_name,
-                    filename=str(loggers[0].experiment.id) + '_{epoch}-{val_loss:.4f}',
-                    monitor='val_loss',
+                    filename=str(loggers[0].experiment.id) + '_{epoch}-{val_total_loss:.4f}',
+                    monitor='val_total_loss',
                     mode='min',
                     save_top_k=1,
                 )
