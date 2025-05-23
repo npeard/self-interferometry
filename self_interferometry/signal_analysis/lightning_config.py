@@ -363,6 +363,10 @@ class Standard(L.LightningModule):
         # Use default sample rate determined by hardware in integration
         # Should be 125e6 / 256 - but generally ought to be read from data file.
         displacement_hat = CoilDriver.integrate_velocity(velocity_hat)
+
+        # Shift all displacements to start at zero for easy comparison
+        displacement_hat -= displacement_hat[:, 0:1]
+        displacement_target -= displacement_target[:, 0:1]
         
         return (
             velocity_hat,

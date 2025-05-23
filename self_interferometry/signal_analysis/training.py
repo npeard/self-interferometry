@@ -407,11 +407,28 @@ class ModelTrainer:
 
         # Get the number of samples in the batch and number of PD channels
         batch_size, num_channels, signal_length = signals.shape
+        
+        # Calculate MSE losses for the entire batch
+        mse_loss_fn = torch.nn.MSELoss()
+        velocity_tensor = torch.tensor(velocity_hat)
+        velocity_target_tensor = torch.tensor(velocity_target)
+        displacement_tensor = torch.tensor(displacement_hat)
+        displacement_target_tensor = torch.tensor(displacement_target)
+        batch_velocity_mse = mse_loss_fn(velocity_tensor, velocity_target_tensor).item()
+        batch_displacement_mse = mse_loss_fn(displacement_tensor, displacement_target_tensor).item()
 
         # Plot for each sample in the batch
         for i in range(
             min(batch_size, 10)
         ):  # Limit to 10 samples to avoid too many plots
+            # Calculate sample-specific MSE losses
+            sample_velocity_mse = mse_loss_fn(
+                torch.tensor(velocity_hat[i]), torch.tensor(velocity_target[i])
+            ).item()
+            sample_displacement_mse = mse_loss_fn(
+                torch.tensor(displacement_hat[i]), torch.tensor(displacement_target[i])
+            ).item()
+            
             # Create a figure with subplots - one for velocities and up to 3 for signals
             fig, axs = plt.subplots(1 + num_channels, 1, figsize=(10, 8), sharex=True)
 
@@ -420,7 +437,7 @@ class ModelTrainer:
             axs[0].plot(
                 velocity_hat[i], label='Predicted Velocity', color='red', linestyle='--'
             )
-            axs[0].set_title('Velocity and Displacement Comparison')
+            axs[0].set_title(f'Velocity (MSE: {sample_velocity_mse:.2e}) and Displacement (MSE: {sample_displacement_mse:.2e})')
             axs[0].set_ylabel('Velocity (μm/s)', color='blue')
             axs[0].tick_params(axis='y', labelcolor='blue')
             #axs[0].legend(loc='upper left')
@@ -452,7 +469,7 @@ class ModelTrainer:
             # Set x-axis label for the bottom subplot
             axs[-1].set_xlabel('Sample')
 
-            # Add overall title
-            plt.suptitle(f'Sample {i + 1} from Batch {batch_idx + 1}')
+            # Add overall title with batch MSE values
+            plt.suptitle(f'Sample {i + 1} from Batch {batch_idx + 1}\nBatch MSE: Velocity={batch_velocity_mse:.2e}, Displacement={batch_displacement_mse:.2e}')
             plt.tight_layout()
             plt.show()
