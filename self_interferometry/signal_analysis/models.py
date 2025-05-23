@@ -14,6 +14,7 @@ class CNNConfig:
     activation: str = 'LeakyReLU'
     in_channels: int = 1
     dropout: float = 0.1
+    window_stride: int = 128 # controls the window stride in the training loop
 
 
 @dataclass
@@ -64,6 +65,14 @@ class CNN(nn.Module):
             act_fn_by_name[config.activation],
             nn.Linear(16, config.output_size),
         )
+        # init all weights
+        self.apply(self._init_weights)
+
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.bias is not None:
+                nn.init.zeros_(module.bias)
 
     def forward(self, x: Tensor) -> Tensor:
         out = self.conv_layers(x)  # expect out [128, 64, 10]

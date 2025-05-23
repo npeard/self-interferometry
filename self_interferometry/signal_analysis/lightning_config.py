@@ -39,11 +39,12 @@ class Standard(L.LightningModule):
     def _create_cnn_config(self) -> CNNConfig:
         """Create CNNConfig from model configuration."""
         return CNNConfig(
-            input_size=self.model_hparams.get('input_size', 256),
-            output_size=self.model_hparams.get('output_size', 1),
+            input_size=256,
+            output_size=1,
             activation=self.model_hparams.get('activation', 'LeakyReLU'),
             in_channels=self.model_hparams.get('in_channels', 1),
             dropout=self.model_hparams.get('dropout', 0.1),
+            window_stride=self.model_hparams.get('window_stride', 128),
         )
 
     def _create_tcn_config(self) -> TCNConfig:
@@ -110,6 +111,7 @@ class Standard(L.LightningModule):
             # Define the window size (number of input points that produce one output
             # point)
             window_size = self.model_config.input_size
+            window_stride = self.model_config.window_stride
 
             # Create output tensor to store results
             velocity_hat = torch.zeros((batch_size, signal_length), device=x.device)
@@ -121,7 +123,7 @@ class Standard(L.LightningModule):
             )
 
             # Scan through the signal with the appropriate stride
-            for i in range(signal_length):
+            for i in range(0, signal_length, window_stride):
                 # Extract window centered at position i
                 start_idx = i
                 end_idx = i + window_size
@@ -130,7 +132,6 @@ class Standard(L.LightningModule):
                 # Skip if window is not complete (should not happen with padding)
                 if window.shape[2] < window_size:
                     continue
-
                 # Get model prediction for this window
                 with torch.set_grad_enabled(self.training):
                     pred = self.model(window)
