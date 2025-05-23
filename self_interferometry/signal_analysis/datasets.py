@@ -30,7 +30,6 @@ class StandardVelocityDataset(Dataset):
         file_path: Path to HDF5 file
         num_pd_channels: Number of photodiode channels to use (1-3)
         cache_size: Number of items to cache in memory (0 for no caching)
-        sample_rate: Sample rate of the data in Hz
     """
 
     def __init__(
@@ -38,12 +37,11 @@ class StandardVelocityDataset(Dataset):
         file_path: str | Path,
         num_pd_channels: int = 3,
         cache_size: int = 0,
-        sample_rate: float = 125e6,
     ):
         self.file_path = file_path
         self.num_pd_channels = min(max(1, num_pd_channels), 3)  # Ensure between 1 and 3
         self.cache_size = cache_size
-        self.sample_rate = sample_rate
+        self.sample_rate = None  # Will be set in open_hdf5
 
         # Channel keys for photodiode signals
         self.pd_channel_keys = ['RP1_CH2', 'RP2_CH1', 'RP2_CH2'][: self.num_pd_channels]
@@ -82,11 +80,21 @@ class StandardVelocityDataset(Dataset):
         """Open HDF5 file for reading.
 
         This is done lazily to support multiprocessing in DataLoader.
+        Also sets the sample_rate from file attributes if available.
         """
         if not self.opened_flag:
             self.h5_file = h5py.File(self.file_path, 'r')
             self.voltage_data = self.h5_file[self.voltage_key]
             self.pd_data = [self.h5_file[key] for key in self.pd_channel_keys]
+            
+            # Get sample rate from file attributes if available
+            if 'sample_rate' in self.h5_file.attrs:
+                self.sample_rate = float(self.h5_file.attrs['sample_rate'])
+            else:
+                # Default sample rate for Red Pitaya with decimation of 256
+                self.sample_rate = 125e6 / 256
+                print(f"Warning: Using default sample rate of {self.sample_rate:.2f} Hz")  # noqa: T201
+                
             self.opened_flag = True
 
     def __len__(self) -> int:

@@ -48,7 +48,7 @@ class TrainingConfig:
 
         # Data defaults
         self.data_config.setdefault(
-            'data_dir', './self_interferometry/signal_analysis/data'
+            'data_dir', './signal_analysis/data'
         )
         self.data_config.setdefault('train_file', 'train.h5')
         self.data_config.setdefault('val_file', 'val.h5')
@@ -374,6 +374,15 @@ class ModelTrainer:
         model = Standard.load_from_checkpoint(checkpoint_path)
         trainer = L.Trainer(accelerator='cpu', logger=[])
 
+        # Figure out which role the model was trained in so we setup the correct data
+        model_role = model.model_hparams.get('role')
+        if model_role == 'standard':
+            self.config.model_config['role'] = 'standard'
+        elif model_role == 'teacher':
+            self.config.model_config['role'] = 'teacher'
+        else:
+            raise ValueError(f'Unknown model role: {model_role}')
+
         # Setup data loaders
         self.setup_data()
 
@@ -381,33 +390,57 @@ class ModelTrainer:
         predictions = trainer.predict(model, self.test_loader)
 
         # Process the first batch of predictions
-        # predictions[batch_idx] returns a tuple of (velocity_hat,
-        # velocity_target, signals)
+        # predictions[batch_idx] returns a tuple of (velocity_hat, velocity_target, 
+        # displacement_hat, displacement_target, signals)
         batch_idx = 0
         velocity_hat = predictions[batch_idx][0].cpu().numpy()  # Predicted velocities
         velocity_target = predictions[batch_idx][1].cpu().numpy()  # Target velocities
-        signals = predictions[batch_idx][2].cpu().numpy()  # Input signals
+        displacement_hat = predictions[batch_idx][2].cpu().numpy()  # Predicted displacement
+        displacement_target = predictions[batch_idx][3].cpu().numpy()  # Target displacement
+        signals = predictions[batch_idx][4].cpu().numpy()  # Input signals
+
+        print(f"Signals shape: {signals.shape}")
+        print(f"Velocity hat shape: {velocity_hat.shape}")
+        print(f"Velocity target shape: {velocity_target.shape}")
+        print(f"Displacement hat shape: {displacement_hat.shape}")
+        print(f"Displacement target shape: {displacement_target.shape}")
 
         # Get the number of samples in the batch and number of PD channels
         batch_size, num_channels, signal_length = signals.shape
 
         # Plot for each sample in the batch
         for i in range(
-            min(batch_size, 5)
-        ):  # Limit to 5 samples to avoid too many plots
+            min(batch_size, 10)
+        ):  # Limit to 10 samples to avoid too many plots
             # Create a figure with subplots - one for velocities and up to 3 for signals
             fig, axs = plt.subplots(1 + num_channels, 1, figsize=(10, 8), sharex=True)
 
-            # Plot predicted vs target velocities
+            # Plot predicted vs target velocities on the primary y-axis
             axs[0].plot(velocity_target[i], label='Target Velocity', color='blue')
             axs[0].plot(
                 velocity_hat[i], label='Predicted Velocity', color='red', linestyle='--'
             )
-            axs[0].set_title('Velocity Comparison')
-            axs[0].set_ylabel('Velocity (μm/s)')
-            axs[0].legend()
-            axs[0].grid(True)
-
+            axs[0].set_title('Velocity and Displacement Comparison')
+            axs[0].set_ylabel('Velocity (μm/s)', color='blue')
+            axs[0].tick_params(axis='y', labelcolor='blue')
+            #axs[0].legend(loc='upper left')
+            axs[0].grid(True, alpha=0.3)
+            
+            # Create a twin axis for displacement
+            ax_twin = axs[0].twinx()
+            ax_twin.plot(displacement_target[i], label='Target Displacement', color='green')
+            ax_twin.plot(
+                displacement_hat[i], label='Predicted Displacement', color='orange', linestyle='--'
+            )
+            ax_twin.set_ylabel('Displacement (μm)', color='green')
+            ax_twin.tick_params(axis='y', labelcolor='green')
+            ax_twin.legend(loc='upper right')
+            
+            # Ensure both legends are visible
+            lines1, labels1 = axs[0].get_legend_handles_labels()
+            lines2, labels2 = ax_twin.get_legend_handles_labels()
+            ax_twin.legend(lines1 + lines2, labels1 + labels2, loc='upper right')
+            
             # Plot each input signal channel
             for j in range(num_channels):
                 channel_names = ['PD1 (RP1_CH2)', 'PD2 (RP2_CH1)', 'PD3 (RP2_CH2)']
@@ -423,9 +456,3 @@ class ModelTrainer:
             plt.suptitle(f'Sample {i + 1} from Batch {batch_idx + 1}')
             plt.tight_layout()
             plt.show()
-
-            # Ask if user wants to continue to the next sample
-            if i < min(batch_size, 5) - 1:
-                user_input = input("Press Enter to view next sample, or 'q' to quit: ")
-                if user_input.lower() == 'q':
-                    break

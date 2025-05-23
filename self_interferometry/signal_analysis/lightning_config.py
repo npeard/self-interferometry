@@ -113,8 +113,18 @@ class Standard(L.LightningModule):
             window_size = self.model_config.input_size
             window_stride = self.model_config.window_stride
 
-            # Create output tensor to store results
-            velocity_hat = torch.zeros((batch_size, signal_length), device=x.device)
+            # Calculate number of windows and create output tensor accordingly
+            num_windows = (signal_length + window_stride - 1) // window_stride
+            
+            # Create output tensor to store results - size is now based on number of windows
+            if window_stride == 1:
+                # If stride is 1, maintain backward compatibility with full signal length output
+                velocity_hat = torch.zeros((batch_size, signal_length), device=x.device)
+                output_full_signal = True
+            else:
+                # For stride > 1, output size is reduced to number of windows
+                velocity_hat = torch.zeros((batch_size, num_windows), device=x.device)
+                output_full_signal = False
 
             # Add zero padding to handle the edges
             padding = window_size // 2
@@ -123,7 +133,7 @@ class Standard(L.LightningModule):
             )
 
             # Scan through the signal with the appropriate stride
-            for i in range(0, signal_length, window_stride):
+            for window_idx, i in enumerate(range(0, signal_length, window_stride)):
                 # Extract window centered at position i
                 start_idx = i
                 end_idx = i + window_size
@@ -132,12 +142,21 @@ class Standard(L.LightningModule):
                 # Skip if window is not complete (should not happen with padding)
                 if window.shape[2] < window_size:
                     continue
+                    
                 # Get model prediction for this window
                 with torch.set_grad_enabled(self.training):
                     pred = self.model(window)
 
                 # Store the prediction in the output tensor
-                velocity_hat[:, i] = pred.squeeze()
+                if output_full_signal:
+                    velocity_hat[:, i] = pred.squeeze()
+                else:
+                    velocity_hat[:, window_idx] = pred.squeeze()
+
+            # Store the stride information for use in training/validation/testing
+            self._output_full_signal = output_full_signal
+            self._window_stride = window_stride
+            self._num_windows = num_windows
 
             return velocity_hat
 
@@ -211,6 +230,21 @@ class Standard(L.LightningModule):
             batch  # Ignore displacement_target for Standard model
         )
         velocity_hat = self(signals)
+        
+        # For CNN with stride > 1, extract the corresponding target values
+        if hasattr(self, '_output_full_signal') and not self._output_full_signal:
+            # Extract targets at the same positions where predictions were made
+            # For each window, we want the target at the center of the window
+            batch_size = velocity_target.shape[0]
+            downsampled_target = torch.zeros_like(velocity_hat)
+            
+            for window_idx, i in enumerate(range(0, velocity_target.shape[1], self._window_stride)):
+                if window_idx >= self._num_windows:
+                    break
+                downsampled_target[:, window_idx] = velocity_target[:, i]
+            
+            velocity_target = downsampled_target
+        
         loss_dict = self.loss_function(velocity_hat, velocity_target)
 
         # Log each loss component with train_ prefix
@@ -238,6 +272,23 @@ class Standard(L.LightningModule):
             batch  # Ignore displacement_target for Standard model
         )
         velocity_hat = self(signals)
+        
+        # For CNN with stride > 1, extract the corresponding target values
+        if hasattr(self, '_output_full_signal') and not self._output_full_signal:
+            # Extract targets at the same positions where predictions were made
+            batch_size = velocity_target.shape[0]
+            downsampled_target = torch.zeros_like(velocity_hat)
+            
+            for window_idx, i in enumerate(range(0, velocity_target.shape[1], self._window_stride)):
+                if window_idx >= self._num_windows:
+                    break
+                downsampled_target[:, window_idx] = velocity_target[:, i]
+            
+            velocity_target = downsampled_target
+            
+            # For prediction, we might want to interpolate back to full signal length
+            # This is optional and depends on how you want to visualize the results
+            
         loss_dict = self.loss_function(velocity_hat, velocity_target)
 
         # Log each loss component with val_ prefix
@@ -262,6 +313,23 @@ class Standard(L.LightningModule):
             batch  # Ignore displacement_target for Standard model
         )
         velocity_hat = self(signals)
+        
+        # For CNN with stride > 1, extract the corresponding target values
+        if hasattr(self, '_output_full_signal') and not self._output_full_signal:
+            # Extract targets at the same positions where predictions were made
+            batch_size = velocity_target.shape[0]
+            downsampled_target = torch.zeros_like(velocity_hat)
+            
+            for window_idx, i in enumerate(range(0, velocity_target.shape[1], self._window_stride)):
+                if window_idx >= self._num_windows:
+                    break
+                downsampled_target[:, window_idx] = velocity_target[:, i]
+            
+            velocity_target = downsampled_target
+            
+            # For prediction, we might want to interpolate back to full signal length
+            # This is optional and depends on how you want to visualize the results
+            
         loss_dict = self.loss_function(velocity_hat, velocity_target)
 
         # Log each loss component with test_ prefix
@@ -270,20 +338,39 @@ class Standard(L.LightningModule):
 
     def predict_step(
         self,
-        batch: tuple[torch.Tensor, torch.Tensor, torch.Tensor],
+        batch: tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor, torch.Tensor]],
         batch_idx: int,
         dataloader_idx: int = 0,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Prediction step for model. Return all relevant quantities for plotting.
 
         Args:
-            batch: Tuple of (signals, velocity_target, displacement_target)
+            batch: Tuple of (inputs, targets) where targets is a tuple of
+                  (velocity, displacement, signals)
             batch_idx: Index of current batch
             dataloader_idx: Index of dataloader
+
+        Returns:
+            Tuple of (velocity_hat, velocity_target, displacement_hat, displacement_target, signals)
         """
         signals, velocity_target, displacement_target = batch
-        velocity_hat = self.model(signals)
-        return velocity_hat, velocity_target, signals
+        
+        # During inference, we want to make sure window_stride is set to 1 for CNNs
+        if hasattr(self, 'model_config') and hasattr(self.model_config, 'window_stride'):
+            self.model_config.window_stride = 1
+            
+        velocity_hat = self(signals)
+        # Use default sample rate determined by hardware in integration
+        # Should be 125e6 / 256 - but generally ought to be read from data file.
+        displacement_hat = CoilDriver.integrate_velocity(velocity_hat)
+        
+        return (
+            velocity_hat,
+            velocity_target,
+            displacement_hat,
+            displacement_target,
+            signals,
+        )
 
 
 class Teacher(Standard):
@@ -449,7 +536,23 @@ class Teacher(Standard):
 
         # Forward pass
         velocity_hat = self(signals)
-
+        
+        # For CNN with stride > 1, extract the corresponding target values
+        if hasattr(self, '_output_full_signal') and not self._output_full_signal:
+            # Extract targets at the same positions where predictions were made
+            batch_size = velocity_target.shape[0]
+            downsampled_target = torch.zeros_like(velocity_hat)
+            
+            for window_idx, i in enumerate(range(0, velocity_target.shape[1], self._window_stride)):
+                if window_idx >= self._num_windows:
+                    break
+                downsampled_target[:, window_idx] = velocity_target[:, i]
+            
+            velocity_target = downsampled_target
+            
+            # For prediction, we might want to interpolate back to full signal length
+            # This is optional and depends on how you want to visualize the results
+            
         # Calculate loss
         loss_dict = self.loss_function(
             velocity_hat, velocity_target, displacement_target, signals
@@ -481,7 +584,23 @@ class Teacher(Standard):
 
         # Forward pass
         velocity_hat = self(signals)
-
+        
+        # For CNN with stride > 1, extract the corresponding target values
+        if hasattr(self, '_output_full_signal') and not self._output_full_signal:
+            # Extract targets at the same positions where predictions were made
+            batch_size = velocity_target.shape[0]
+            downsampled_target = torch.zeros_like(velocity_hat)
+            
+            for window_idx, i in enumerate(range(0, velocity_target.shape[1], self._window_stride)):
+                if window_idx >= self._num_windows:
+                    break
+                downsampled_target[:, window_idx] = velocity_target[:, i]
+            
+            velocity_target = downsampled_target
+            
+            # For prediction, we might want to interpolate back to full signal length
+            # This is optional and depends on how you want to visualize the results
+            
         # Calculate loss
         loss_dict = self.loss_function(
             velocity_hat, velocity_target, displacement_target, signals
@@ -496,7 +615,7 @@ class Teacher(Standard):
         batch: tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor, torch.Tensor]],
         batch_idx: int,
         dataloader_idx: int = 0,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Prediction step for Teacher model. Return all relevant quantities for plotting.
 
         Args:
@@ -506,11 +625,18 @@ class Teacher(Standard):
             dataloader_idx: Index of dataloader
 
         Returns:
-            Tuple of (velocity_hat, velocity_target, displacement_target, signals)
+            Tuple of (velocity_hat, velocity_target, displacement_hat, displacement_target, signals)
         """
         signals, velocity_target, displacement_target = batch
+        print(f"Teacher predict_step input signals shape: {signals.shape}")
+        
+        # During inference, we want to make sure window_stride is set to 1 for CNNs
+        if hasattr(self, 'model_config') and hasattr(self.model_config, 'window_stride'):
+            self.model_config.window_stride = 1
+            
         velocity_hat = self(signals)
         displacement_hat = CoilDriver.integrate_velocity(velocity_hat)
+        
         return (
             velocity_hat,
             velocity_target,

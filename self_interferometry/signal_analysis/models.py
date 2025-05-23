@@ -66,7 +66,7 @@ class CNN(nn.Module):
             nn.Linear(16, config.output_size),
         )
         # init all weights
-        self.apply(self._init_weights)
+        # self.apply(self._init_weights)
 
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
