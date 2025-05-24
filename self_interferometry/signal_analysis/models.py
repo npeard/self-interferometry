@@ -37,6 +37,7 @@ class CNN(nn.Module):
         super().__init__()
         self.in_channels = config.in_channels
         self.conv_layers = nn.Sequential(
+            nn.LayerNorm(config.input_size),
             nn.Conv1d(self.in_channels, 16, kernel_size=7),
             # Lout = 250, given L = 256
             act_fn_by_name[config.activation],
@@ -65,14 +66,6 @@ class CNN(nn.Module):
             act_fn_by_name[config.activation],
             nn.Linear(16, config.output_size),
         )
-        # init all weights
-        # self.apply(self._init_weights)
-
-    def _init_weights(self, module):
-        if isinstance(module, nn.Linear):
-            nn.init.normal_(module.weight, mean=0.0, std=0.02)
-            if module.bias is not None:
-                nn.init.zeros_(module.bias)
 
     def forward(self, x: Tensor) -> Tensor:
         out = self.conv_layers(x)  # expect out [128, 64, 10]
@@ -122,6 +115,7 @@ class TemporalBlock(nn.Module):
         self.dropout2 = nn.Dropout(dropout)
 
         self.net = nn.Sequential(
+            nn.LayerNorm(16384),
             self.conv1,
             self.chomp1,
             self.activation,
