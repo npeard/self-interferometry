@@ -15,8 +15,9 @@ from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 
 from self_interferometry.signal_analysis.datasets import get_data_loaders
-from self_interferometry.signal_analysis.lightning_config import Standard, Teacher
 from self_interferometry.signal_analysis.lightning_ensemble import Ensemble
+from self_interferometry.signal_analysis.lightning_standard import Standard
+from self_interferometry.signal_analysis.lightning_teacher import Teacher
 
 
 @dataclass
