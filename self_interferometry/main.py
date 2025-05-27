@@ -5,7 +5,6 @@ from pathlib import Path
 
 import numpy as np
 import yaml
-
 from signal_analysis.generate_data import (
     generate_pretraining_data,
     generate_training_data_from_rp,

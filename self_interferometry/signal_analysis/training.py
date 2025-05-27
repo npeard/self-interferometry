@@ -47,9 +47,7 @@ class TrainingConfig:
         self.training_config.setdefault('batch_size', 64)
 
         # Data defaults
-        self.data_config.setdefault(
-            'data_dir', './signal_analysis/data'
-        )
+        self.data_config.setdefault('data_dir', './signal_analysis/data')
         self.data_config.setdefault('train_file', 'train.h5')
         self.data_config.setdefault('val_file', 'val.h5')
         self.data_config.setdefault('test_file', 'test.h5')
@@ -317,7 +315,8 @@ class ModelTrainer:
             callbacks.append(
                 ModelCheckpoint(
                     dirpath=Path(self.checkpoint_dir) / self.experiment_name,
-                    filename=str(loggers[0].experiment.id) + '_{epoch}-{val_total_loss:.4f}',
+                    filename=str(loggers[0].experiment.id)
+                    + '_{epoch}-{val_total_loss:.4f}',
                     monitor='val_total_loss',
                     mode='min',
                     save_top_k=1,
@@ -390,24 +389,28 @@ class ModelTrainer:
         predictions = trainer.predict(model, self.test_loader)
 
         # Process the first batch of predictions
-        # predictions[batch_idx] returns a tuple of (velocity_hat, velocity_target, 
+        # predictions[batch_idx] returns a tuple of (velocity_hat, velocity_target,
         # displacement_hat, displacement_target, signals)
         batch_idx = 0
         velocity_hat = predictions[batch_idx][0].cpu().numpy()  # Predicted velocities
         velocity_target = predictions[batch_idx][1].cpu().numpy()  # Target velocities
-        displacement_hat = predictions[batch_idx][2].cpu().numpy()  # Predicted displacement
-        displacement_target = predictions[batch_idx][3].cpu().numpy()  # Target displacement
+        displacement_hat = (
+            predictions[batch_idx][2].cpu().numpy()
+        )  # Predicted displacement
+        displacement_target = (
+            predictions[batch_idx][3].cpu().numpy()
+        )  # Target displacement
         signals = predictions[batch_idx][4].cpu().numpy()  # Input signals
 
-        print(f"Signals shape: {signals.shape}")
-        print(f"Velocity hat shape: {velocity_hat.shape}")
-        print(f"Velocity target shape: {velocity_target.shape}")
-        print(f"Displacement hat shape: {displacement_hat.shape}")
-        print(f"Displacement target shape: {displacement_target.shape}")
+        print(f'Signals shape: {signals.shape}')
+        print(f'Velocity hat shape: {velocity_hat.shape}')
+        print(f'Velocity target shape: {velocity_target.shape}')
+        print(f'Displacement hat shape: {displacement_hat.shape}')
+        print(f'Displacement target shape: {displacement_target.shape}')
 
         # Get the number of samples in the batch and number of PD channels
         batch_size, num_channels, signal_length = signals.shape
-        
+
         # Calculate MSE losses for the entire batch
         mse_loss_fn = torch.nn.MSELoss()
         velocity_tensor = torch.tensor(velocity_hat)
@@ -415,7 +418,9 @@ class ModelTrainer:
         displacement_tensor = torch.tensor(displacement_hat)
         displacement_target_tensor = torch.tensor(displacement_target)
         batch_velocity_mse = mse_loss_fn(velocity_tensor, velocity_target_tensor).item()
-        batch_displacement_mse = mse_loss_fn(displacement_tensor, displacement_target_tensor).item()
+        batch_displacement_mse = mse_loss_fn(
+            displacement_tensor, displacement_target_tensor
+        ).item()
 
         # Plot for each sample in the batch
         for i in range(
@@ -428,7 +433,7 @@ class ModelTrainer:
             sample_displacement_mse = mse_loss_fn(
                 torch.tensor(displacement_hat[i]), torch.tensor(displacement_target[i])
             ).item()
-            
+
             # Create a figure with subplots - one for velocities and up to 3 for signals
             fig, axs = plt.subplots(1 + num_channels, 1, figsize=(10, 8), sharex=True)
 
@@ -437,27 +442,34 @@ class ModelTrainer:
             axs[0].plot(
                 velocity_hat[i], label='Predicted Velocity', color='red', linestyle='--'
             )
-            axs[0].set_title(f'Velocity (MSE: {sample_velocity_mse:.2e}) and Displacement (MSE: {sample_displacement_mse:.2e})')
+            axs[0].set_title(
+                f'Velocity (MSE: {sample_velocity_mse:.2e}) and Displacement (MSE: {sample_displacement_mse:.2e})'
+            )
             axs[0].set_ylabel('Velocity (μm/s)', color='blue')
             axs[0].tick_params(axis='y', labelcolor='blue')
-            #axs[0].legend(loc='upper left')
+            # axs[0].legend(loc='upper left')
             axs[0].grid(True, alpha=0.3)
-            
+
             # Create a twin axis for displacement
             ax_twin = axs[0].twinx()
-            ax_twin.plot(displacement_target[i], label='Target Displacement', color='green')
             ax_twin.plot(
-                displacement_hat[i], label='Predicted Displacement', color='orange', linestyle='--'
+                displacement_target[i], label='Target Displacement', color='green'
+            )
+            ax_twin.plot(
+                displacement_hat[i],
+                label='Predicted Displacement',
+                color='orange',
+                linestyle='--',
             )
             ax_twin.set_ylabel('Displacement (μm)', color='green')
             ax_twin.tick_params(axis='y', labelcolor='green')
             ax_twin.legend(loc='upper right')
-            
+
             # Ensure both legends are visible
             lines1, labels1 = axs[0].get_legend_handles_labels()
             lines2, labels2 = ax_twin.get_legend_handles_labels()
             ax_twin.legend(lines1 + lines2, labels1 + labels2, loc='upper right')
-            
+
             # Plot each input signal channel
             for j in range(num_channels):
                 channel_names = ['PD1 (RP1_CH2)', 'PD2 (RP2_CH1)', 'PD3 (RP2_CH2)']
@@ -470,6 +482,8 @@ class ModelTrainer:
             axs[-1].set_xlabel('Sample')
 
             # Add overall title with batch MSE values
-            plt.suptitle(f'Sample {i + 1} from Batch {batch_idx + 1}\nBatch MSE: Velocity={batch_velocity_mse:.2e}, Displacement={batch_displacement_mse:.2e}')
+            plt.suptitle(
+                f'Sample {i + 1} from Batch {batch_idx + 1}\nBatch MSE: Velocity={batch_velocity_mse:.2e}, Displacement={batch_displacement_mse:.2e}'
+            )
             plt.tight_layout()
             plt.show()

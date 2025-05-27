@@ -33,10 +33,7 @@ class StandardVelocityDataset(Dataset):
     """
 
     def __init__(
-        self,
-        file_path: str | Path,
-        num_pd_channels: int = 3,
-        cache_size: int = 0,
+        self, file_path: str | Path, num_pd_channels: int = 3, cache_size: int = 0
     ):
         self.file_path = file_path
         self.num_pd_channels = min(max(1, num_pd_channels), 3)  # Ensure between 1 and 3
@@ -86,15 +83,17 @@ class StandardVelocityDataset(Dataset):
             self.h5_file = h5py.File(self.file_path, 'r')
             self.voltage_data = self.h5_file[self.voltage_key]
             self.pd_data = [self.h5_file[key] for key in self.pd_channel_keys]
-            
+
             # Get sample rate from file attributes if available
             if 'sample_rate' in self.h5_file.attrs:
                 self.sample_rate = float(self.h5_file.attrs['sample_rate'])
             else:
                 # Default sample rate for Red Pitaya with decimation of 256
                 self.sample_rate = 125e6 / 256
-                print(f"Warning: Using default sample rate of {self.sample_rate:.2f} Hz")  # noqa: T201
-                
+                print(
+                    f'Warning: Using default sample rate of {self.sample_rate:.2f} Hz'
+                )
+
             self.opened_flag = True
 
     def __len__(self) -> int:

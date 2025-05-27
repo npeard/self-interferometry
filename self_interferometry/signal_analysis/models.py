@@ -8,13 +8,13 @@ act_fn_by_name = {'LeakyReLU': nn.LeakyReLU(), 'Tanh': nn.Tanh()}
 
 
 @dataclass
-class CNNConfig:
+class BarlandCNNConfig:
     input_size: int = 256
     output_size: int = 1
     activation: str = 'LeakyReLU'
     in_channels: int = 1
     dropout: float = 0.1
-    window_stride: int = 128 # controls the window stride in the training loop
+    window_stride: int = 128  # controls the window stride in the training loop
 
 
 @dataclass
@@ -32,8 +32,8 @@ class TCNConfig:
             self.num_channels = [16, 32, 64, 64]  # Default channel configuration
 
 
-class CNN(nn.Module):
-    def __init__(self, config: CNNConfig):
+class BarlandCNN(nn.Module):
+    def __init__(self, config: BarlandCNNConfig):
         super().__init__()
         self.in_channels = config.in_channels
         self.conv_layers = nn.Sequential(
