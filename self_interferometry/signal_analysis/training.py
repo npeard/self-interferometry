@@ -16,6 +16,7 @@ from lightning.pytorch.loggers import WandbLogger
 
 from self_interferometry.signal_analysis.datasets import get_data_loaders
 from self_interferometry.signal_analysis.lightning_config import Standard, Teacher
+from self_interferometry.signal_analysis.lightning_ensemble import Ensemble
 
 
 @dataclass
@@ -232,7 +233,7 @@ class ModelTrainer:
         # Resolve paths for data files
         # Use real data inputs for the student and standard model
         # Student model uses targets from teacher
-        if self.config.model_config.get('role') in ['standard', 'student']:
+        if self.config.model_config.get('role') in ['standard', 'student', 'ensemble']:
             train_path = resolve_path(
                 data_dir, self.config.data_config.get('train_file')
             )
@@ -261,41 +262,50 @@ class ModelTrainer:
             num_workers=self.config.data_config['num_workers'],
         )
 
-    def create_lightning_module(self) -> Standard:
+    def create_lightning_module(self):
         """Create lightning module based on model type."""
-        if self.config.model_config.get('role') == 'standard':
+        model_role = self.config.model_config.get('role', 'standard')
+
+        # Common optimizer hyperparameters
+        optimizer_hparams = {
+            'name': self.config.training_config.get('optimizer', 'Adam'),
+            # TODO: why is lr a string?
+            'lr': eval(self.config.training_config.get('learning_rate', 1e-3)),
+            'weight_decay': self.config.training_config.get('weight_decay', 0),
+        }
+
+        # Common scheduler hyperparameters
+        scheduler_hparams = {
+            'T_max': self.config.training_config.get('T_max', 500),
+            'eta_min': self.config.training_config.get('eta_min', 0),
+        }
+
+        if model_role == 'standard':
             return Standard(
                 model_hparams=self.config.model_config,
-                optimizer_hparams={
-                    'name': self.config.training_config.get('optimizer', 'Adam'),
-                    # TODO: why is this loaded as a string?
-                    'lr': eval(self.config.training_config.get('learning_rate', 5e-4)),
-                },
-                scheduler_hparams={
-                    'T_max': self.config.training_config.get('T_max', 500),
-                    'eta_min': self.config.training_config.get('eta_min', 0),
-                },
+                optimizer_hparams=optimizer_hparams,
+                scheduler_hparams=scheduler_hparams,
                 loss_hparams=self.config.loss_config,
             )
-        elif self.config.model_config.get('role') == 'teacher':
+        elif model_role == 'teacher':
             return Teacher(
                 model_hparams=self.config.model_config,
-                optimizer_hparams={
-                    'name': self.config.training_config.get('optimizer', 'Adam'),
-                    # TODO: why is this loaded as a string?
-                    'lr': eval(self.config.training_config.get('learning_rate', 5e-4)),
-                },
-                scheduler_hparams={
-                    'T_max': self.config.training_config.get('T_max', 500),
-                    'eta_min': self.config.training_config.get('eta_min', 0),
-                },
+                optimizer_hparams=optimizer_hparams,
+                scheduler_hparams=scheduler_hparams,
                 loss_hparams=self.config.loss_config,
                 interferometer_config=self.config.data_config.get(
                     'interferometer_config'
                 ),
             )
+        elif model_role == 'ensemble':
+            return Ensemble(
+                model_hparams=self.config.model_config,
+                optimizer_hparams=optimizer_hparams,
+                scheduler_hparams=scheduler_hparams,
+                loss_hparams=self.config.loss_config,
+            )
         else:
-            raise TypeError("Unknown model type, can't initialize Lightning.")
+            raise ValueError(f'Unknown model role: {model_role}')
 
     def setup_trainer(self) -> L.Trainer:
         """Setup Lightning trainer with callbacks and loggers."""
@@ -379,6 +389,8 @@ class ModelTrainer:
             self.config.model_config['role'] = 'standard'
         elif model_role == 'teacher':
             self.config.model_config['role'] = 'teacher'
+        elif model_role == 'mean_single_channel':
+            self.config.model_config['role'] = 'mean_single_channel'
         else:
             raise ValueError(f'Unknown model role: {model_role}')
 

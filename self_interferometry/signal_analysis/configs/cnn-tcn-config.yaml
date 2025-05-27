@@ -1,6 +1,6 @@
 model:
   # Common parameters for all model types
-  role: "standard"
+  role: "ensemble" # "standard" or "ensemble" or "teacher" or "student"
   type: "FCN"  # "CNN" or "TCN" or "FCN"
   activation: "LeakyReLU"
   in_channels: 3

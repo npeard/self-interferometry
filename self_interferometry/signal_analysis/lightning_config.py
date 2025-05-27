@@ -44,7 +44,7 @@ class Standard(L.LightningModule):
             # Common parameters
             input_size=self.model_hparams.get('input_size', 256),
             output_size=self.model_hparams.get('output_size', 1),
-            in_channels=self.model_hparams.get('in_channels', 1),
+            in_channels=self.model_hparams.get('in_channels', 3),
             activation=self.model_hparams.get('activation', 'LeakyReLU'),
             dropout=self.model_hparams.get('dropout', 0.1),
             # BarlandCNN specific parameters
@@ -57,7 +57,7 @@ class Standard(L.LightningModule):
             # Common parameters
             input_size=self.model_hparams.get('input_size', 16384),
             output_size=self.model_hparams.get('output_size', 16384),
-            in_channels=self.model_hparams.get('in_channels', 1),
+            in_channels=self.model_hparams.get('in_channels', 3),
             activation=self.model_hparams.get('activation', 'LeakyReLU'),
             dropout=self.model_hparams.get('dropout', 0.1),
             # TCN specific parameters
@@ -71,7 +71,7 @@ class Standard(L.LightningModule):
             # Common parameters
             input_size=self.model_hparams.get('input_size', 16384),
             output_size=self.model_hparams.get('output_size', 16384),
-            in_channels=self.model_hparams.get('in_channels', 1),
+            in_channels=self.model_hparams.get('in_channels', 3),
             activation=self.model_hparams.get('activation', 'LeakyReLU'),
             dropout=self.model_hparams.get('dropout', 0.1),
             # FCN specific parameters
@@ -86,6 +86,11 @@ class Standard(L.LightningModule):
         Returns:
             A PyTorch model (CNN or TCN) based on the configuration
         """
+        if self.model_hparams == 'ensemble':
+            # This indicates that we are creating an ensemble of models
+            # and no model will be created at this point.
+            # See Ensemble(Standard) class for more.
+            return None
         model_type = self.model_hparams.get('type')
         if model_type == 'CNN':
             print('Creating CNN model...')  # noqa: T201
@@ -385,7 +390,8 @@ class Standard(L.LightningModule):
             dataloader_idx: Index of dataloader
 
         Returns:
-            Tuple of (velocity_hat, velocity_target, displacement_hat, displacement_target, signals)
+            Tuple of (velocity_hat, velocity_target, displacement_hat,
+                        displacement_target, signals)
         """
         signals, velocity_target, displacement_target = batch
 
