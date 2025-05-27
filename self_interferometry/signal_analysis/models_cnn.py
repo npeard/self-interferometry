@@ -9,11 +9,14 @@ act_fn_by_name = {'LeakyReLU': nn.LeakyReLU(), 'Tanh': nn.Tanh()}
 
 @dataclass
 class BarlandCNNConfig:
+    # Common parameters (consistent across all model configs)
     input_size: int = 256
     output_size: int = 1
-    activation: str = 'LeakyReLU'
     in_channels: int = 1
+    activation: str = 'LeakyReLU'
     dropout: float = 0.1
+
+    # BarlandCNN specific parameters
     window_stride: int = 128  # controls the window stride in the training loop
 
 

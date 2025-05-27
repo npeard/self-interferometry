@@ -9,13 +9,16 @@ act_fn_by_name = {'LeakyReLU': nn.LeakyReLU(), 'Tanh': nn.Tanh(), 'ReLU': nn.ReL
 
 @dataclass
 class TCNConfig:
+    # Common parameters (consistent across all model configs)
     input_size: int = 16384  # Length of input sequence
     output_size: int = 16384  # Length of output sequence (same as input for our case)
-    num_channels: list[int] = None  # Number of channels in each layer
-    kernel_size: int = 7  # Kernel size for all layers
-    dropout: float = 0.1
-    activation: str = 'LeakyReLU'
     in_channels: int = 1  # Number of input channels
+    activation: str = 'LeakyReLU'
+    dropout: float = 0.1
+
+    # TCN specific parameters
+    kernel_size: int = 7  # Kernel size for all layers
+    num_channels: list[int] = None  # Number of channels in each layer
 
     def __post_init__(self):
         if self.num_channels is None:

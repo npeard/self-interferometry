@@ -1,15 +1,10 @@
 model:
   # Common parameters for all model types
   role: "standard"
-  type: "CNN"  # "CNN" or "TCN"
+  type: "FCN"  # "CNN" or "TCN" or "FCN"
   activation: "LeakyReLU"
   in_channels: 3
   dropout: 0.1
-  window_stride: 128
-
-  # TCN-specific parameters (used when type is "TCN")
-  input_size: 16384
-  output_size: 16384
   kernel_size: 7
 
 training:
@@ -19,11 +14,11 @@ training:
   learning_rate: 1e-2
   T_max: 500
   eta_min: 0
-  accelerator: "gpu"
+  accelerator: "cpu"
   devices: 1
-  use_logging: true
+  use_logging: false
   wandb_project: "self-interferometry"
-  experiment_name: "cnn_layernorm"
+  experiment_name: "fcn_layernorm"
   checkpoint_dir: "./signal_analysis/checkpoints"
 
 loss:

@@ -7,12 +7,9 @@ import torch
 from torch import nn, optim
 
 from self_interferometry.redpitaya.coil_driver import CoilDriver
-from self_interferometry.signal_analysis.models import (
-    TCN,
-    BarlandCNN,
-    BarlandCNNConfig,
-    TCNConfig,
-)
+from self_interferometry.signal_analysis.models_cnn import BarlandCNN, BarlandCNNConfig
+from self_interferometry.signal_analysis.models_fcn import FCN, FCNConfig
+from self_interferometry.signal_analysis.models_tcn import TCN, TCNConfig
 
 
 class Standard(L.LightningModule):
@@ -44,24 +41,43 @@ class Standard(L.LightningModule):
     def _create_cnn_config(self) -> BarlandCNNConfig:
         """Create CNNConfig from model configuration."""
         return BarlandCNNConfig(
-            input_size=256,
-            output_size=1,
-            activation=self.model_hparams.get('activation', 'LeakyReLU'),
+            # Common parameters
+            input_size=self.model_hparams.get('input_size', 256),
+            output_size=self.model_hparams.get('output_size', 1),
             in_channels=self.model_hparams.get('in_channels', 1),
+            activation=self.model_hparams.get('activation', 'LeakyReLU'),
             dropout=self.model_hparams.get('dropout', 0.1),
+            # BarlandCNN specific parameters
             window_stride=self.model_hparams.get('window_stride', 128),
         )
 
     def _create_tcn_config(self) -> TCNConfig:
         """Create TCNConfig from model configuration."""
         return TCNConfig(
+            # Common parameters
             input_size=self.model_hparams.get('input_size', 16384),
             output_size=self.model_hparams.get('output_size', 16384),
+            in_channels=self.model_hparams.get('in_channels', 1),
+            activation=self.model_hparams.get('activation', 'LeakyReLU'),
+            dropout=self.model_hparams.get('dropout', 0.1),
+            # TCN specific parameters
+            kernel_size=self.model_hparams.get('kernel_size', 7),
+            num_channels=self.model_hparams.get('num_channels', [16, 32, 64, 64]),
+        )
+
+    def _create_fcn_config(self) -> FCNConfig:
+        """Create FCNConfig from model configuration."""
+        return FCNConfig(
+            # Common parameters
+            input_size=self.model_hparams.get('input_size', 16384),
+            output_size=self.model_hparams.get('output_size', 16384),
+            in_channels=self.model_hparams.get('in_channels', 1),
+            activation=self.model_hparams.get('activation', 'LeakyReLU'),
+            dropout=self.model_hparams.get('dropout', 0.1),
+            # FCN specific parameters
             num_channels=self.model_hparams.get('num_channels', [16, 32, 64, 64]),
             kernel_size=self.model_hparams.get('kernel_size', 7),
-            dropout=self.model_hparams.get('dropout', 0.1),
-            activation=self.model_hparams.get('activation', 'LeakyReLU'),
-            in_channels=self.model_hparams.get('in_channels', 1),
+            use_final_conv=self.model_hparams.get('use_final_conv', True),
         )
 
     def create_model(self) -> nn.Module:
@@ -79,6 +95,10 @@ class Standard(L.LightningModule):
             print('Creating TCN model...')  # noqa: T201
             self.model_config = self._create_tcn_config()
             return TCN(self.model_config)
+        elif model_type == 'FCN':
+            print('Creating FCN model...')  # noqa: T201
+            self.model_config = self._create_fcn_config()
+            return FCN(self.model_config)
         else:
             raise ValueError(f'Unknown model type: {model_type}')
 
@@ -88,7 +108,7 @@ class Standard(L.LightningModule):
         This method handles different model architectures:
         1. For CNN models: Uses a sliding window approach to process each window
         separately
-        2. For TCN models: Processes the entire sequence at once efficiently
+        2. For TCN and FCN models: Processes the entire sequence at once efficiently
 
         Args:
             x: Input tensor of shape [batch_size, num_channels, signal_length]
@@ -98,9 +118,11 @@ class Standard(L.LightningModule):
         """
         batch_size, num_channels, signal_length = x.shape
 
-        # Check if we're using a TCN model (which can process the entire sequence at
+        # Check if we're using a TCN or FCN model (which can process the entire sequence at
         # once)
-        if hasattr(self.model, '__class__') and self.model.__class__.__name__ == 'TCN':
+        if hasattr(self.model, '__class__') and (
+            self.model.__class__.__name__ in {'TCN', 'FCN'}
+        ):
             # TCN approach - process the entire sequence at once
             with torch.set_grad_enabled(self.training):
                 # TCN returns shape [batch_size, 1, signal_length]
@@ -121,9 +143,11 @@ class Standard(L.LightningModule):
             # Calculate number of windows and create output tensor accordingly
             num_windows = (signal_length + window_stride - 1) // window_stride
 
-            # Create output tensor to store results - size is now based on number of windows
+            # Create output tensor to store results - size is now based on number
+            # of windows
             if window_stride == 1:
-                # If stride is 1, maintain backward compatibility with full signal length output
+                # If stride is 1, maintain backward compatibility with full signal
+                # length output
                 velocity_hat = torch.zeros((batch_size, signal_length), device=x.device)
                 output_full_signal = True
             else:
@@ -240,7 +264,6 @@ class Standard(L.LightningModule):
         if hasattr(self, '_output_full_signal') and not self._output_full_signal:
             # Extract targets at the same positions where predictions were made
             # For each window, we want the target at the center of the window
-            batch_size = velocity_target.shape[0]
             downsampled_target = torch.zeros_like(velocity_hat)
 
             for window_idx, i in enumerate(

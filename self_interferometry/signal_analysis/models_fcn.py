@@ -11,35 +11,24 @@ act_fn_by_name = {'LeakyReLU': nn.LeakyReLU(), 'Tanh': nn.Tanh(), 'ReLU': nn.ReL
 class FCNConfig:
     """Configuration for the Fully Convolutional Network (FCN)."""
 
-    input_size: int = 256
-    output_size: int = 256
-    activation: str = 'LeakyReLU'
+    # Common parameters (consistent across all model configs)
+    input_size: int = 16384
+    output_size: int = 16384
     in_channels: int = 1
+    activation: str = 'LeakyReLU'
     dropout: float = 0.1
-    window_stride: int = 128  # controls the window stride in the training loop
 
-    # Convolutional block configurations
-    # Each tuple contains (out_channels, kernel_size, stride, padding)
-    conv_blocks: list[tuple[int, int, int, int]] = field(
-        default_factory=lambda: [
-            (16, 7, 1, 3),  # First conv block with padding to maintain size
-            (32, 7, 1, 3),  # Second conv block with padding to maintain size
-            (64, 7, 1, 3),  # Third conv block with padding to maintain size
-            (64, 7, 1, 3),  # Fourth conv block with padding to maintain size
-        ]
+    # FCN specific parameters
+    kernel_size: int = 7  # Kernel size for all layers
+    num_channels: list[int] = field(
+        default_factory=lambda: [16, 32, 64, 64]  # Same channel progression as TCN
     )
-
-    # Pooling configuration (set to 1 to maintain sequence length)
-    pool_size: int = 1
 
     # Final 1x1 convolution to map to output
     use_final_conv: bool = True
 
     def __post_init__(self):
         """Validate configuration parameters."""
-        if not self.conv_blocks:
-            raise ValueError('At least one convolutional block must be specified')
-
         if self.activation not in act_fn_by_name:
             raise ValueError(
                 f'Activation {self.activation} not supported. '
@@ -47,109 +36,112 @@ class FCNConfig:
             )
 
 
-class ConvBlock(nn.Module):
-    """A modular convolutional block with normalization, activation, and pooling."""
+class ConvResidualBlock(nn.Module):
+    """A convolutional block with residual connections."""
 
     def __init__(
         self,
         in_channels: int,
         out_channels: int,
         kernel_size: int,
-        stride: int = 1,
-        padding: int = 0,
         dropout: float = 0.0,
         activation: str = 'LeakyReLU',
-        pool_size: int | None = None,
-        use_norm: bool = True,
     ):
         super().__init__()
 
-        layers = []
+        # Calculate padding to maintain sequence length
+        padding = (kernel_size - 1) // 2
 
-        # Add normalization if requested
-        if use_norm:
-            layers.append(nn.BatchNorm1d(in_channels))
-
-        # Add convolutional layer
-        layers.append(
-            nn.Conv1d(
-                in_channels,
-                out_channels,
-                kernel_size=kernel_size,
-                stride=stride,
-                padding=padding,
-            )
+        # Create the main convolutional layer
+        self.conv = nn.Conv1d(
+            in_channels,
+            out_channels,
+            kernel_size=kernel_size,
+            stride=1,
+            padding=padding,
         )
 
         # Add activation function
         if activation in act_fn_by_name:
-            layers.append(act_fn_by_name[activation])
-
-        # Add pooling if specified
-        if pool_size is not None and pool_size > 1:
-            layers.append(nn.MaxPool1d(pool_size))
+            self.activation = act_fn_by_name[activation]
+        else:
+            self.activation = nn.LeakyReLU()
 
         # Add dropout if specified
-        if dropout > 0:
-            layers.append(nn.Dropout(dropout))
+        self.dropout = nn.Dropout(dropout) if dropout > 0 else None
 
-        self.block = nn.Sequential(*layers)
+        # 1x1 convolution for residual connection if input and output channels differ
+        self.downsample = None
+        if in_channels != out_channels:
+            self.downsample = nn.Conv1d(in_channels, out_channels, 1)
 
     def forward(self, x: Tensor) -> Tensor:
-        return self.block(x)
+        residual = x
+
+        # Apply convolution
+        out = self.conv(x)
+
+        # Apply activation
+        out = self.activation(out)
+
+        # Apply dropout if specified
+        if self.dropout is not None:
+            out = self.dropout(out)
+
+        # Apply residual connection
+        if self.downsample is not None:
+            residual = self.downsample(residual)
+
+        return out + residual
 
 
 class FCN(nn.Module):
     """Fully Convolutional Network for signal processing.
 
-    This network is designed to be fully convolutional, with no fully connected
-    layers, making it more suitable for processing signals of varying lengths.
+    This network is designed to be fully convolutional with residual connections,
+    making it comparable to the TCN architecture while using standard convolutions
+    instead of dilated convolutions.
     """
 
     def __init__(self, config: FCNConfig):
         super().__init__()
         self.config = config
+        self.input_size = config.input_size
+        self.output_size = config.output_size
+        self.in_channels = config.in_channels
 
-        # Create sequential convolutional blocks
-        conv_blocks = []
-        in_channels = config.in_channels
+        # Create layers list
+        layers = []
 
-        # Initial normalization of the input
-        conv_blocks.append(nn.LayerNorm(config.input_size))
+        # Add initial normalization
+        layers.append(nn.LayerNorm(config.input_size))
 
-        # Add convolutional blocks
-        for i, (out_channels, kernel_size, stride, padding) in enumerate(
-            config.conv_blocks
-        ):
+        # Create standard convolutional blocks with residual connections
+        num_levels = len(config.num_channels)
+        for i in range(num_levels):
+            # Determine input and output channels
+            in_ch = config.in_channels if i == 0 else config.num_channels[i - 1]
+            out_ch = config.num_channels[i]
+
             # Add dropout only to later layers
-            use_dropout = config.dropout if i >= len(config.conv_blocks) // 2 else 0.0
+            use_dropout = config.dropout if i >= num_levels // 2 else 0.0
 
-            conv_blocks.append(
-                ConvBlock(
-                    in_channels=in_channels,
-                    out_channels=out_channels,
-                    kernel_size=kernel_size,
-                    stride=stride,
-                    padding=padding,
+            # Add the convolutional block with residual connection
+            layers.append(
+                ConvResidualBlock(
+                    in_channels=in_ch,
+                    out_channels=out_ch,
+                    kernel_size=config.kernel_size,
                     dropout=use_dropout,
                     activation=config.activation,
-                    pool_size=config.pool_size,
-                    use_norm=(
-                        i > 0
-                    ),  # Skip normalization for first conv after LayerNorm
                 )
             )
-            in_channels = out_channels
 
-        self.feature_extractor = nn.Sequential(*conv_blocks)
+        self.network = nn.Sequential(*layers)
 
         # Final 1x1 convolution to map to output size
         if config.use_final_conv:
-            # Use 1x1 convolution to map to the desired number of output channels
-            # while maintaining the sequence length
-            self.output_layer = nn.Conv1d(
-                in_channels, config.output_size, kernel_size=1
-            )
+            self.output_layer = nn.Conv1d(config.num_channels[-1], 1, 1)
         else:
             self.output_layer = None
 
@@ -160,10 +152,11 @@ class FCN(nn.Module):
             x: Input tensor of shape [batch_size, in_channels, sequence_length]
 
         Returns:
-            Tensor of shape [batch_size, output_size, output_sequence_length]
+            Tensor of shape [batch_size, 1, sequence_length] containing
+            predicted output
         """
-        # Extract features
-        features = self.feature_extractor(x)
+        # Process through the network
+        features = self.network(x)
 
         # Apply final 1x1 convolution if configured
         if self.output_layer is not None:
@@ -175,9 +168,8 @@ class FCN(nn.Module):
     def get_output_size(self, input_size: int) -> int:
         """Calculate the output size for a given input size.
 
-        This is useful for determining the size of the output tensor
-        for a given input size, which can vary based on the network
-        configuration.
+        With the dilated convolution approach and proper padding, the output size
+        should be the same as the input size.
 
         Args:
             input_size: The length of the input sequence
@@ -185,18 +177,5 @@ class FCN(nn.Module):
         Returns:
             The length of the output sequence
         """
-        size = input_size
-
-        # Calculate size reduction through the network
-        for out_channels, kernel_size, stride, padding in self.config.conv_blocks:
-            # Conv1d size formula: L_out = (L_in + 2*padding - kernel_size) / stride + 1
-            size = (size + 2 * padding - kernel_size) // stride + 1
-
-            # MaxPool1d size formula: L_out = (L_in - pool_size) / pool_stride + 1
-            # With default pool_stride = pool_size
-            if self.config.pool_size > 1:
-                size = (size - self.config.pool_size) // self.config.pool_size + 1
-
-        # With the default configuration (padding=3, kernel_size=7, stride=1, pool_size=1),
-        # the output size should be the same as the input size
-        return size
+        # With proper padding in dilated convolutions, output size equals input size
+        return input_size
