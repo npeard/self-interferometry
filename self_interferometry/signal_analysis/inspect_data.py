@@ -266,7 +266,7 @@ def analyze_dataset(dataset_path: str | Path):
 
 if __name__ == '__main__':
     # Example usage
-    dataset_path = './signal_analysis/data/train0pt5.h5'
+    dataset_path = './signal_analysis/data/train-trgdel-20x.h5'
 
     # Visualize samples from the dataset
     #visualize_dataset(dataset_path, max_samples=5)
