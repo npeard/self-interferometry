@@ -114,6 +114,108 @@ def visualize_dataset(
             plt.show()
 
 
+def plot_histograms(dataset_path: str | Path):
+    """Plot histograms and spectra for each channel in the dataset.
+    
+    Creates histograms in the first row and FFT spectra in the second row for each channel.
+    
+    Args:
+        dataset_path: Path to the HDF5 dataset file
+    """
+    # Get sample rate from HDF5 file attributes if available
+    with h5py.File(dataset_path, 'r') as f:
+        if 'sample_rate' in f.attrs:
+            sample_rate = float(f.attrs['sample_rate'])
+        else:
+            # Default sample rate for Red Pitaya with decimation of 256
+            sample_rate = 125e6 / 256
+            
+        print(f'Using sample rate: {sample_rate:.2f} Hz')  # noqa: T201
+        # Create figure with subplots (2 rows, 4 columns)
+        fig, axes = plt.subplots(2, 4, figsize=(16, 8))
+        
+        # Channel mapping and colors
+        channel_info = {
+            'RP1_CH1': {'label': 'Speaker Drive Voltage', 'color': 'blue', 'col': 0},
+            'RP1_CH2': {'label': 'PD1 (635nm Red)', 'color': 'red', 'col': 1},
+            'RP2_CH1': {'label': 'PD2 (675nm Deep Red)', 'color': 'darkred', 'col': 2},
+            'RP2_CH2': {'label': 'PD3 (515nm Green)', 'color': 'green', 'col': 3}
+        }
+        
+        # Calculate FFT frequencies
+        first_key = list(f.keys())[0]
+        n = len(f[first_key][0, :])
+        print(f'Number of samples: {n}')  # noqa: T201
+        freqs = np.fft.fftfreq(n, 1 / sample_rate)
+        pos_idx = np.where(freqs > 0)
+        pos_freqs = freqs[pos_idx]
+        
+        # Process each channel
+        for key in f.keys():
+            if key in channel_info:
+                info = channel_info[key]
+                label = info['label']
+                color = info['color']
+                col = info['col']
+                
+                # Get data and flatten it if it's multi-dimensional
+                data = f[key][:]
+                data_flat = data.flatten()
+                
+                # Row 0: Plot histogram
+                hist, bin_edges = np.histogram(data_flat, bins=100)
+                bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+                axes[0, col].hist(data_flat, bins=100, color=color, alpha=0.7)
+                
+                # Calculate Gaussian overlay
+                mean = np.mean(data_flat)
+                std = np.std(data_flat)
+                gaussian = np.max(hist) * np.exp(-0.5 * ((bin_centers - mean) / std) ** 2)
+                
+                # Plot Gaussian overlay
+                axes[0, col].plot(
+                    bin_centers,
+                    gaussian,
+                    'r-',
+                    linewidth=2,
+                    label=f'Gaussian (σ={std:.4f})'
+                )
+                
+                axes[0, col].set_title(f'{label} Histogram')
+                axes[0, col].set_xlabel('Amplitude (V)')
+                axes[0, col].set_ylabel('Count')
+                axes[0, col].grid(True, alpha=0.3)
+                axes[0, col].legend(loc='upper right', fontsize='small')
+                
+                # Row 1: Plot spectrum
+                # For FFT, we'll use the first sample if data has multiple samples
+                if data.ndim > 1 and data.shape[0] > 0:
+                    # Average the FFT of all samples
+                    fft_mags = []
+                    for i in range(min(data.shape[0], 10)):  # Use up to 10 samples
+                        fft_complex = np.fft.fft(data[i], norm='ortho')
+                        fft_mags.append(np.abs(fft_complex))
+                    fft_mag = np.mean(fft_mags, axis=0)
+                else:
+                    fft_complex = np.fft.fft(data_flat, norm='ortho')
+                    fft_mag = np.abs(fft_complex)
+                
+                axes[1, col].semilogy(pos_freqs, fft_mag[pos_idx], color=color)
+                axes[1, col].set_title(f'{label} Spectrum')
+                axes[1, col].set_xlabel('Frequency (Hz)')
+                axes[1, col].set_ylabel('Magnitude')
+                axes[1, col].grid(True, which='both', ls='-', alpha=0.5)
+                
+            # Set reasonable frequency limits for drive voltage spectrum
+            max_freq = min(sample_rate / 2, 2000)  # Either Nyquist or 5kHz
+            axes[1, 0].set_xlim(0, max_freq)
+        
+        # Set title and adjust layout
+        plt.suptitle(f'Signal Analysis - {Path(dataset_path).name}', fontsize=16)
+        plt.tight_layout(rect=[0, 0, 1, 0.97])  # Adjust for the suptitle
+        plt.show()
+
+
 def analyze_dataset(dataset_path: str | Path):
     """Perform statistical analysis on a dataset.
 
@@ -154,72 +256,20 @@ def analyze_dataset(dataset_path: str | Path):
             print(f'  - Min: {min_val:.4f}')  # noqa: T201
             print(f'  - Max: {max_val:.4f}')  # noqa: T201
             print(f'  - Range: {range_val:.4f}')  # noqa: T201
+    
+    # Plot histograms for the dataset
+    plot_histograms(dataset_path)
 
 
-def frequency_analysis(dataset_path: str | Path, max_freq: float = 5000):
-    """Perform frequency domain analysis on a dataset.
-
-    Creates FFT plots for each channel in the dataset.
-
-    Args:
-        dataset_path: Path to the HDF5 dataset file
-        max_freq: Maximum frequency to display in Hz
-    """
-    # Get sample rate from HDF5 file attributes if available
-    with h5py.File(dataset_path, 'r') as f:
-        if 'sample_rate' in f.attrs:
-            sample_rate = float(f.attrs['sample_rate'])
-        else:
-            # Default sample rate for Red Pitaya with decimation of 256
-            sample_rate = 125e6 / 256
-
-        # Create figure for FFT plots
-        plt.figure(figsize=(12, 8))
-        plt.title(f'Frequency Domain Analysis - {Path(dataset_path).name}')
-        plt.xlabel('Frequency (Hz)')
-        plt.ylabel('Magnitude')
-
-        # Calculate and plot FFT for each channel (using first sample)
-        for key in f.keys():
-            if key == 'RP1_CH1':
-                label = 'Speaker Drive Voltage'
-            elif key == 'RP1_CH2':
-                label = 'PD1 (635nm Red)'
-            elif key == 'RP2_CH1':
-                label = 'PD2 (675nm Deep Red)'
-            elif key == 'RP2_CH2':
-                label = 'PD3 (515nm Green)'
-            else:
-                label = key
-
-            # Get data from first sample
-            data = f[key][0]
-
-            # Compute FFT
-            fft_data = np.fft.rfft(data)
-            fft_freq = np.fft.rfftfreq(len(data), d=1 / sample_rate)
-
-            # Plot only up to max_freq Hz for better visibility
-            max_freq_idx = np.searchsorted(fft_freq, max_freq)
-            plt.plot(
-                fft_freq[:max_freq_idx], np.abs(fft_data[:max_freq_idx]), label=label
-            )
-
-        plt.legend()
-        plt.grid(True)
-        plt.tight_layout()
-        plt.show()
+# frequency_analysis function has been removed as it's now redundant with plot_histograms
 
 
 if __name__ == '__main__':
     # Example usage
-    dataset_path = './signal_analysis/data/train.h5'
+    dataset_path = './signal_analysis/data/train0pt5.h5'
 
     # Visualize samples from the dataset
-    visualize_dataset(dataset_path, max_samples=5)
+    #visualize_dataset(dataset_path, max_samples=5)
 
-    # Analyze dataset statistics
+    # Analyze dataset statistics and plot histograms
     analyze_dataset(dataset_path)
-
-    # Perform frequency analysis
-    frequency_analysis(dataset_path)

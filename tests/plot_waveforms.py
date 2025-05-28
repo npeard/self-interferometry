@@ -58,6 +58,7 @@ def plot_waveforms(
 
     # Calculate sample rate from time array
     sample_rate = 1 / (t[1] - t[0])
+    print(f'Sample rate: {sample_rate:.2f} Hz')  # noqa: T201
 
     # Calculate FFT of the voltage waveform
     freqs_fft, voltage_fft = calculate_fft(voltage, sample_rate)
