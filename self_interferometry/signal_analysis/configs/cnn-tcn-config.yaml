@@ -26,15 +26,15 @@ loss:
 
 data:
   data_dir: "./signal_analysis/data"
-  train_file: "train.h5"
-  val_file: "val.h5"
-  test_file: "test.h5"
+  train_file: "train-0pt5.h5"
+  val_file: "val-0pt5.h5"
+  test_file: "test-0pt5.h5"
   # pretraining data is simulated, mainly used for training teacher model
   pretrain_file: "pretrain.h5"
   preval_file: "preval.h5"
   pretest_file: "pretest.h5"
   num_workers: 7
   dataset_params:
-    train_samples: 500
+    train_samples: 200
     val_samples: 50
     test_samples: 50

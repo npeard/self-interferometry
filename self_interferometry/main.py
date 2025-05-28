@@ -155,10 +155,6 @@ def main():
                 train_samples=train_samples,
                 val_samples=val_samples,
                 test_samples=test_samples,
-                # Additional parameters for acquisition
-                device_idx=0,
-                delay_between_shots=0.5,
-                timeout=5,
             )
             print('Dataset acquisition complete!\n')  # noqa: T201
         finally:

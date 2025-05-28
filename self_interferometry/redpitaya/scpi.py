@@ -14,7 +14,7 @@ class scpi:
 
     delimiter = '\r\n'
 
-    def __init__(self, host, timeout=None, port=5000):
+    def __init__(self, host: str, timeout: int | None = None, port: int = 5000):
         """Initialize object and open IP connection.
         Host IP should be a string in parentheses, like '192.168.1.100'.
         """
@@ -31,7 +31,7 @@ class scpi:
             self._socket.connect((host, port))
 
         except OSError as e:
-            print(f'SCPI >> connect({host!s:s}:{port:d}) failed: {e!s:s}')
+            print(f'SCPI >> connect({host!s:s}:{port:d}) failed: {e!s:s}')  # noqa: T201
 
     def __del__(self):
         if self._socket is not None:
@@ -42,7 +42,7 @@ class scpi:
         """Close IP connection."""
         self.__del__()
 
-    def rx_txt(self, chunksize=4096):
+    def rx_txt(self, chunksize: int = 4096) -> str | None:
         """Receive text string and return it after removing the delimiter."""
         msg = ''
         while 1:
@@ -52,8 +52,9 @@ class scpi:
             msg += chunk
             if len(msg) >= 2 and msg[-2:] == self.delimiter:
                 return msg[:-2]
+        return None
 
-    def rx_txt_check_error(self, chunksize=4096, stop=True):
+    def rx_txt_check_error(self, chunksize: int = 4096, stop: bool = True) -> str:
         msg = self.rx_txt(chunksize)
         self.check_error(stop)
         return msg
@@ -85,27 +86,27 @@ class scpi:
             data += self._socket.recv(r_size)
         return data
 
-    def rx_arb_check_error(self, stop=True):
+    def rx_arb_check_error(self, stop: bool = True) -> bytes:
         data = self.rx_arb()
         self.check_error(stop)
         return data
 
-    def tx_txt(self, msg):
+    def tx_txt(self, msg: str):
         """Send text string ending and append delimiter."""
         return self._socket.sendall(
             (msg + self.delimiter).encode('utf-8')
         )  # was send(().encode('utf-8'))
 
-    def tx_txt_check_error(self, msg, stop=True):
+    def tx_txt_check_error(self, msg: str, stop: bool = True):
         self.tx_txt(msg)
         self.check_error(stop)
 
-    def txrx_txt(self, msg):
+    def txrx_txt(self, msg: str) -> str:
         """Send/receive text string."""
         self.tx_txt(msg)
         return self.rx_txt()
 
-    def check_error(self, stop=True):
+    def check_error(self, stop: bool = True):
         res = int(self.stb_q())
         if res & 0x4:
             while 1:
@@ -128,11 +129,11 @@ class scpi:
         offset: float = 0,
         phase: float = 0,
         dcyc: float = 0.5,
-        data: np.ndarray = None,
+        data: np.ndarray | None = None,
         burst: bool = False,
         ncyc: int = 1,
         nor: int = 1,
-        period: int = None,
+        period: int | None = None,
         trig: str = 'int',
         sdrlab: bool = False,
         siglab: bool = False,
@@ -177,7 +178,7 @@ class scpi:
             nor (int, optional) :
                 Number of repeated bursts.
                 Defaults to 1.
-            period (_type_, optional) :
+            period (int | None, optional) :
                 Total time of one burst in µs {1, 5e8}. Includes the signal and delay.
                 Defaults to `None`.
             trig (str, optional):
@@ -360,11 +361,11 @@ class scpi:
         trig_lvl: float = 0,
         trig_delay: int = 0,
         trig_delay_ns: bool = False,
-        units: str = None,
-        sample_format: str = None,
+        units: str | None = None,
+        sample_format: str | None = None,
         averaging: bool = True,
-        gain: list = None,  # 2 channels (double the length if 4-input)
-        coupling: list = None,  # 2 channels
+        gain: list | None = None,  # 2 channels (double the length if 4-input)
+        coupling: list | None = None,  # 2 channels
         ext_trig_lvl: float = 0,
         siglab: bool = False,
         input4: bool = False,
@@ -431,17 +432,15 @@ class scpi:
 
         """
         ### Constants ###
-        # decimation_list = [1,2,4,8,16,32,64,128,256,512,1024,2048,4096,8192,16384,32768,65536]
+        # decimation_list = [1,2,4,8,16,32,64,128,256,512,1024,2048,4096,8192,16384,
+        # 32768,65536]
         gain_list = ['LV', 'HV']
         coupling_list = ['DC', 'AC']
         units_list = ['RAW', 'VOLTS']
         format_list = ['BIN', 'ASCII']
 
         ### Limits ###
-        if input4:  # Set number of channels
-            n = 4
-        else:
-            n = 2
+        n = 4 if input4 else 2
         trig_lvl_lim = 1.0
         gain_lvl = 'LV'
 
@@ -486,22 +485,39 @@ class scpi:
 
         if gain is not None:
             try:
-                assert (gain[0].upper() in gain_list) and (gain[1].upper() in gain_list)
+                assert gain[0].upper() in gain_list
             except AssertionError as gain_err:
                 raise ValueError(
-                    f'{gain[0].upper()} or {gain[1].upper()} is not a defined gain'
+                    f'{gain[0].upper()} is not a defined gain'
+                ) from gain_err
+            try:
+                assert gain[1].upper() in gain_list
+            except AssertionError as gain_err:
+                raise ValueError(
+                    f'{gain[1].upper()} is not a defined gain'
                 ) from gain_err
 
         if siglab and coupling is not None:
             try:
-                assert (coupling[0].upper() in coupling_list) and (
-                    coupling[1].upper() in coupling_list
-                )
+                assert coupling[0].upper() in coupling_list
             except AssertionError as coupling_err:
                 raise ValueError(
-                    f'{coupling[0].upper()} or {coupling[1].upper()}',
-                    'is not a defined coupling',
+                    f'{coupling[0].upper()} is not a defined coupling'
                 ) from coupling_err
+            try:
+                assert coupling[1].upper() in coupling_list
+            except AssertionError as coupling_err:
+                raise ValueError(
+                    f'{coupling[1].upper()} is not a defined coupling'
+                ) from coupling_err
+
+            try:
+                assert abs(ext_trig_lvl) <= trig_lvl_lim
+            except AssertionError as ext_trig_err:
+                raise ValueError(
+                    'External trigger level out of range',
+                    f'{-trig_lvl_lim, trig_lvl_lim} V',
+                ) from ext_trig_err
             try:
                 assert abs(ext_trig_lvl) <= trig_lvl_lim
             except AssertionError as ext_trig_err:
@@ -551,16 +567,20 @@ class scpi:
         # print("ACQ set successfully")
 
     def get_settings(self, siglab: bool = False, input4: bool = False) -> str:
-        """Retrieves the settings from Red Pitaya, prints them in console and returns them as an array with the following sequence:
-        [decimation, avearge, trig_dly, trig_dly_ns, trig_lvl, buf_size, gain_ch1, gain_ch2, coup_ch1, coup_ch2, ext_trig_lvl, gain_ch3, gain_ch4].
+        """Retrieves the settings from Red Pitaya, prints them in console and returns
+        them as an array with the following sequence:
+        [decimation, avearge, trig_dly, trig_dly_ns, trig_lvl, buf_size, gain_ch1,
+        gain_ch2, coup_ch1, coup_ch2, ext_trig_lvl, gain_ch3, gain_ch4].
             Decimation   - Current decimation
             Average      - Current averaging status (ON/OFF)
             Trig_dly     - Current trigger delay in samples
             Trig_dly_ns  - Current trigger delay in nanoseconds
             Trig_lvl     - Current trigger level in Volts
             Buf_size     - Buffer size
-            Gain_ch1-4   - Current gain on channels (CH3 and CH4 STEMlab 125-14 4-Input only)
-            Coup_ch1/2   - Current coupling mode for both channels (AC/DC) (SIGNALlab only)
+            Gain_ch1-4   - Current gain on channels (CH3 and CH4 STEMlab 125-14
+            4-Input only)
+            Coup_ch1/2   - Current coupling mode for both channels (AC/DC)
+            (SIGNALlab only)
             Ext_trig_lvl - Current external trigger level in Volts (SIGNALlab only).
 
         Note:   The last three array elements won't exist if siglab = False
@@ -580,15 +600,13 @@ class scpi:
             assert not ((siglab is True) and (input4 is True))
         except AssertionError as board_err:
             raise ValueError(
-                "Please select only one board option. 'siglab' and 'input4' cannot be true at the same time."
+                "Please select only one board option. 'siglab' and 'input4' cannot be \
+                true at the same time."
             ) from board_err
 
         settings = []
 
-        if input4:  # Set number of channels
-            n = 4
-        else:
-            n = 2
+        n = 4 if input4 else 2
 
         settings.append(self.txrx_txt('ACQ:DEC?'))
         settings.append(self.txrx_txt('ACQ:AVG?'))
@@ -606,44 +624,43 @@ class scpi:
 
             settings.append(self.txrx_txt('ACQ:TRIG:EXT:LEV?'))
 
-        print(f'Decimation: {settings[0]}')
-        print(f'Averaging: {settings[1]}')
-        print(f'Trigger delay (samples): {settings[2]}')
-        print(f'Trigger delay (ns): {settings[3]}')
-        print(f'Trigger level (V): {settings[4]}')
-        print(f'Buffer size: {settings[5]}')
+        print(f'Decimation: {settings[0]}')  # noqa: T201
+        print(f'Averaging: {settings[1]}')  # noqa: T201
+        print(f'Trigger delay (samples): {settings[2]}')  # noqa: T201
+        print(f'Trigger delay (ns): {settings[3]}')  # noqa: T201
+        print(f'Trigger level (V): {settings[4]}')  # noqa: T201
+        print(f'Buffer size: {settings[5]}')  # noqa: T201
 
-        if input4:
-            print(
-                f'Gain CH1/CH2/CH3/CH4: {settings[6]}, {settings[7]}, {settings[8]}, {settings[9]}'
-            )
-        else:
-            print(f'Gain CH1/CH2: {settings[6]}, {settings[7]}')
+        print(  # noqa: T201
+            f'Gain CH1/CH2/CH3/CH4: {settings[6]}, {settings[7]}, \
+            {settings[8]}, {settings[9]}'
+        )
 
         if siglab:
-            print(f'Coupling CH1/CH2: {settings[8]}, {settings[9]}')
-            print(f'External trigger level (V): {settings[10]}')
+            print(f'Coupling CH1/CH2: {settings[8]}, {settings[9]}')  # noqa: T201
+            print(f'External trigger level (V): {settings[10]}')  # noqa: T201
 
         return settings
 
     def acq_data(
         self,
         chan: int,
-        start: int = None,
-        end: int = None,
-        num_samples: int = None,
+        start: int | None = None,
+        end: int | None = None,
+        num_samples: int | None = None,
         old: bool = False,
         lat: bool = False,
         binary: bool = False,
         convert: bool = False,
         input4: bool = False,
     ) -> list:
-        """Returns the acquired data on a channel from the Red Pitaya, with the following options (for a specific channel):
+        """Returns the acquired data on a channel from the Red Pitaya, with the
+        following options (for a specific channel):
             - only channel       => returns the whole buffer
             - start and end      => returns the samples between them
             - start and n        => returns 'n' samples from the start position
             - old and n          => returns 'n' oldest samples in the buffer
-            - lat and n          => returns 'n' latest samples in the buffer
+            - lat and n          => returns 'n' latest samples in the buffer.
 
         Parameters
         ----------
@@ -700,7 +717,8 @@ class scpi:
             assert not ((old is True) and (lat is True))
         except AssertionError as arg_err:
             raise ValueError(
-                "Please select only one. 'old' and 'lat' cannot be True at the same time."
+                "Please select only one. 'old' and 'lat' cannot be True at the \
+                same time."
             ) from arg_err
 
         if start is not None:
@@ -786,11 +804,16 @@ class scpi:
         """Configures the provided settings for UART.
 
         Args:
-            speed (int, optional): Baud rate/speed of UART connection (bits per second). Defaults to 9600.
-            bits (str, optional): Character size in bits (CS6, CS7, CS8). Defaults to "CS8".
-            parity (str, optional): Parity (NONE, EVEN, ODD, MARK, SPACE). Defaults to "NONE".
-            stop (int, optional): Number of stop bits (1 or 2). Defaults to 1.
-            timeout (int, optional): Timeout for reading from UART (in 1/10 of seconds) {0,...255}. Defaults to 0.
+            speed (int, optional): Baud rate/speed of UART connection (bits per second).
+                Defaults to 9600.
+            bits (str, optional): Character size in bits (CS6, CS7, CS8).
+                Defaults to "CS8".
+            parity (str, optional): Parity (NONE, EVEN, ODD, MARK, SPACE).
+                Defaults to "NONE".
+            stop (int, optional): Number of stop bits (1 or 2).
+                Defaults to 1.
+            timeout (int, optional): Timeout for reading from UART (in 1/10 of seconds)
+             {0,...255}. Defaults to 0.
         """
         # Constants
         speed_list = [
@@ -822,7 +845,8 @@ class scpi:
             assert speed in speed_list
         except AssertionError as speed_err:
             raise ValueError(
-                f'{speed} is not a defined speed for UART connection. Please check the speed table.'
+                f'{speed} is not a defined speed for UART connection. Please check \
+                the speed table.'
             ) from speed_err
 
         try:
@@ -859,10 +883,10 @@ class scpi:
         self.tx_txt('UART:SETUP')
         print('UART is configured')
 
-    def uart_get_settings(self) -> str:
+    def uart_get_settings(self) -> list[str]:
         """Retrieves the settings from Red Pitaya, prints them in console and returns
-        them as an array with the following sequence:
-        [speed, databits, stopbits, parity, timeout]
+        them as a list with the following sequence:
+        [speed, databits, stopbits, parity, timeout].
 
         """
         # Configuring UART
@@ -881,11 +905,11 @@ class scpi:
         settings.append(self.txrx_txt('UART:PARITY?'))
         settings.append(self.txrx_txt('UART:TIMEOUT?'))
 
-        print(f'Baudrate/Speed: {settings[0]}')
-        print(f'Databits: {settings[1]}')
-        print(f'Stopbits: {settings[2]}')
-        print(f'Parity: {settings[3]}')
-        print(f'Timeout (0.1 sec): {settings[4]}')
+        print(f'Baudrate/Speed: {settings[0]}')  # noqa: T201
+        print(f'Databits: {settings[1]}')  # noqa: T201
+        print(f'Stopbits: {settings[2]}')  # noqa: T201
+        print(f'Parity: {settings[3]}')  # noqa: T201
+        print(f'Timeout (0.1 sec): {settings[4]}')  # noqa: T201
 
         return settings
 
@@ -894,21 +918,17 @@ class scpi:
 
         Args:
             string (str, optional): String that will be sent.
-            word_length (bool, optional): Set to True if UART word length is set to 7 (ASCII) or
-                                    False if UART word length is set to 8 (UTF-8). Defaults to False.
+            word_length (bool, optional): Set to True if UART word length is set to
+            7 (ASCII) or False if UART word length is set to 8 (UTF-8).
+                Defaults to False.
         """
-        if word_length:
-            # word length 7 / ASCII
-            code = 'ascii'
-        else:
-            # word length 8 / UTF-8
-            code = 'utf-8'
+        code = 'ascii' if word_length else 'utf-8'
 
         # transforming and writing to UART
         arr = ',#H'.join(format(x, 'X') for x in bytearray(string, f'{code}'))
         self.tx_txt(f'UART:WRITE{len(string)} #H{arr}')
 
-        print('String sent')
+        print('String sent')  # noqa: T201
 
     def uart_read_string(self, length: int) -> str:
         """Reads a string of data from UART and decodes it from ASCII to string.
@@ -934,24 +954,27 @@ class scpi:
 
     def spi_set(
         self,
-        spi_mode: str = None,
-        cs_mode: str = None,
-        speed: int = None,
-        word_len: int = None,
+        spi_mode: str | None = None,
+        cs_mode: str | None = None,
+        speed: int | None = None,
+        word_len: int | None = None,
     ) -> None:
         """Configures the provided settings for SPI.
 
         Args:
-            spi_mode (str, optional): Sets the mode for SPI; - LISL (Low Idle level, Sample Leading edge)
-                                                             - LIST (Low Idle level, Sample Trailing edge)
-                                                             - HISL (High Idle level, Sample Leading edge)
-                                                             - HIST (High Idle level, Sample Trailing edge)
-                                                        Defaults to LISL.
-            cs_mode (str, optional): Sets the mode for CS: - NORMAL (After message transmission, CS => HIGH)
-                                                           - HIGH (After message transmission, CS => LOW)
-                                                        Defaults to NORMAL.
-            speed (int, optional): Sets the speed of the SPI connection. Defaults to 5e7.
-            word_len (int, optional): Character size in bits (CS6, CS7, CS8). Defaults to "CS8".
+            spi_mode (str, optional): Sets the mode for SPI:
+            - LIST (Low Idle level, Sample Trailing edge)
+            - HISL (High Idle level, Sample Leading edge)
+            - HIST (High Idle level, Sample Trailing edge)
+            Defaults to LISL.
+            cs_mode (str, optional): Sets the mode for CS:
+            - NORMAL (After message transmission, CS => HIGH)
+            - HIGH (After message transmission, CS => LOW)
+            Defaults to NORMAL.
+            speed (int, optional): Sets the speed of the SPI connection.
+             Defaults to 5e7.
+            word_len (int, optional): Character size in bits (CS6, CS7, CS8).
+             Defaults to "CS8".
         """
         # Constants
         speed_max_limit = 100e6
@@ -984,7 +1007,8 @@ class scpi:
             assert word_len >= bits_min_limit
         except AssertionError as bits_err:
             raise ValueError(
-                f'Word length must be greater than {bits_min_limit}. Current word length: {word_len}'
+                f'Word length must be greater than {bits_min_limit}. Current word \
+                length: {word_len}'
             ) from bits_err
 
         # Configuring SPI
@@ -995,13 +1019,12 @@ class scpi:
         self.tx_txt(f'SPI:SET:WORD {word_len}')
 
         self.tx_txt('SPI:SET:SET')
-        print('SPI is configured')
+        print('SPI is configured')  # noqa: T201
 
-    def spi_get_settings(self) -> str:
-        """Retrieves the SPI settings from Red Pitaya, prints them in console and returns
-        them as an array with the following sequence:
-        [mode, csmode, speed, word_len, msg_size]
-
+    def spi_get_settings(self) -> list[str]:
+        """Retrieves the SPI settings from Red Pitaya, prints them in console and
+        returns them as an array with the following sequence:
+        [mode, csmode, speed, word_len, msg_size].
         """
         # Configuring SPI
 
@@ -1014,58 +1037,58 @@ class scpi:
         settings.append(self.txrx_txt('SPI:SET:WORD?'))
         settings.append(self.txrx_txt('SPI:MSG:SIZE?'))
 
-        print(f'SPI mode: {settings[0]}')
-        print(f'CS mode: {settings[1]}')
-        print(f'Speed: {settings[2]}')
-        print(f'Word length: {settings[3]}')
-        print(f'Message queue length: {settings[4]}')
+        print(f'SPI mode: {settings[0]}')  # noqa: T201
+        print(f'CS mode: {settings[1]}')  # noqa: T201
+        print(f'Speed: {settings[2]}')  # noqa: T201
+        print(f'Word length: {settings[3]}')  # noqa: T201
+        print(f'Message queue length: {settings[4]}')  # noqa: T201
 
         return settings
 
     # IEEE Mandated Commands
 
     def cls(self):
-        """Clear Status Command"""
+        """Clear Status Command."""
         return self.tx_txt('*CLS')
 
     def ese(self, value: int):
-        """Standard Event Status Enable Command"""
+        """Standard Event Status Enable Command."""
         return self.tx_txt(f'*ESE {value}')
 
     def ese_q(self):
-        """Standard Event Status Enable Query"""
+        """Standard Event Status Enable Query."""
         return self.txrx_txt('*ESE?')
 
     def esr_q(self):
-        """Standard Event Status Register Query"""
+        """Standard Event Status Register Query."""
         return self.txrx_txt('*ESR?')
 
     def idn_q(self):
-        """Identification Query"""
+        """Identification Query."""
         return self.txrx_txt('*IDN?')
 
     def opc(self):
-        """Operation Complete Command"""
+        """Operation Complete Command."""
         return self.tx_txt('*OPC')
 
     def opc_q(self):
-        """Operation Complete Query"""
+        """Operation Complete Query."""
         return self.txrx_txt('*OPC?')
 
     def rst(self):
-        """Reset Command"""
+        """Reset Command."""
         return self.tx_txt('*RST')
 
     def sre(self):
-        """Service Request Enable Command"""
+        """Service Request Enable Command."""
         return self.tx_txt('*SRE')
 
     def sre_q(self):
-        """Service Request Enable Query"""
+        """Service Request Enable Query."""
         return self.txrx_txt('*SRE?')
 
     def stb_q(self):
-        """Read Status Byte Query"""
+        """Read Status Byte Query."""
         return self.txrx_txt('*STB?')
 
     # :SYSTem

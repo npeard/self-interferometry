@@ -114,7 +114,7 @@ class RedPitayaManager:
             'start_freq': 1,
             'end_freq': 1000,
             'trigger_source': 'NOW',
-            'trigger_delay': 2 * 8192,
+            'trigger_delay': 20 * 8192,
             'channels_to_acquire': [
                 1,
                 2,
@@ -1633,7 +1633,7 @@ class RedPitayaManager:
         delay_between_shots: float = 0.5,
         plot_data: bool = False,
         keep_final_plot: bool = True,
-        hdf5_file: str = None,
+        hdf5_file: str | None = None,
         timeout: int = 5,
     ) -> list[dict[str, np.ndarray]]:
         """Run multiple acquisition cycles.
@@ -1653,6 +1653,8 @@ class RedPitayaManager:
         print(f'Starting {num_shots} acquisition cycles')  # noqa: T201
         start_time = datetime.now()
         print(f'Start time: {start_time.strftime("%H:%M:%S.%f")}')  # noqa: T201
+
+        print(f'delay_between_shots: {delay_between_shots}')
 
         all_data = []
 

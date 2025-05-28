@@ -314,7 +314,8 @@ class CoilDriver:
         Args:
             velocity_waveform: Velocity waveform (microns/s)
                               Can be a NumPy array or PyTorch tensor
-                              For PyTorch tensors, supports batch dimensions [batch_size, channels, signal_length]
+                              For PyTorch tensors, supports batch dimensions
+                              [batch_size, channels, signal_length]
             sample_rate: Sample rate of the velocity waveform (Hz)
                         Default is Red Pitaya sample rate with decimation
             high_pass_freq: High-pass filter cutoff frequency (Hz) to remove DC drift
