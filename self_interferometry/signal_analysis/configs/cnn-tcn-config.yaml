@@ -18,7 +18,7 @@ training:
   devices: 1
   use_logging: true
   wandb_project: "self-interferometry"
-  experiment_name: "shot_delay_1pt0"
+  experiment_name: "trig_delay_100x16384"
   checkpoint_dir: "./signal_analysis/checkpoints"
 
 loss:
@@ -26,9 +26,9 @@ loss:
 
 data:
   data_dir: "./signal_analysis/data"
-  train_file: "train1pt0.h5"
-  val_file: "val1pt0.h5"
-  test_file: "test1pt0.h5"
+  train_file: "train-trgdel100x16384.h5"
+  val_file: "val-trgdel100x16384.h5"
+  test_file: "test-trgdel100x16384.h5"
   # pretraining data is simulated, mainly used for training teacher model
   pretrain_file: "pretrain.h5"
   preval_file: "preval.h5"
