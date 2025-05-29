@@ -255,12 +255,16 @@ class ModelTrainer:
                 f'Unknown model role: {self.config.model_config.get("role")}'
             )
 
+        # Get channel_dropout parameter from config
+        channel_dropout = self.config.data_config.get('channel_dropout', 0.0)
+
         self.train_loader, self.val_loader, self.test_loader = get_data_loaders(
             train_path=train_path,
             val_path=val_path,
             test_path=test_path,
             batch_size=self.config.training_config['batch_size'],
             num_workers=self.config.data_config['num_workers'],
+            channel_dropout=channel_dropout,  # Only pass the channel_dropout parameter
         )
 
     def create_lightning_module(self):

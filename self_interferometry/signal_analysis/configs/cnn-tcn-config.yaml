@@ -34,7 +34,8 @@ data:
   preval_file: "preval.h5"
   pretest_file: "pretest.h5"
   num_workers: 7
+  channel_dropout: 0.2  # 20% chance of dropping a channel during training
   dataset_params:
-    train_samples: 200
-    val_samples: 50
-    test_samples: 50
+    train_samples: 5000
+    val_samples: 500
+    test_samples: 500

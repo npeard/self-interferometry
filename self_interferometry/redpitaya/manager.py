@@ -116,7 +116,7 @@ class RedPitayaManager:
             'trigger_source': 'NOW',
             'trigger_delay': 15 * 16384,
             # Empirical testing based on loss values during training indicate that waiting
-            # at least 10 full buffers for triggering is sufficient to get rid of the 
+            # at least 10 full buffers for triggering is sufficient to get rid of the
             # transient signal. No further delay than 20 full buffers is necessary.
             'channels_to_acquire': [
                 1,
@@ -1644,7 +1644,7 @@ class RedPitayaManager:
         Args:
             num_shots: Number of shots to run
             device_idx: Index of the device to use as primary
-            delay_between_shots: Delay between shots in seconds. We found a small decrease in training loss when 
+            delay_between_shots: Delay between shots in seconds. We found a small decrease in training loss when
             increasing this from 0.5 to 1.0, so we choose 0.75 as a compromise.
             plot_data: Whether to plot data
             keep_final_plot: Whether to keep the final plot open for examination
