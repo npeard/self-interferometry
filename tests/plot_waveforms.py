@@ -385,7 +385,7 @@ if __name__ == '__main__':
     fig1 = plot_waveforms(waveform, coil_driver)
 
     # Generate and plot waveform histograms
-    fig2 = plot_waveform_histograms(waveform, num_samples=100)
+    # fig2 = plot_waveform_histograms(waveform, num_samples=100)
 
     # Show the plots
     plt.show()

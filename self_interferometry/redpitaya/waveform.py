@@ -10,7 +10,8 @@ from numpy.random import default_rng
 
 
 class Waveform:
-    """A class for generating waveforms with specific frequency characteristics for Red Pitaya devices.
+    """A class for generating waveforms with specific frequency characteristics for
+    Red Pitaya devices.
 
     This class provides methods for:
     - Generating random waveforms within specific frequency ranges
@@ -38,7 +39,8 @@ class Waveform:
             end_freq: The upper bound of the valid frequency range (Hz)
             gen_dec: Decimation for generation (default: 8192)
             acq_dec: Decimation for acquisition (default: 256)
-            allowed_freqs: List of allowed frequencies to use (Hz), if None, all frequencies in range are allowed
+            allowed_freqs: List of allowed frequencies to use (Hz), if None, all
+            frequencies in range are allowed
         """
         self.start_freq = start_freq
         self.end_freq = end_freq
@@ -53,7 +55,6 @@ class Waveform:
         # Calculate time array and frequency array
         self.burst_time = self.BUFFER_SIZE / self.gen_sample_rate
         self.t = np.linspace(0, self.burst_time, self.BUFFER_SIZE, endpoint=False)
-        # self.freq = np.linspace(0, self.gen_sample_rate/2, self.BUFFER_SIZE//2, endpoint=False)
         self.freq = fftfreq(self.BUFFER_SIZE, d=1 / self.gen_sample_rate)
 
         # Initialize spectrum and phases to None (will be randomized on first sample)
@@ -66,7 +67,9 @@ class Waveform:
         # If allowed_freqs is not provided, use all frequencies in the range
         if self.allowed_freqs is None:
             # Calculate valid frequencies based on acquisition sample rate
-            # TODO: Why aren't the correct frequencies defined by what fits in the generation window?
+            # Since our acquisition window size and resolution is fixed, we need to
+            # choose generation frequencies that are compatible with that window
+            # due to fundamental limitations of FFT (Nyquist and Rayleigh frequencies)
             self.valid_freqs = fftfreq(self.BUFFER_SIZE, d=1 / self.acq_sample_rate)
             # Filter to only include frequencies in the specified range
             self.valid_freqs = np.array(
@@ -106,9 +109,10 @@ class Waveform:
         rayleigh_spectrum_pos = self.rng.rayleigh(np.sqrt(spectrum_pos * delta_f))
         # See Phys. Rev. A 107, 042611 (2023) and https://doi.org/10.1016/0141-1187(84)90050-6
         # for why we use the Rayleigh distribution here
-        # If we want Gaussian distributed a_n, b_n in a Fourier series for cosine and sine components,
-        # each with variance_n = S(f_n)*\Delta f_n, then c_n = sqrt(a_n**2 + b_n**2) is Rayleigh distributed
-        # with variance_n = S(f_n)*\Delta f_n
+        # If we want Gaussian distributed a_n, b_n in a Fourier series for cosine and
+        # sine components, each with variance_n = S(f_n)*\Delta f_n, then
+        # c_n = sqrt(a_n**2 + b_n**2) is Rayleigh distributed with
+        # variance_n = S(f_n)*\Delta f_n
         # rng.rayleigh(scale) expects a scale parameter = sqrt(variance) as input
 
         # Generate random phases for positive frequencies
@@ -127,7 +131,8 @@ class Waveform:
         self.symmetrize_spectrum()
 
     def _randomize_phase(self):
-        """Randomize only the phases for the waveform, keeping the spectrum amplitudes the same.
+        """Randomize only the phases for the waveform, keeping the spectrum amplitudes
+        the same.
         This is called internally by sample() if randomize_phase_only=True.
         """
         # If no spectrum exists yet, we need to call _randomize_spectrum first
@@ -155,9 +160,11 @@ class Waveform:
         self.symmetrize_spectrum()
 
     def symmetrize_spectrum(self):
-        """Enforce Hermitian symmetry on the spectrum to ensure real-valued signals after IFFT.
-        This method uses a simple approach based on frequency sign to set negative frequency
-        components as complex conjugates of their corresponding positive frequency components.
+        """Enforce Hermitian symmetry on the spectrum to ensure real-valued signals
+        after IFFT.
+        This method uses a simple approach based on frequency sign to set negative
+        frequency components as complex conjugates of their corresponding positive
+        frequency components.
         """
         if self.spectrum is None:
             return
@@ -187,7 +194,8 @@ class Waveform:
                 pos_idx = np.argmin(np.abs(self.freq + f))
                 if pos_idx != i:  # Make sure we don't use the same index
                     symmetrized_spectrum[i] = np.conj(self.spectrum[pos_idx])
-        # Note that the following block does not work and leaves some imaginary compents in the waveform
+        # Note that the following block does not work and leaves some imaginary compents
+        # in the waveform
         # symmetrized_spectrum = np.where(
         #     self.freq < 0,
         #     np.conj(self.spectrum),
@@ -198,7 +206,8 @@ class Waveform:
         self.spectrum = symmetrized_spectrum
 
     def _random_single_tone_spectrum(self):
-        """Generate a spectrum containing a single tone at a randomly selected frequency.
+        """Generate a spectrum containing a single tone at a randomly selected
+        frequency.
         This is called internally by sample() if random_single_tone=True.
         """
         # Create an empty spectrum
@@ -234,10 +243,12 @@ class Waveform:
         Randomizes the spectrum and phases each time it's called.
 
         Args:
-            randomize_phase_only: If True, only randomize the phases while keeping the spectrum amplitudes the same
-            random_single_tone: If True, generate a single tone at a randomly selected valid frequency
-            test_mode: If True, do not randomize the spectrum and phases. Used to repeatedly generate the same waveform
-                during testing.
+            randomize_phase_only: If True, only randomize the phases while keeping the
+            spectrum amplitudes the same
+            random_single_tone: If True, generate a single tone at a randomly selected
+            valid frequency
+            test_mode: If True, do not randomize the spectrum and phases. Used to
+            repeatedly generate the same waveform during testing.
 
         Returns:
             Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
