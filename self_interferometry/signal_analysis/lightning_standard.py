@@ -63,6 +63,8 @@ class Standard(L.LightningModule):
             # TCN specific parameters
             kernel_size=self.model_hparams.get('kernel_size', 7),
             num_channels=self.model_hparams.get('num_channels', [16, 32, 64, 64]),
+            dilation_base=self.model_hparams.get('dilation_base', 2),
+            stride=self.model_hparams.get('stride', 1),
         )
 
     def _create_fcn_config(self) -> FCNConfig:

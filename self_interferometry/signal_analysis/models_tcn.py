@@ -19,6 +19,8 @@ class TCNConfig:
     # TCN specific parameters
     kernel_size: int = 7  # Kernel size for all layers
     num_channels: list[int] = None  # Number of channels in each layer
+    dilation_base: int = 2  # Base for dilation
+    stride: int = 1  # Stride for all layers
 
     def __post_init__(self):
         if self.num_channels is None:
@@ -113,23 +115,25 @@ class TCN(nn.Module):
         self.input_size = config.input_size
         self.output_size = config.output_size
         self.in_channels = config.in_channels
+        self.dilation_base = config.dilation_base
+        self.stride = config.stride
 
         layers = []
         num_levels = len(config.num_channels)
         for i in range(num_levels):
-            dilation_size = 2**i  # Exponentially increasing dilation
+            dilation_size = self.dilation_base**i  # Exponentially increasing dilation
             in_channels = config.in_channels if i == 0 else config.num_channels[i - 1]
             out_channels = config.num_channels[i]
 
             # Calculate padding to maintain sequence length
-            padding = (config.kernel_size - 1) * dilation_size
+            padding = (config.kernel_size - self.stride) * dilation_size
 
             layers.append(
                 TemporalBlock(
                     in_channels,
                     out_channels,
                     config.kernel_size,
-                    stride=1,
+                    stride=self.stride,
                     dilation=dilation_size,
                     padding=padding,
                     dropout=config.dropout,

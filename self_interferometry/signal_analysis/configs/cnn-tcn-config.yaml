@@ -2,23 +2,26 @@ model:
   # Common parameters for all model types
   role: "standard" # "standard" or "ensemble" or "teacher" or "student"
   type: "TCN"  # "CNN" or "TCN" or "FCN"
-  activation: "LeakyReLU"
+  activation: ["LeakyReLU", "Tanh"]
   in_channels: 3
   dropout: 0.1
-  kernel_size: 7
+  kernel_size: [5, 7]
+  num_channels: [[16, 32, 64, 64], [32, 64, 128, 256]]
+  dilation_base: [2, 3, 5]
+  stride: 1
 
 training:
-  max_epochs: [200, 200]
+  max_epochs: 500
   batch_size: 64
   optimizer: "Adam"
-  learning_rate: 1e-2
-  T_max: 200
+  learning_rate: 7e-3
+  T_max: 500
   eta_min: 0
   accelerator: "gpu"
   devices: 1
   use_logging: true
   wandb_project: "self-interferometry"
-  experiment_name: "trig_delay_100x16384"
+  experiment_name: "tcn_model_search"
   checkpoint_dir: "./signal_analysis/checkpoints"
 
 loss:
@@ -26,9 +29,9 @@ loss:
 
 data:
   data_dir: "./signal_analysis/data"
-  train_file: "train-trgdel100x16384.h5"
-  val_file: "val-trgdel100x16384.h5"
-  test_file: "test-trgdel100x16384.h5"
+  train_file: "train5000.h5"
+  val_file: "val500.h5"
+  test_file: "test500.h5"
   # pretraining data is simulated, mainly used for training teacher model
   pretrain_file: "pretrain.h5"
   preval_file: "preval.h5"
