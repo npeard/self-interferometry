@@ -70,12 +70,15 @@ class Ensemble(Standard):
             model_type = single_channel_hparams.get('type', 'CNN')
 
             if model_type == 'CNN':
+                print('Creating CNN model...')  # noqa: T201
                 config = self._create_cnn_config_single_channel()
                 models.append(BarlandCNN(config))
             elif model_type == 'TCN':
+                print('Creating TCN model...')  # noqa: T201
                 config = self._create_tcn_config_single_channel()
                 models.append(TCN(config))
             elif model_type == 'FCN':
+                print('Creating FCN model...')  # noqa: T201
                 config = self._create_fcn_config_single_channel()
                 models.append(FCN(config))
             else:

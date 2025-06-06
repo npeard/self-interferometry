@@ -256,7 +256,10 @@ class ModelTrainer:
             )
 
         # Get channel_dropout parameter from config
-        channel_dropout = self.config.data_config.get('channel_dropout', 0.0)
+        if self.config.model_config.get('role') == 'ensemble':
+            channel_dropout = 0.0
+        else:
+            channel_dropout = self.config.data_config.get('channel_dropout', 0.1)
 
         self.train_loader, self.val_loader, self.test_loader = get_data_loaders(
             train_path=train_path,
@@ -276,7 +279,7 @@ class ModelTrainer:
             'name': self.config.training_config.get('optimizer', 'Adam'),
             # TODO: why is lr a string?
             'lr': eval(self.config.training_config.get('learning_rate', 1e-3)),
-            'weight_decay': self.config.training_config.get('weight_decay', 0),
+            'momentum': self.config.training_config.get('momentum', 0.9),
         }
 
         # Common scheduler hyperparameters

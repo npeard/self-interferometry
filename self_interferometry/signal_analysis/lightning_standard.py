@@ -201,6 +201,8 @@ class Standard(L.LightningModule):
         # Configure optimizer
         optimizer_name = self.optimizer_hparams.pop('name')
         if optimizer_name == 'Adam':
+            # Discard momentum hyperparameter for Adam optimizer
+            _ = self.optimizer_hparams.pop('momentum', None)
             optimizer = optim.AdamW(self.parameters(), **self.optimizer_hparams)
         elif optimizer_name == 'SGD':
             optimizer = optim.SGD(self.parameters(), **self.optimizer_hparams)

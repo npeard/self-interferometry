@@ -1,27 +1,27 @@
 model:
   # Common parameters for all model types
-  role: "standard" # "standard" or "ensemble" or "teacher" or "student"
+  role: ["standard"] # "standard" or "ensemble" or "teacher" or "student"
   type: "TCN"  # "CNN" or "TCN" or "FCN"
-  activation: ["LeakyReLU", "Tanh"]
-  in_channels: 3
+  activation: "LeakyReLU"
+  in_channels: [3, 3, 3]
   dropout: 0.1
-  kernel_size: [5, 7]
-  num_channels: [[16, 32, 64, 64], [32, 64, 128, 256]]
-  dilation_base: [2, 3, 5]
+  kernel_size: 7
+  num_channels: [[16, 32, 64, 64]]
+  dilation_base: 7
   stride: 1
 
 training:
   max_epochs: 500
   batch_size: 64
   optimizer: "Adam"
-  learning_rate: 7e-3
+  learning_rate: 5e-2
   T_max: 500
   eta_min: 0
   accelerator: "gpu"
   devices: 1
   use_logging: true
   wandb_project: "self-interferometry"
-  experiment_name: "tcn_model_search"
+  experiment_name: "tcn_ensemble_comparison"
   checkpoint_dir: "./signal_analysis/checkpoints"
 
 loss:
