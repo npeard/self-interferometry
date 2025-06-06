@@ -240,6 +240,10 @@ class Standard(L.LightningModule):
         """
         # Base velocity loss (MSE)
         velocity_loss = nn.MSELoss()(velocity_hat, velocity_target)
+        # Convert velocity loss units to um**2/ms**2 instead of um**2/s**2
+        # This allows SGD optimizer to run, apparently it can't handle large
+        # loss values.
+        velocity_loss /= 1e6
 
         # Create a dictionary of loss components
         loss_dict = {
