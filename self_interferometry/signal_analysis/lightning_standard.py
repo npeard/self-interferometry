@@ -209,9 +209,32 @@ class Standard(L.LightningModule):
         else:
             raise ValueError(f'Unknown optimizer: {optimizer_name}')
 
-        # Configure scheduler
-        scheduler = optim.lr_scheduler.CosineAnnealingLR(
-            optimizer, **self.scheduler_hparams
+        # Configure multi-stage scheduler: linear warmup then cosine annealing
+        warmup_epochs = self.scheduler_hparams.get('warmup_epochs', 0)
+        cosine_epochs = self.scheduler_hparams.get('cosine_epochs', 0)
+        target_lr = self.scheduler_hparams.get('target_lr', 1e-3)
+        eta_min = self.scheduler_hparams.get('eta_min', 0)
+        T_max = self.scheduler_hparams.get('T_max', cosine_epochs)
+
+        # Force optimizer to start at lr=0 for warmup
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = 0.0
+
+        # LambdaLR for linear warmup
+        def warmup_lambda(epoch):
+            if warmup_epochs == 0:
+                return 1.0
+            return float(epoch + 1) / float(warmup_epochs)
+
+        warmup_scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=warmup_lambda)
+        cosine_scheduler = optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=T_max, eta_min=eta_min
+        )
+
+        scheduler = optim.lr_scheduler.SequentialLR(
+            optimizer,
+            schedulers=[warmup_scheduler, cosine_scheduler],
+            milestones=[warmup_epochs],
         )
 
         return {'optimizer': optimizer, 'lr_scheduler': {'scheduler': scheduler}}

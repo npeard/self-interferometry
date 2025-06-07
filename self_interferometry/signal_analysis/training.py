@@ -283,8 +283,16 @@ class ModelTrainer:
         }
 
         # Common scheduler hyperparameters
+        max_epochs = self.config.training_config.get('max_epochs', 500)
+        warmup_epochs = int(0.1 * max_epochs)
+        cosine_epochs = max_epochs - warmup_epochs
+        target_lr = eval(self.config.training_config.get('learning_rate', 1e-3))
+
         scheduler_hparams = {
-            'T_max': self.config.training_config.get('T_max', 500),
+            'warmup_epochs': warmup_epochs,
+            'cosine_epochs': cosine_epochs,
+            'target_lr': target_lr,
+            'T_max': cosine_epochs,  # For CosineAnnealingLR
             'eta_min': self.config.training_config.get('eta_min', 0),
         }
 
