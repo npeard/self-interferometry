@@ -15,7 +15,6 @@ training:
   batch_size: 64
   optimizer: ["SGD", "Adam"]
   learning_rate: 7e-2
-  T_max: 500
   eta_min: 0
   accelerator: "gpu"
   devices: 1
@@ -37,7 +36,7 @@ data:
   preval_file: "preval.h5"
   pretest_file: "pretest.h5"
   num_workers: 7
-  channel_dropout: 0.2  # 20% chance of dropping a channel during training
+  channel_dropout: 0.5  # chance of dropping a channel during training
   dataset_params:
     train_samples: 5000
     val_samples: 500
