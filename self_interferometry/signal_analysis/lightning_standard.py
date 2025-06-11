@@ -212,13 +212,8 @@ class Standard(L.LightningModule):
         # Configure multi-stage scheduler: linear warmup then cosine annealing
         warmup_epochs = self.scheduler_hparams.get('warmup_epochs', 0)
         cosine_epochs = self.scheduler_hparams.get('cosine_epochs', 0)
-        target_lr = self.scheduler_hparams.get('target_lr', 1e-3)
         eta_min = self.scheduler_hparams.get('eta_min', 0)
         T_max = self.scheduler_hparams.get('T_max', cosine_epochs)
-
-        # Force optimizer to start at lr=0 for warmup
-        for param_group in optimizer.param_groups:
-            param_group['lr'] = 0.0
 
         # LambdaLR for linear warmup
         def warmup_lambda(epoch):
