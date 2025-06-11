@@ -108,10 +108,10 @@ def main():
     if args.generate_pretraining:
         print(f'\nGenerating pretraining datasets with random seed: {seed}')  # noqa: T201
         # Extract dataset parameters
-        dataset_params = data_config.get('dataset_params', {})
-        train_samples = dataset_params.get('train_samples', 1000)
-        val_samples = dataset_params.get('val_samples', 200)
-        test_samples = dataset_params.get('test_samples', 100)
+        dataset_params = data_config['dataset_params']
+        train_samples = dataset_params['train_samples']
+        val_samples = dataset_params['val_samples']
+        test_samples = dataset_params['test_samples']
 
         # Generate pretraining datasets
         train_path, val_path, test_path = generate_pretraining_data(
@@ -143,10 +143,10 @@ def main():
             rp_manager.reset_all()
 
             # Extract dataset parameters
-            dataset_params = data_config.get('dataset_params', {})
-            train_samples = dataset_params.get('train_samples', 1000)
-            val_samples = dataset_params.get('val_samples', 100)
-            test_samples = dataset_params.get('test_samples', 100)
+            dataset_params = data_config['dataset_params']
+            train_samples = dataset_params['train_samples']
+            val_samples = dataset_params['val_samples']
+            test_samples = dataset_params['test_samples']
 
             # Create datasets using the new function that accepts a RedPitayaManager
             generate_training_data_from_rp(
@@ -167,15 +167,15 @@ def main():
         # Create trainer
         trainer = ModelTrainer(
             config=train_config,
-            experiment_name=train_config.training_config.get('experiment_name'),
-            checkpoint_dir=train_config.training_config.get('checkpoint_dir'),
+            experiment_name=train_config.training_config['experiment_name'],
+            checkpoint_dir=train_config.training_config['checkpoint_dir'],
         )
 
         # Start training
         trainer.train()
         trainer.test()
         # Close the wandb logger if it was configured
-        if trainer.config.training_config.get('use_logging', False):
+        if trainer.config.training_config['use_logging']:
             trainer.trainer.loggers[0].experiment.finish()
 
 
