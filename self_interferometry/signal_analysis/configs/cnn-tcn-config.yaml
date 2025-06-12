@@ -2,7 +2,7 @@ model:
   # Common parameters for all model types
   role: ["standard", "ensemble"] # "standard" or "ensemble" or "teacher" or "student"
   type: "TCN"  # "CNN" or "TCN" or "FCN"
-  activation: "LeakyReLU"
+  activation: ["LeakyReLU", "Tanh"]
   in_channels: [3, 3, 3]
   dropout: 0.1
   kernel_size: 7
@@ -20,7 +20,7 @@ training:
   devices: 1
   use_logging: true
   wandb_project: "self-interferometry"
-  experiment_name: "tcn_ensemble_sgd_comparison"
+  experiment_name: "tcn_100kHz_test"
   checkpoint_dir: "./signal_analysis/checkpoints"
 
 loss:
@@ -28,9 +28,9 @@ loss:
 
 data:
   data_dir: "./signal_analysis/data"
-  train_file: "train5000.h5"
-  val_file: "val500.h5"
-  test_file: "test500.h5"
+  train_file: "train-100kHz-5000.h5"
+  val_file: "val-100kHz-500.h5"
+  test_file: "test-100kHz-500.h5"
   # pretraining data is simulated, mainly used for training teacher model
   pretrain_file: "pretrain.h5"
   preval_file: "preval.h5"
