@@ -234,23 +234,17 @@ class Standard(L.LightningModule):
 
         return {'optimizer': optimizer, 'lr_scheduler': {'scheduler': scheduler}}
 
-    # TODO: what is this, where is it used?
-    def _get_progress_bar_dict(self) -> dict[str, Any]:
-        """Modify progress bar display."""
-        items = super()._get_progress_bar_dict()
-        items.pop('v_num', None)
-        return items
-
     def loss_function(
-        self, velocity_hat: torch.Tensor, velocity_target: torch.Tensor, *args, **kwargs
+        self,
+        velocity_hat: torch.Tensor,
+        velocity_target: torch.Tensor
     ) -> dict[str, torch.Tensor]:
         """Custom loss function that returns a dictionary of loss components.
 
         Args:
-            y_hat: Model predictions
-            targets: Ground truth targets
-            x: Additional input tensor for encoding loss
-            *args, **kwargs: Additional arguments
+            velocity_hat: Model predictions
+            velocity_target: Ground truth targets
+            signals: Input signals
 
         Returns:
             Dictionary of loss components with keys representing loss types
@@ -263,9 +257,18 @@ class Standard(L.LightningModule):
         # loss values.
         velocity_loss /= 1e6
 
+        # Displacement loss (MSE)
+        displacement_hat = CoilDriver.integrate_velocity(velocity_hat)
+        displacement_target = CoilDriver.integrate_velocity(velocity_target)
+        displacement_loss = nn.MSELoss()(displacement_hat, displacement_target)
+
+        # TODO: Signal encoding loss (MSE)
+
         # Create a dictionary of loss components
         loss_dict = {
-            'velocity': velocity_loss
+            'velocity': self.loss_hparams['velocity_loss_weight'] * velocity_loss,
+            'displacement': self.loss_hparams['displacement_loss_weight'] \
+                            * displacement_loss,
             # Add more loss components as needed
         }
 
