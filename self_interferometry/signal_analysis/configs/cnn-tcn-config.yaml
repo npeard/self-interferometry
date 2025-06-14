@@ -24,8 +24,8 @@ training:
   checkpoint_dir: "./signal_analysis/checkpoints"
 
 loss:
-  velocity_loss_weight: [1.0, 0.0]
-  displacement_loss_weight: [1.0, 0.0]
+  velocity_loss_weight: [1.0, 0.1]
+  displacement_loss_weight: [1.0, 0.1]
 
 data:
   data_dir: "./signal_analysis/data"
