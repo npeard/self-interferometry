@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from typing import Any
+from typing import Any, override
 
 import lightning as L
 import torch
@@ -221,7 +221,9 @@ class Standard(L.LightningModule):
                 return 1.0
             return float(epoch + 1) / float(warmup_epochs)
 
-        warmup_scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=warmup_lambda)
+        warmup_scheduler = optim.lr_scheduler.LambdaLR(
+            optimizer, lr_lambda=warmup_lambda
+        )
         cosine_scheduler = optim.lr_scheduler.CosineAnnealingLR(
             optimizer, T_max=T_max, eta_min=eta_min
         )
@@ -235,9 +237,7 @@ class Standard(L.LightningModule):
         return {'optimizer': optimizer, 'lr_scheduler': {'scheduler': scheduler}}
 
     def loss_function(
-        self,
-        velocity_hat: torch.Tensor,
-        velocity_target: torch.Tensor
+        self, velocity_hat: torch.Tensor, velocity_target: torch.Tensor
     ) -> dict[str, torch.Tensor]:
         """Custom loss function that returns a dictionary of loss components.
 
@@ -262,21 +262,23 @@ class Standard(L.LightningModule):
         displacement_target = CoilDriver.integrate_velocity(velocity_target)
         displacement_loss = nn.MSELoss()(displacement_hat, displacement_target)
 
-        # TODO: Signal encoding loss (MSE)
-
-        # Create a dictionary of loss components
+        # Create a dictionary of unweighted loss components
         loss_dict = {
-            'velocity': self.loss_hparams['velocity_loss_weight'] * velocity_loss,
-            'displacement': self.loss_hparams['displacement_loss_weight'] \
-                            * displacement_loss,
+            'velocity': velocity_loss,
+            'displacement': displacement_loss,
+            'total_unweighted': velocity_loss + displacement_loss,
             # Add more loss components as needed
         }
 
-        # Add a total loss entry
-        loss_dict['total'] = sum(loss_dict.values())
+        # Add a total loss entry with loss components weighted by loss weights
+        loss_dict['total'] = (
+            self.loss_hparams['velocity_loss_weight'] * velocity_loss
+            + self.loss_hparams['displacement_loss_weight'] * displacement_loss
+        )
 
         return loss_dict
 
+    @override
     def training_step(
         self, batch: tuple[torch.Tensor, torch.Tensor, torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
@@ -323,6 +325,7 @@ class Standard(L.LightningModule):
         # Return the total loss for backpropagation
         return loss_dict['total']
 
+    @override
     def validation_step(
         self, batch: tuple[torch.Tensor, torch.Tensor, torch.Tensor], batch_idx: int
     ) -> None:
@@ -366,6 +369,7 @@ class Standard(L.LightningModule):
                 sync_dist=True,
             )
 
+    @override
     def test_step(
         self, batch: tuple[torch.Tensor, torch.Tensor, torch.Tensor], batch_idx: int
     ) -> None:
@@ -404,6 +408,7 @@ class Standard(L.LightningModule):
         for loss_name, loss_value in loss_dict.items():
             self.log(f'test_{loss_name}_loss', loss_value, sync_dist=True)
 
+    @override
     def predict_step(
         self,
         batch: tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor, torch.Tensor]],
