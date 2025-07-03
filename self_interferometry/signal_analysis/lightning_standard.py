@@ -8,7 +8,6 @@ from torch import nn, optim
 
 from self_interferometry.redpitaya.coil_driver import CoilDriver
 from self_interferometry.signal_analysis.models_cnn import BarlandCNN, BarlandCNNConfig
-from self_interferometry.signal_analysis.models_fcn import FCN, FCNConfig
 from self_interferometry.signal_analysis.models_tcn import TCN, TCNConfig
 
 
@@ -67,21 +66,6 @@ class Standard(L.LightningModule):
             stride=self.model_hparams.get('stride', 1),
         )
 
-    def _create_fcn_config(self) -> FCNConfig:
-        """Create FCNConfig from model configuration."""
-        return FCNConfig(
-            # Common parameters
-            input_size=self.model_hparams.get('input_size', 16384),
-            output_size=self.model_hparams.get('output_size', 16384),
-            in_channels=self.model_hparams.get('in_channels', 3),
-            activation=self.model_hparams.get('activation', 'LeakyReLU'),
-            dropout=self.model_hparams.get('dropout', 0.1),
-            # FCN specific parameters
-            num_channels=self.model_hparams.get('num_channels', [16, 32, 64, 64]),
-            kernel_size=self.model_hparams.get('kernel_size', 7),
-            use_final_conv=self.model_hparams.get('use_final_conv', True),
-        )
-
     def create_model(self) -> nn.Module:
         """Create model instance based on config.
 
@@ -102,10 +86,6 @@ class Standard(L.LightningModule):
             print('Creating TCN model...')  # noqa: T201
             self.model_config = self._create_tcn_config()
             return TCN(self.model_config)
-        elif model_type == 'FCN':
-            print('Creating FCN model...')  # noqa: T201
-            self.model_config = self._create_fcn_config()
-            return FCN(self.model_config)
         else:
             raise ValueError(f'Unknown model type: {model_type}')
 
@@ -115,7 +95,7 @@ class Standard(L.LightningModule):
         This method handles different model architectures:
         1. For CNN models: Uses a sliding window approach to process each window
         separately
-        2. For TCN and FCN models: Processes the entire sequence at once efficiently
+        2. For TCN model: Processes the entire sequence at once efficiently
 
         Args:
             x: Input tensor of shape [batch_size, num_channels, signal_length]
@@ -125,10 +105,10 @@ class Standard(L.LightningModule):
         """
         batch_size, num_channels, signal_length = x.shape
 
-        # Check if we're using a TCN or FCN model (which can process the entire sequence at
+        # Check if we're using a TCN model (which can process the entire sequence at
         # once)
         if hasattr(self.model, '__class__') and (
-            self.model.__class__.__name__ in {'TCN', 'FCN'}
+            self.model.__class__.__name__ in {'TCN'}
         ):
             # TCN approach - process the entire sequence at once
             with torch.set_grad_enabled(self.training):
@@ -258,8 +238,12 @@ class Standard(L.LightningModule):
         velocity_loss /= 1e6
 
         # Displacement loss (MSE)
-        displacement_hat = CoilDriver.integrate_velocity(velocity_hat)
-        displacement_target = CoilDriver.integrate_velocity(velocity_target)
+        sample_rate = 125e6 / 256
+        # TODO: Hardcoded sample rate, should be read from data file
+        displacement_hat = CoilDriver.integrate_velocity(velocity_hat, sample_rate)
+        displacement_target = CoilDriver.integrate_velocity(
+            velocity_target, sample_rate
+        )
         displacement_loss = nn.MSELoss()(displacement_hat, displacement_target)
 
         # Create a dictionary of unweighted loss components

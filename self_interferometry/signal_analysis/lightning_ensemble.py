@@ -6,7 +6,6 @@ from torch import nn
 
 from self_interferometry.signal_analysis.lightning_standard import Standard
 from self_interferometry.signal_analysis.models_cnn import BarlandCNN, BarlandCNNConfig
-from self_interferometry.signal_analysis.models_fcn import FCN, FCNConfig
 from self_interferometry.signal_analysis.models_tcn import TCN, TCNConfig
 
 
@@ -77,10 +76,6 @@ class Ensemble(Standard):
                 print('Creating TCN model...')  # noqa: T201
                 config = self._create_tcn_config_single_channel()
                 models.append(TCN(config))
-            elif model_type == 'FCN':
-                print('Creating FCN model...')  # noqa: T201
-                config = self._create_fcn_config_single_channel()
-                models.append(FCN(config))
             else:
                 raise ValueError(f'Unknown model type: {model_type}')
 
@@ -113,21 +108,6 @@ class Ensemble(Standard):
             # TCN specific parameters
             kernel_size=self.model_hparams.get('kernel_size', 7),
             num_channels=self.model_hparams.get('num_channels', [16, 32, 64, 64]),
-        )
-
-    def _create_fcn_config_single_channel(self) -> FCNConfig:
-        """Create FCNConfig for a single-channel model."""
-        return FCNConfig(
-            # Common parameters
-            input_size=self.model_hparams.get('input_size', 16384),
-            output_size=self.model_hparams.get('output_size', 16384),
-            in_channels=1,  # Always 1 for single-channel models
-            activation=self.model_hparams.get('activation', 'LeakyReLU'),
-            dropout=self.model_hparams.get('dropout', 0.1),
-            # FCN specific parameters
-            num_channels=self.model_hparams.get('num_channels', [16, 32, 64, 64]),
-            kernel_size=self.model_hparams.get('kernel_size', 7),
-            use_final_conv=self.model_hparams.get('use_final_conv', True),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -163,8 +143,8 @@ class Ensemble(Standard):
             # Get the corresponding model
             model = self.models[i]
 
-            # Check if we're using a TCN or FCN model
-            if model.__class__.__name__ in {'TCN', 'FCN'}:
+            # Check if we're using a TCN model
+            if model.__class__.__name__ in {'TCN'}:
                 # Process the entire sequence at once
                 with torch.set_grad_enabled(self.training):
                     # Model returns shape [batch_size, 1, signal_length]

@@ -6,32 +6,12 @@ This module provides a class that encapsulates functionality for converting volt
 waveforms to displacement and velocity waveforms using calibration data.
 """
 
-from dataclasses import dataclass
-
 import numpy as np
 import torch
 from numpy.fft import fft, fftfreq, ifft
 
+from self_interferometry.redpitaya.calib_params import CalibrationParameters
 from self_interferometry.redpitaya.waveform import Waveform
-
-
-@dataclass
-class CalibrationParameters:
-    """Calibration parameters for the coil driver.
-
-    Attributes:
-        f0: Resonant frequency in Hz
-        Q: Quality factor
-        k: Gain factor
-        c: Phase offset
-        speaker_part_number: Optional part number of the speaker
-    """
-
-    f0: float = 257.20857316296724
-    Q: float = 15.804110908084784
-    k: float = 33.42493417407945
-    c: float = -3.208233068626455
-    speaker_part_number: str | None = None
 
 
 class CoilDriver:
@@ -62,7 +42,7 @@ class CoilDriver:
         randomize_phase_only: bool = False,
         random_single_tone: bool = False,
         normalize_gain: bool = False,
-        test_mode: bool = False,
+        skip_randomization: bool = False,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Generate a sample waveform using the Waveform generator, with optional gain
         equalization.
@@ -80,8 +60,10 @@ class CoilDriver:
                 valid frequency
             normalize_gain: If True, pre-compensate the spectrum to normalize the gain
                 across frequencies
-            test_mode: If True, do not randomize the spectrum and phases. Used to
-                repeatedly generate the same waveform during testing.
+            skip_randomization: If True, do not randomize the spectrum and phases. Used
+                to repeatedly generate the same waveform during testing. Requires that
+                sample() has been called at least once before, and we want to resample
+                with the same spectrum and phases.
 
         Returns:
             Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -101,7 +83,7 @@ class CoilDriver:
         t, voltage, voltage_spectrum = waveform.sample(
             randomize_phase_only=randomize_phase_only,
             random_single_tone=random_single_tone,
-            test_mode=test_mode,
+            skip_randomization=skip_randomization,
         )
 
         # Calculate frequencies for the full spectrum
@@ -207,14 +189,15 @@ class CoilDriver:
         # Return the complex transfer function
         return amplitude_transfer * phase_transfer
 
-    def get_displacement(
+    def get_displacement_spectrum(
         self,
         voltage_waveform: np.ndarray,
         sample_rate: float,
         max_freq: float | None = None,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Calculate the displacement waveform from a voltage waveform using the
-        calibration parameters.
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Calculate the displacement spectrum from a voltage waveform using the
+        calibration parameters. This is used to compute the displacement and velocity
+        waveforms.
 
         Args:
             voltage_waveform: Voltage waveform in time domain (V)
@@ -224,8 +207,7 @@ class CoilDriver:
 
         Returns:
             Tuple containing:
-            - Displacement waveform in time domain (microns)
-            - Displacement waveform in frequency domain
+            - Displacement spectrum in frequency domain
             - Frequency array (Hz)
         """
         # Calculate the spectrum of the voltage waveform
@@ -247,6 +229,33 @@ class CoilDriver:
         # Multiply by 2 since we changed how spectra are generated (two-sided instead of
         # one-sided)
         displacement_spectrum *= 2
+
+        return displacement_spectrum, freq
+
+    def get_displacement(
+        self,
+        voltage_waveform: np.ndarray,
+        sample_rate: float,
+        max_freq: float | None = None,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Calculate the displacement waveform from a voltage waveform using the
+        calibration parameters.
+
+        Args:
+            voltage_waveform: Voltage waveform in time domain (V)
+            sample_rate: Sample rate of the waveform (Hz)
+            max_freq: Maximum frequency to include in the calculation (Hz)
+                      If None, all frequencies are included
+
+        Returns:
+            Tuple containing:
+            - Displacement waveform in time domain (microns)
+            - Displacement waveform in frequency domain
+            - Frequency array (Hz)
+        """
+        displacement_spectrum, freq = self.get_displacement_spectrum(
+            voltage_waveform, sample_rate, max_freq
+        )
 
         # Convert back to time domain
         displacement_waveform = np.real(ifft(displacement_spectrum, norm='ortho'))
@@ -274,25 +283,9 @@ class CoilDriver:
             - Velocity waveform in frequency domain
             - Frequency array (Hz)
         """
-        # Calculate the spectrum of the voltage waveform
-        voltage_spectrum = fft(voltage_waveform, norm='ortho')
-        n = voltage_waveform.size
-        sample_spacing = 1 / sample_rate
-        freq = fftfreq(n, d=sample_spacing)  # units: cycles/s = Hz
-
-        # Get the complex transfer function
-        transfer_function = self.get_transfer_function(freq, max_freq)
-
-        # Multiply by the transfer function
-        displacement_spectrum = voltage_spectrum * transfer_function
-
-        # Divide by 2pi to account for change of variables used when fitting the
-        # transfer functions
-        # Need to do this whenever we inverse FFT the spectrum
-        displacement_spectrum /= 2 * np.pi
-        # Multiply by 2 since we changed how spectra are generated (two-sided instead of
-        # one-sided)
-        displacement_spectrum *= 2
+        displacement_spectrum, freq = self.get_displacement_spectrum(
+            voltage_waveform, sample_rate, max_freq
+        )
 
         # Calculate velocity spectrum by multiplying displacement spectrum by j*omega
         velocity_spectrum = displacement_spectrum * 1j * 2 * np.pi * freq
@@ -304,7 +297,7 @@ class CoilDriver:
 
     @staticmethod
     def integrate_velocity(
-        velocity_waveform: np.ndarray | torch.Tensor, sample_rate: float = 125e6 / 256
+        velocity_waveform: np.ndarray | torch.Tensor, sample_rate: float
     ) -> np.ndarray | torch.Tensor:
         """Integrate velocity waveform to get displacement waveform using
         cumulative integration.
@@ -329,33 +322,15 @@ class CoilDriver:
         is_torch = 'torch' in str(type(velocity_waveform).__module__)
 
         if is_torch:
-            # Get the shape for proper reshaping after integration
-            original_shape = velocity_waveform.shape
-
             # Handle batch dimensions if present
-            if len(original_shape) > 1:
-                batch_size = original_shape[0]
-                signal_length = original_shape[-1]
-
-                # Reshape for integration (flatten batch dimensions)
-                velocity_flat = velocity_waveform.reshape(-1, signal_length)
-                displacement_flat = torch.zeros_like(velocity_flat)
+            if len(velocity_waveform.shape) > 1:
+                batch_size, signal_length = velocity_waveform.shape
 
                 # Time step
                 dt = 1.0 / sample_rate
-
-                # Perform integration for each sample in batch
-                for i in range(batch_size):
-                    # Cumulative sum for integration
-                    displacement_flat[i] = torch.cumsum(velocity_flat[i], dim=0) * dt
-
-                    # Shift displacement to start at zero
-                    displacement_flat[i] = (
-                        displacement_flat[i] - displacement_flat[i][0]
-                    )
-
-                # Reshape back to original shape
-                displacement = displacement_flat.reshape(original_shape)
+                displacement = torch.cumsum(velocity_waveform, dim=-1) * dt
+                # Shift displacement to start at zero
+                displacement = displacement - displacement[:, 0].unsqueeze(-1)
 
             else:
                 # Single waveform case

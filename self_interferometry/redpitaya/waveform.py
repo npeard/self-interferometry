@@ -8,6 +8,8 @@ import numpy as np
 from numpy.fft import fft, fftfreq, ifft
 from numpy.random import default_rng
 
+from self_interferometry.redpitaya.redpitaya_config import RedPitayaConfig
+
 
 class Waveform:
     """A class for generating waveforms with specific frequency characteristics for
@@ -20,8 +22,8 @@ class Waveform:
     """
 
     # Constants from RedPitayaManager
-    BUFFER_SIZE = 16384  # Number of samples in buffer
-    SAMPLE_RATE_DEC1 = 125e6  # Sample rate for decimation=1 in Samples/s (Hz)
+    BUFFER_SIZE = RedPitayaConfig.BUFFER_SIZE
+    SAMPLE_RATE_DEC1 = RedPitayaConfig.SAMPLE_RATE_DEC1
 
     def __init__(
         self,
@@ -218,8 +220,7 @@ class Waveform:
             positive_freqs = self.valid_freqs[self.valid_freqs > 0]
             selected_freq = self.rng.choice(positive_freqs)
         else:
-            # If no valid frequencies, use the middle of the range
-            selected_freq = (self.start_freq + self.end_freq) / 2
+            raise ValueError('No valid frequencies found')
 
         # Find the index in the frequency array closest to the selected frequency
         freq_idx = np.argmin(np.abs(self.freq - selected_freq))
@@ -237,7 +238,7 @@ class Waveform:
         self,
         randomize_phase_only: bool = False,
         random_single_tone: bool = False,
-        test_mode: bool = False,
+        skip_randomization: bool = False,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Generate a sample waveform using the current configuration.
         Randomizes the spectrum and phases each time it's called.
@@ -247,8 +248,10 @@ class Waveform:
             spectrum amplitudes the same
             random_single_tone: If True, generate a single tone at a randomly selected
             valid frequency
-            test_mode: If True, do not randomize the spectrum and phases. Used to
-            repeatedly generate the same waveform during testing.
+            skip_randomization: If True, do not randomize the spectrum and phases. Used
+            to repeatedly generate the same waveform during testing. Requires that
+            sample() has been called at least once before, and we want to resample with
+            the same spectrum and phases.
 
         Returns:
             Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -262,7 +265,10 @@ class Waveform:
             self._random_single_tone_spectrum()
         elif randomize_phase_only:
             self._randomize_phase()
-        elif not test_mode:
+        elif not skip_randomization or self.spectrum is None:
+            # If skip_randomization is True, we will not randomize the spectrum and
+            # phases. But, if self.spectrum is None, we need to call
+            # _randomize_spectrum() to initialize it.
             self._randomize_spectrum()
 
         # Convert to time domain

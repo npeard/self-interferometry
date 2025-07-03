@@ -8,6 +8,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 from self_interferometry.redpitaya.coil_driver import CoilDriver
+from self_interferometry.redpitaya.redpitaya_config import RedPitayaConfig
 
 
 class StandardVelocityDataset(Dataset):
@@ -95,8 +96,8 @@ class StandardVelocityDataset(Dataset):
                 self.sample_rate = float(self.h5_file.attrs['sample_rate'])
             else:
                 # Default sample rate for Red Pitaya with decimation of 256
-                self.sample_rate = 125e6 / 256
-                print(
+                self.sample_rate = RedPitayaConfig.SAMPLE_RATE_DEC1 / 256
+                print(  # noqa: T201
                     f'Warning: Using default sample rate of {self.sample_rate:.2f} Hz'
                 )
 

@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from torch.utils.data import DataLoader
 
+from self_interferometry.redpitaya.redpitaya_config import RedPitayaConfig
 from self_interferometry.signal_analysis.datasets import StandardVelocityDataset
 
 
@@ -33,7 +34,7 @@ def visualize_dataset(
             print(f'Using sample rate from HDF5 file: {sample_rate:.2f} Hz')  # noqa: T201
         else:
             # Default sample rate for Red Pitaya with decimation of 256
-            sample_rate = 125e6 / 256
+            sample_rate = RedPitayaConfig.SAMPLE_RATE_DEC1 / 256
             print(f'Warning: Using default sample rate of {sample_rate:.2f} Hz')  # noqa: T201
 
         # Print dataset information
@@ -128,7 +129,7 @@ def plot_histograms(dataset_path: str | Path):
             sample_rate = float(f.attrs['sample_rate'])
         else:
             # Default sample rate for Red Pitaya with decimation of 256
-            sample_rate = 125e6 / 256
+            sample_rate = RedPitayaConfig.SAMPLE_RATE_DEC1 / 256
 
         print(f'Using sample rate: {sample_rate:.2f} Hz')  # noqa: T201
         # Create figure with subplots (2 rows, 4 columns)

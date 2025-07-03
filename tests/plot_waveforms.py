@@ -77,7 +77,7 @@ def plot_waveforms(
 
     # Generate a waveform with equalized gain using the new CoilDriver.sample() method
     t_eq, voltage_eq, voltage_spectrum_eq = coil_driver.sample(
-        waveform, normalize_gain=True, test_mode=True
+        waveform, normalize_gain=True, skip_randomization=True
     )
 
     # Calculate FFT of the equalized voltage waveform

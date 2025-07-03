@@ -15,9 +15,10 @@ from numpy.fft import fft
 
 # Import the scpi module directly
 from self_interferometry.redpitaya import scpi
-from self_interferometry.redpitaya.coil_driver import CoilDriver
 
 # Import our custom classes
+from self_interferometry.redpitaya.coil_driver import CoilDriver
+from self_interferometry.redpitaya.redpitaya_config import RedPitayaConfig
 from self_interferometry.redpitaya.waveform import Waveform
 from self_interferometry.signal_analysis.interferometers import MichelsonInterferometer
 
@@ -37,8 +38,8 @@ class RedPitayaManager:
     """
 
     # Constants
-    BUFFER_SIZE = 16384  # Number of samples in buffer
-    SAMPLE_RATE_DEC1 = 125e6  # Sample rate for decimation=1 in Samples/s (Hz)
+    BUFFER_SIZE = RedPitayaConfig.BUFFER_SIZE
+    SAMPLE_RATE_DEC1 = RedPitayaConfig.SAMPLE_RATE_DEC1
 
     def __init__(
         self,
@@ -651,8 +652,8 @@ class RedPitayaManager:
         )
 
         # Enforce that displacement starts at zero for each trace for easier comparison
-        displacement_integrated = displacement_integrated - displacement_integrated[0]
-        displacement_tf = displacement_tf - displacement_tf[0]
+        displacement_integrated -= displacement_integrated[0]
+        displacement_tf -= displacement_tf[0]
 
         return displacement_tf, displacement_integrated, displacement_spectrum, freq
 
@@ -1151,7 +1152,7 @@ class RedPitayaManager:
         # Calculate sample rate from the first channel data
         sample_rate = None
         if 'acq_dec' in self.settings:
-            sample_rate = 125e6 / self.settings['acq_dec']
+            sample_rate = self.SAMPLE_RATE_DEC1 / self.settings['acq_dec']
 
         # Accumulate data for histograms and spectra
         # Drive voltage (Speaker)

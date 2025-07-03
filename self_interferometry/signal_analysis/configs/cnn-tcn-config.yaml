@@ -1,9 +1,9 @@
 model:
   # Common parameters for all model types
   role: "standard" # "standard" or "ensemble" or "teacher" or "student"
-  type: "TCN"  # "CNN" or "TCN" or "FCN"
+  type: "TCN"  # "CNN" or "TCN"
   activation: "LeakyReLU"
-  in_channels: [3, 3, 3]
+  in_channels: 3
   dropout: 0.1
   kernel_size: 7
   num_channels: [[32, 32, 64, 64]]
@@ -16,20 +16,20 @@ training:
   optimizer: "Adam"
   learning_rate: 7e-2
   eta_min: 0
-  accelerator: "gpu"
+  accelerator: "cpu"
   devices: 1
-  use_logging: true
+  use_logging: false
   wandb_project: "self-interferometry"
   experiment_name: "fiber-tcn+dispLoss"
   checkpoint_dir: "./signal_analysis/checkpoints"
 
 loss:
   velocity_loss_weight: 1.0
-  displacement_loss_weight: [0.0, 0.01]
+  displacement_loss_weight: 0.1
 
 data:
   data_dir: "./signal_analysis/data"
-  train_file: "train-mmfiber-5000.h5"
+  train_file: "test-mmfiber-500.h5"
   val_file: "val-mmfiber-500.h5"
   test_file: "test-mmfiber-500.h5"
   # pretraining data is simulated, mainly used for training teacher model
@@ -39,6 +39,6 @@ data:
   num_workers: 7
   channel_dropout: 0.5  # chance of dropping a channel during training
   dataset_params:
-    train_samples: 5000
+    train_samples: 500
     val_samples: 500
     test_samples: 500

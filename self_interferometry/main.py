@@ -55,7 +55,7 @@ def setup_random_seed(seed: int | None = None) -> int:
         # Create a non-seeded RNG to generate a seed
         temp_rng = np.random.default_rng()
         # Generate a random seed between 0 and 2^32 - 1
-        seed = temp_rng.integers(0, 2**32 - 1)
+        seed = temp_rng.integers(0, 2**32)
 
     # Set seeds for both random and numpy
     random.seed(seed)

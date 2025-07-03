@@ -324,7 +324,7 @@ def test_gain_normalization():
 
     # Generate an equalized waveform
     t_eq, voltage_eq, voltage_spectrum_eq = coil_driver.sample(
-        waveform, normalize_gain=True, test_mode=True
+        waveform, normalize_gain=True, skip_randomization=True
     )
 
     # Calculate sample rate
