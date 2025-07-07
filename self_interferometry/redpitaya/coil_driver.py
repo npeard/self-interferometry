@@ -310,9 +310,6 @@ class CoilDriver:
                               For PyTorch tensors, supports batch dimensions
                               [batch_size, channels, signal_length]
             sample_rate: Sample rate of the velocity waveform (Hz)
-                        Default is Red Pitaya sample rate with decimation
-            high_pass_freq: High-pass filter cutoff frequency (Hz) to remove DC drift
-                           Set to 0 to disable high-pass filtering
 
         Returns:
             Displacement waveform (microns) in the same format as input
@@ -320,21 +317,20 @@ class CoilDriver:
         # Check if input is a PyTorch tensor
         # More robust check using module name instead of attribute
         is_torch = 'torch' in str(type(velocity_waveform).__module__)
+        # Time step
+        dt = 1.0 / sample_rate
 
         if is_torch:
             # Handle batch dimensions if present
             if len(velocity_waveform.shape) > 1:
                 batch_size, signal_length = velocity_waveform.shape
 
-                # Time step
-                dt = 1.0 / sample_rate
                 displacement = torch.cumsum(velocity_waveform, dim=-1) * dt
                 # Shift displacement to start at zero
                 displacement = displacement - displacement[:, 0].unsqueeze(-1)
 
             else:
                 # Single waveform case
-                dt = 1.0 / sample_rate
                 displacement = torch.cumsum(velocity_waveform, dim=0) * dt
 
                 # Shift displacement to start at zero
@@ -344,9 +340,6 @@ class CoilDriver:
 
         else:
             # NumPy implementation (original)
-            # Time step
-            dt = 1.0 / sample_rate
-
             # Simple cumulative integration (cumulative sum * dt)
             displacement = np.cumsum(velocity_waveform) * dt
 

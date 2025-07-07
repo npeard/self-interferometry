@@ -8,6 +8,7 @@ import numpy as np
 from tqdm import tqdm
 
 from self_interferometry.redpitaya.manager import RedPitayaManager
+from self_interferometry.redpitaya.redpitaya_config import RedPitayaConfig
 from self_interferometry.signal_analysis.interferometers import (
     InterferometerArray,
     MichelsonInterferometer,
@@ -101,10 +102,11 @@ def create_pretraining_dataset(
     # Create file and initialize with metadata
     with h5py.File(file_path, 'w') as f:
         # Store acquisition parameters as attributes
-        sample_rate = 125e6 / 256  # Default decimation in RedPitayaManager
+        sample_rate = RedPitayaConfig.SAMPLE_RATE_DEC1 / 256
+        # Default decimation in RedPitayaManager
         f.attrs['sample_rate'] = sample_rate
         f.attrs['decimation'] = 256  # Default decimation
-        f.attrs['buffer_size'] = 16384  # Default buffer size
+        f.attrs['buffer_size'] = RedPitayaConfig.BUFFER_SIZE  # Default buffer size
         f.attrs['creation_time'] = datetime.now().isoformat()
         f.attrs['simulated'] = True
         f.attrs['num_samples'] = 0  # Will be updated as we add samples

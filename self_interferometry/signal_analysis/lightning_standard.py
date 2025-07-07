@@ -7,6 +7,7 @@ import torch
 from torch import nn, optim
 
 from self_interferometry.redpitaya.coil_driver import CoilDriver
+from self_interferometry.redpitaya.redpitaya_config import RedPitayaConfig
 from self_interferometry.signal_analysis.models_cnn import BarlandCNN, BarlandCNNConfig
 from self_interferometry.signal_analysis.models_tcn import TCN, TCNConfig
 
@@ -238,8 +239,9 @@ class Standard(L.LightningModule):
         velocity_loss /= 1e6
 
         # Displacement loss (MSE)
-        sample_rate = 125e6 / 256
-        # TODO: Hardcoded sample rate, should be read from data file
+        # 256 is the acq_dec value we typically use in RedPitayaManager, but could
+        # change in the future. TODO: Probably should read this from the data file.
+        sample_rate = RedPitayaConfig.SAMPLE_RATE_DEC1 / 256
         displacement_hat = CoilDriver.integrate_velocity(velocity_hat, sample_rate)
         displacement_target = CoilDriver.integrate_velocity(
             velocity_target, sample_rate
