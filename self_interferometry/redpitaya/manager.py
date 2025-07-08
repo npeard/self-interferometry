@@ -15,9 +15,10 @@ from numpy.fft import fft
 
 # Import the scpi module directly
 from self_interferometry.redpitaya import scpi
-from self_interferometry.redpitaya.coil_driver import CoilDriver
 
 # Import our custom classes
+from self_interferometry.redpitaya.coil_driver import CoilDriver
+from self_interferometry.redpitaya.redpitaya_config import RedPitayaConfig
 from self_interferometry.redpitaya.waveform import Waveform
 from self_interferometry.signal_analysis.interferometers import MichelsonInterferometer
 
@@ -37,8 +38,8 @@ class RedPitayaManager:
     """
 
     # Constants
-    BUFFER_SIZE = 16384  # Number of samples in buffer
-    SAMPLE_RATE_DEC1 = 125e6  # Sample rate for decimation=1 in Samples/s (Hz)
+    BUFFER_SIZE = RedPitayaConfig.BUFFER_SIZE
+    SAMPLE_RATE_DEC1 = RedPitayaConfig.SAMPLE_RATE_DEC1
 
     def __init__(
         self,
@@ -114,7 +115,10 @@ class RedPitayaManager:
             'start_freq': 1,
             'end_freq': 1000,
             'trigger_source': 'NOW',
-            'trigger_delay': 2 * 8192,
+            'trigger_delay': 15 * 16384,
+            # Empirical testing based on loss values during training indicate that waiting
+            # at least 10 full buffers for triggering is sufficient to get rid of the
+            # transient signal. No further delay than 20 full buffers is necessary.
             'channels_to_acquire': [
                 1,
                 2,
@@ -133,7 +137,7 @@ class RedPitayaManager:
         self.close_all()
 
     def close_all(self):
-        """Close all device connections."""
+        """Close all devices."""
         for device in self.devices:
             with contextlib.suppress(Exception):
                 device.close()
@@ -648,8 +652,8 @@ class RedPitayaManager:
         )
 
         # Enforce that displacement starts at zero for each trace for easier comparison
-        displacement_integrated = displacement_integrated - displacement_integrated[0]
-        displacement_tf = displacement_tf - displacement_tf[0]
+        displacement_integrated -= displacement_integrated[0]
+        displacement_tf -= displacement_tf[0]
 
         return displacement_tf, displacement_integrated, displacement_spectrum, freq
 
@@ -677,19 +681,19 @@ class RedPitayaManager:
         # Open file in appropriate mode
         mode = 'a' if file_exists else 'w'
         with h5py.File(file_path, mode) as f:
-            # If creating a new file, store acquisition parameters as attributes
+            # Store acquisition parameters as attributes (always update these)
+            f.attrs['sample_rate'] = self.SAMPLE_RATE_DEC1 / self.settings['acq_dec']
+            f.attrs['decimation'] = self.settings['acq_dec']
+            f.attrs['buffer_size'] = self.BUFFER_SIZE
+
+            # Only set creation_time when creating a new file
             if not file_exists:
-                f.attrs['sample_rate'] = (
-                    self.SAMPLE_RATE_DEC1 / self.settings['acq_dec']
-                )
-                f.attrs['decimation'] = self.settings['acq_dec']
-                f.attrs['buffer_size'] = self.BUFFER_SIZE
                 f.attrs['creation_time'] = datetime.now().isoformat()
 
-                # Store any other relevant settings
-                for key, value in self.settings.items():
-                    if isinstance(value, int | float | str | bool):
-                        f.attrs[key] = value
+            # Store any other relevant settings
+            for key, value in self.settings.items():
+                if isinstance(value, int | float | str | bool):
+                    f.attrs[key] = value
 
             # Find Red Pitaya channel keys (the raw input signals)
             channel_keys = []
@@ -1148,7 +1152,7 @@ class RedPitayaManager:
         # Calculate sample rate from the first channel data
         sample_rate = None
         if 'acq_dec' in self.settings:
-            sample_rate = 125e6 / self.settings['acq_dec']
+            sample_rate = self.SAMPLE_RATE_DEC1 / self.settings['acq_dec']
 
         # Accumulate data for histograms and spectra
         # Drive voltage (Speaker)
@@ -1283,7 +1287,7 @@ class RedPitayaManager:
                         gaussian,
                         'r-',
                         linewidth=2,
-                        label=r'Gaussian ($\sigma={std_dev:.4f}$)',
+                        label=r'Gaussian ($\sigma$' + f'={std_dev:.4f})',
                     )
                     self.hist_axes[0, 0].legend(loc='upper right')
 
@@ -1336,7 +1340,7 @@ class RedPitayaManager:
                         gaussian,
                         'r-',
                         linewidth=2,
-                        label=r'Gaussian ($\sigma={std_dev:.4f}$)',
+                        label=r'Gaussian ($\sigma$=' + f'{std_dev:.4f})',
                     )
                     self.hist_axes[0, 1].legend(loc='upper right')
 
@@ -1389,7 +1393,7 @@ class RedPitayaManager:
                         gaussian,
                         'r-',
                         linewidth=2,
-                        label=r'Gaussian ($\sigma={std_dev:.4f}$)',
+                        label=r'Gaussian ($\sigma$=' + f'{std_dev:.4f})',
                     )
                     self.hist_axes[0, 2].legend(loc='upper right')
 
@@ -1531,7 +1535,7 @@ class RedPitayaManager:
         self.configure_acquisition()
 
         # Start acquisition on all devices
-        self.start_acquisition(device_idx=device_idx, timeout=timeout)
+        self.start_acquisition(device_idx=device_idx)
 
         # Enable output on the primary device
         self.enable_output(device_idx=device_idx)
@@ -1630,10 +1634,10 @@ class RedPitayaManager:
         self,
         num_shots: int,
         device_idx: int = 0,
-        delay_between_shots: float = 0.5,
+        delay_between_shots: float = 0.75,
         plot_data: bool = False,
         keep_final_plot: bool = True,
-        hdf5_file: str = None,
+        hdf5_file: str | None = None,
         timeout: int = 5,
     ) -> list[dict[str, np.ndarray]]:
         """Run multiple acquisition cycles.
@@ -1641,7 +1645,9 @@ class RedPitayaManager:
         Args:
             num_shots: Number of shots to run
             device_idx: Index of the device to use as primary
-            delay_between_shots: Delay between shots in seconds
+            delay_between_shots: Delay between shots in seconds. We found a small
+            decrease in training loss when increasing this from 0.5 to 1.0, so we
+            choose 0.75 as a compromise.
             plot_data: Whether to plot data
             keep_final_plot: Whether to keep the final plot open for examination
             hdf5_file: Path to HDF5 file to save data incrementally
@@ -1653,6 +1659,8 @@ class RedPitayaManager:
         print(f'Starting {num_shots} acquisition cycles')  # noqa: T201
         start_time = datetime.now()
         print(f'Start time: {start_time.strftime("%H:%M:%S.%f")}')  # noqa: T201
+
+        print(f'delay_between_shots: {delay_between_shots}')
 
         all_data = []
 
@@ -1806,9 +1814,8 @@ if __name__ == '__main__':
 
     # Run multiple acquisitions
     rp_manager.run_multiple_shots(
-        num_shots=10,
+        num_shots=2,
         delay_between_shots=1.0,
-        store_data=False,
         plot_data=True,
         keep_final_plot=True,  # Keep the final plot open
     )

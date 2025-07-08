@@ -58,6 +58,7 @@ def plot_waveforms(
 
     # Calculate sample rate from time array
     sample_rate = 1 / (t[1] - t[0])
+    print(f'Sample rate: {sample_rate:.2f} Hz')  # noqa: T201
 
     # Calculate FFT of the voltage waveform
     freqs_fft, voltage_fft = calculate_fft(voltage, sample_rate)
@@ -76,7 +77,7 @@ def plot_waveforms(
 
     # Generate a waveform with equalized gain using the new CoilDriver.sample() method
     t_eq, voltage_eq, voltage_spectrum_eq = coil_driver.sample(
-        waveform, normalize_gain=True, test_mode=True
+        waveform, normalize_gain=True, skip_randomization=True
     )
 
     # Calculate FFT of the equalized voltage waveform
@@ -384,7 +385,7 @@ if __name__ == '__main__':
     fig1 = plot_waveforms(waveform, coil_driver)
 
     # Generate and plot waveform histograms
-    fig2 = plot_waveform_histograms(waveform, num_samples=100)
+    # fig2 = plot_waveform_histograms(waveform, num_samples=100)
 
     # Show the plots
     plt.show()

@@ -4,71 +4,27 @@ from dataclasses import dataclass
 
 from torch import Tensor, nn
 
-act_fn_by_name = {'LeakyReLU': nn.LeakyReLU(), 'Tanh': nn.Tanh()}
-
-
-@dataclass
-class CNNConfig:
-    input_size: int = 256
-    output_size: int = 1
-    activation: str = 'LeakyReLU'
-    in_channels: int = 1
-    dropout: float = 0.1
+act_fn_by_name = {'LeakyReLU': nn.LeakyReLU(), 'Tanh': nn.Tanh(), 'ReLU': nn.ReLU()}
 
 
 @dataclass
 class TCNConfig:
+    # Common parameters (consistent across all model configs)
     input_size: int = 16384  # Length of input sequence
     output_size: int = 16384  # Length of output sequence (same as input for our case)
-    num_channels: list[int] = None  # Number of channels in each layer
-    kernel_size: int = 7  # Kernel size for all layers
-    dropout: float = 0.1
-    activation: str = 'LeakyReLU'
     in_channels: int = 1  # Number of input channels
+    activation: str = 'LeakyReLU'
+    dropout: float = 0.1
+
+    # TCN specific parameters
+    kernel_size: int = 7  # Kernel size for all layers
+    num_channels: list[int] = None  # Number of channels in each layer
+    dilation_base: int = 2  # Base for dilation
+    stride: int = 1  # Stride for all layers
 
     def __post_init__(self):
         if self.num_channels is None:
             self.num_channels = [16, 32, 64, 64]  # Default channel configuration
-
-
-class CNN(nn.Module):
-    def __init__(self, config: CNNConfig):
-        super().__init__()
-        self.in_channels = config.in_channels
-        self.conv_layers = nn.Sequential(
-            nn.Conv1d(self.in_channels, 16, kernel_size=7),
-            # Lout = 250, given L = 256
-            act_fn_by_name[config.activation],
-            nn.MaxPool1d(2),
-            # Lout = 125, given L = 250
-            nn.Conv1d(16, 32, kernel_size=7),
-            # Lout = 119, given L = 125
-            act_fn_by_name[config.activation],
-            nn.MaxPool1d(2),
-            # Lout = 59, given L = 119
-            nn.Conv1d(32, 64, kernel_size=7),
-            # Lout = 53, given L = 59
-            act_fn_by_name[config.activation],
-            nn.MaxPool1d(2),
-            # Lout = 26, given L = 53
-            nn.Dropout(config.dropout),
-            nn.Conv1d(64, 64, kernel_size=7),
-            # Lout = 20, given L = 26
-            act_fn_by_name[config.activation],
-            nn.MaxPool1d(2),
-            # Lout = 10, given L = 20
-        )
-        self.fc_layers = nn.Sequential(
-            # length of input = 64 filters * length of 10 left
-            nn.Linear(640, 16),
-            act_fn_by_name[config.activation],
-            nn.Linear(16, config.output_size),
-        )
-
-    def forward(self, x: Tensor) -> Tensor:
-        out = self.conv_layers(x)  # expect out [128, 64, 10]
-        out = out.view(out.size(0), 1, -1)  # expect out [128, 1, 640]
-        return self.fc_layers(out)  # expect out [128, 1, 1]
 
 
 class TemporalBlock(nn.Module):
@@ -113,6 +69,7 @@ class TemporalBlock(nn.Module):
         self.dropout2 = nn.Dropout(dropout)
 
         self.net = nn.Sequential(
+            nn.LayerNorm(16384),
             self.conv1,
             self.chomp1,
             self.activation,
@@ -158,23 +115,25 @@ class TCN(nn.Module):
         self.input_size = config.input_size
         self.output_size = config.output_size
         self.in_channels = config.in_channels
+        self.dilation_base = config.dilation_base
+        self.stride = config.stride
 
         layers = []
         num_levels = len(config.num_channels)
         for i in range(num_levels):
-            dilation_size = 2**i  # Exponentially increasing dilation
+            dilation_size = self.dilation_base**i  # Exponentially increasing dilation
             in_channels = config.in_channels if i == 0 else config.num_channels[i - 1]
             out_channels = config.num_channels[i]
 
             # Calculate padding to maintain sequence length
-            padding = (config.kernel_size - 1) * dilation_size
+            padding = (config.kernel_size - self.stride) * dilation_size
 
             layers.append(
                 TemporalBlock(
                     in_channels,
                     out_channels,
                     config.kernel_size,
-                    stride=1,
+                    stride=self.stride,
                     dilation=dilation_size,
                     padding=padding,
                     dropout=config.dropout,

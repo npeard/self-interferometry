@@ -15,7 +15,9 @@ from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 
 from self_interferometry.signal_analysis.datasets import get_data_loaders
-from self_interferometry.signal_analysis.lightning_config import Standard, Teacher
+from self_interferometry.signal_analysis.lightning_ensemble import Ensemble
+from self_interferometry.signal_analysis.lightning_standard import Standard
+from self_interferometry.signal_analysis.lightning_teacher import Teacher
 
 
 @dataclass
@@ -232,7 +234,7 @@ class ModelTrainer:
         # Resolve paths for data files
         # Use real data inputs for the student and standard model
         # Student model uses targets from teacher
-        if self.config.model_config.get('role') in ['standard', 'student']:
+        if self.config.model_config.get('role') in ['standard', 'student', 'ensemble']:
             train_path = resolve_path(
                 data_dir, self.config.data_config.get('train_file')
             )
@@ -253,49 +255,73 @@ class ModelTrainer:
                 f'Unknown model role: {self.config.model_config.get("role")}'
             )
 
+        # Get channel_dropout parameter from config
+        if self.config.model_config.get('role') == 'ensemble':
+            channel_dropout = 0.0
+        else:
+            channel_dropout = self.config.data_config.get('channel_dropout', 0.1)
+
         self.train_loader, self.val_loader, self.test_loader = get_data_loaders(
             train_path=train_path,
             val_path=val_path,
             test_path=test_path,
             batch_size=self.config.training_config['batch_size'],
             num_workers=self.config.data_config['num_workers'],
+            channel_dropout=channel_dropout,  # Only pass the channel_dropout parameter
         )
 
-    def create_lightning_module(self) -> Standard:
+    def create_lightning_module(self):
         """Create lightning module based on model type."""
-        if self.config.model_config.get('role') == 'standard':
+        model_role = self.config.model_config.get('role', 'standard')
+
+        # Common optimizer hyperparameters
+        optimizer_hparams = {
+            'name': self.config.training_config.get('optimizer', 'Adam'),
+            # TODO: why is lr a string?
+            'lr': eval(self.config.training_config.get('learning_rate', 1e-3)),
+            'momentum': self.config.training_config.get('momentum', 0.9),
+        }
+
+        # Common scheduler hyperparameters
+        max_epochs = self.config.training_config.get('max_epochs', 500)
+        warmup_epochs = int(0.1 * max_epochs)
+        cosine_epochs = max_epochs - warmup_epochs
+        target_lr = eval(self.config.training_config.get('learning_rate', 1e-3))
+
+        scheduler_hparams = {
+            'warmup_epochs': warmup_epochs,
+            'cosine_epochs': cosine_epochs,
+            'target_lr': target_lr,
+            'T_max': cosine_epochs,  # For CosineAnnealingLR
+            'eta_min': self.config.training_config.get('eta_min', 0),
+        }
+
+        if model_role == 'standard':
             return Standard(
                 model_hparams=self.config.model_config,
-                optimizer_hparams={
-                    'name': self.config.training_config.get('optimizer', 'Adam'),
-                    # TODO: why is this loaded as a string?
-                    'lr': eval(self.config.training_config.get('learning_rate', 5e-4)),
-                },
-                scheduler_hparams={
-                    'T_max': self.config.training_config.get('T_max', 500),
-                    'eta_min': self.config.training_config.get('eta_min', 0),
-                },
+                optimizer_hparams=optimizer_hparams,
+                scheduler_hparams=scheduler_hparams,
                 loss_hparams=self.config.loss_config,
             )
-        elif self.config.model_config.get('role') == 'teacher':
+        elif model_role == 'teacher':
             return Teacher(
                 model_hparams=self.config.model_config,
-                optimizer_hparams={
-                    'name': self.config.training_config.get('optimizer', 'Adam'),
-                    # TODO: why is this loaded as a string?
-                    'lr': eval(self.config.training_config.get('learning_rate', 5e-4)),
-                },
-                scheduler_hparams={
-                    'T_max': self.config.training_config.get('T_max', 500),
-                    'eta_min': self.config.training_config.get('eta_min', 0),
-                },
+                optimizer_hparams=optimizer_hparams,
+                scheduler_hparams=scheduler_hparams,
                 loss_hparams=self.config.loss_config,
                 interferometer_config=self.config.data_config.get(
                     'interferometer_config'
                 ),
             )
+        elif model_role == 'ensemble':
+            return Ensemble(
+                model_hparams=self.config.model_config,
+                optimizer_hparams=optimizer_hparams,
+                scheduler_hparams=scheduler_hparams,
+                loss_hparams=self.config.loss_config,
+            )
         else:
-            raise TypeError("Unknown model type, can't initialize Lightning.")
+            raise ValueError(f'Unknown model role: {model_role}')
 
     def setup_trainer(self) -> L.Trainer:
         """Setup Lightning trainer with callbacks and loggers."""
@@ -315,8 +341,9 @@ class ModelTrainer:
             callbacks.append(
                 ModelCheckpoint(
                     dirpath=Path(self.checkpoint_dir) / self.experiment_name,
-                    filename=str(loggers[0].experiment.id) + '_{epoch}-{val_loss:.4f}',
-                    monitor='val_loss',
+                    filename=str(loggers[0].experiment.id)
+                    + '_{epoch}-{val_total_loss:.4f}',
+                    monitor='val_total_loss',
                     mode='min',
                     save_top_k=1,
                 )
@@ -372,6 +399,17 @@ class ModelTrainer:
         model = Standard.load_from_checkpoint(checkpoint_path)
         trainer = L.Trainer(accelerator='cpu', logger=[])
 
+        # Figure out which role the model was trained in so we setup the correct data
+        model_role = model.model_hparams.get('role')
+        if model_role == 'standard':
+            self.config.model_config['role'] = 'standard'
+        elif model_role == 'teacher':
+            self.config.model_config['role'] = 'teacher'
+        elif model_role == 'mean_single_channel':
+            self.config.model_config['role'] = 'mean_single_channel'
+        else:
+            raise ValueError(f'Unknown model role: {model_role}')
+
         # Setup data loaders
         self.setup_data()
 
@@ -379,32 +417,86 @@ class ModelTrainer:
         predictions = trainer.predict(model, self.test_loader)
 
         # Process the first batch of predictions
-        # predictions[batch_idx] returns a tuple of (velocity_hat,
-        # velocity_target, signals)
+        # predictions[batch_idx] returns a tuple of (velocity_hat, velocity_target,
+        # displacement_hat, displacement_target, signals)
         batch_idx = 0
         velocity_hat = predictions[batch_idx][0].cpu().numpy()  # Predicted velocities
         velocity_target = predictions[batch_idx][1].cpu().numpy()  # Target velocities
-        signals = predictions[batch_idx][2].cpu().numpy()  # Input signals
+        displacement_hat = (
+            predictions[batch_idx][2].cpu().numpy()
+        )  # Predicted displacement
+        displacement_target = (
+            predictions[batch_idx][3].cpu().numpy()
+        )  # Target displacement
+        signals = predictions[batch_idx][4].cpu().numpy()  # Input signals
+
+        print(f'Signals shape: {signals.shape}')
+        print(f'Velocity hat shape: {velocity_hat.shape}')
+        print(f'Velocity target shape: {velocity_target.shape}')
+        print(f'Displacement hat shape: {displacement_hat.shape}')
+        print(f'Displacement target shape: {displacement_target.shape}')
 
         # Get the number of samples in the batch and number of PD channels
         batch_size, num_channels, signal_length = signals.shape
 
+        # Calculate MSE losses for the entire batch
+        mse_loss_fn = torch.nn.MSELoss()
+        velocity_tensor = torch.tensor(velocity_hat)
+        velocity_target_tensor = torch.tensor(velocity_target)
+        displacement_tensor = torch.tensor(displacement_hat)
+        displacement_target_tensor = torch.tensor(displacement_target)
+        batch_velocity_mse = mse_loss_fn(velocity_tensor, velocity_target_tensor).item()
+        batch_displacement_mse = mse_loss_fn(
+            displacement_tensor, displacement_target_tensor
+        ).item()
+
         # Plot for each sample in the batch
         for i in range(
-            min(batch_size, 5)
-        ):  # Limit to 5 samples to avoid too many plots
+            min(batch_size, 10)
+        ):  # Limit to 10 samples to avoid too many plots
+            # Calculate sample-specific MSE losses
+            sample_velocity_mse = mse_loss_fn(
+                torch.tensor(velocity_hat[i]), torch.tensor(velocity_target[i])
+            ).item()
+            sample_displacement_mse = mse_loss_fn(
+                torch.tensor(displacement_hat[i]), torch.tensor(displacement_target[i])
+            ).item()
+
             # Create a figure with subplots - one for velocities and up to 3 for signals
             fig, axs = plt.subplots(1 + num_channels, 1, figsize=(10, 8), sharex=True)
 
-            # Plot predicted vs target velocities
+            # Plot predicted vs target velocities on the primary y-axis
             axs[0].plot(velocity_target[i], label='Target Velocity', color='blue')
             axs[0].plot(
                 velocity_hat[i], label='Predicted Velocity', color='red', linestyle='--'
             )
-            axs[0].set_title('Velocity Comparison')
-            axs[0].set_ylabel('Velocity (μm/s)')
-            axs[0].legend()
-            axs[0].grid(True)
+            axs[0].set_title(
+                f'Velocity (MSE: {sample_velocity_mse:.2e}) and Displacement (MSE: {sample_displacement_mse:.2e})'
+            )
+            axs[0].set_ylabel('Velocity (μm/s)', color='blue')
+            axs[0].tick_params(axis='y', labelcolor='blue')
+            # axs[0].legend(loc='upper left')
+            axs[0].grid(True, alpha=0.3)
+
+            # Create a twin axis for displacement
+            ax_twin = axs[0].twinx()
+            ax_twin.plot(
+                displacement_target[i], label='Target Displacement', color='green'
+            )
+            ax_twin.plot(
+                displacement_hat[i],
+                label='Predicted Displacement',
+                color='orange',
+                linestyle='--',
+            )
+            ax_twin.set_ylabel('Displacement (μm)', color='green')
+            ax_twin.tick_params(axis='y', labelcolor='green')
+            ax_twin.legend(loc='upper right')
+
+            # Ensure both legends are visible
+            lines1, labels1 = axs[0].get_legend_handles_labels()
+            lines2, labels2 = ax_twin.get_legend_handles_labels()
+            ax_twin.legend(lines1 + lines2, labels1 + labels2, loc='upper right')
 
             # Plot each input signal channel
             for j in range(num_channels):
@@ -417,13 +509,9 @@ class ModelTrainer:
             # Set x-axis label for the bottom subplot
             axs[-1].set_xlabel('Sample')
 
-            # Add overall title
-            plt.suptitle(f'Sample {i + 1} from Batch {batch_idx + 1}')
+            # Add overall title with batch MSE values
+            plt.suptitle(
+                f'Sample {i + 1} from Batch {batch_idx + 1}\nBatch MSE: Velocity={batch_velocity_mse:.2e}, Displacement={batch_displacement_mse:.2e}'
+            )
             plt.tight_layout()
             plt.show()
-
-            # Ask if user wants to continue to the next sample
-            if i < min(batch_size, 5) - 1:
-                user_input = input("Press Enter to view next sample, or 'q' to quit: ")
-                if user_input.lower() == 'q':
-                    break
