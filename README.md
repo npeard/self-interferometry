@@ -1,9 +1,38 @@
-# Self-Mixing Interferometry for Rapid Vibration/Acoustic Spectrograms
+# Neural Networks for Self-Mixing Interferometry
 
-## Goal
-Develop a fiber-coupled self-mixing interferometer which can rapidly
-detect sub-micron displacements of a surface. Using displacement
-time-series data, analyze vibrational transfer functions of mechanical designs.
+[![License](https://img.shields.io/badge/License-GPLv3-green.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.2-orange.svg)](https://pytorch.org/)
+
+## Overview
+
+Self-mixing interferometry (SMI) is a powerful optical sensing technique that leverages the interference between a laser beam and its reflection from a target within the laser cavity itself. The interference inside the laser gain medium results in nonlinear self-mixing which can be read out as a drop in luminescence of the gain medium or a transient voltage drop across the laser diode. The nonlinear self-mixing results in signals that are difficult to interpret and analyze. This repository contains our PyTorch framework for training and deploying neural networks applied to this signal processing task, addressing the fundamental challenges that have limited industrial applications for decades.
+
+## The Challenge
+
+Traditional self-mixing interferometry faces significant practical limitations:
+- **Signal interpretation complexity**: SMI signals depend sensitively on alignment conditions, target reflectivity, and feedback parameters
+- **Speckle effects**: Diffusive targets cause signal quality variations that can completely invalidate measurements
+- **Limited signal availability**: Systems often fail with non-cooperative targets or changing environmental conditions
+
+## Our Solution: AI-Powered Robust Sensing
+
+This project demonstrates how **convolutional neural networks** can revolutionize self-mixing interferometry by:
+
+### 🧠 **Intelligent Signal Processing**
+- **Universal signal interpretation**: Neural networks trained on diverse signal conditions can extract displacement information from arbitrary SMI waveforms
+- **Robust to noise and distortion**: Networks maintain performance even with severely degraded signals
+- **Multi-regime operation**: Single model works across different feedback regimes without parameter tuning
+
+### 🔄 **Multi-Channel High-Availability Sensing**
+- **Redundant measurement channels**: Multiple independent SMI sensors provide fault tolerance
+- **Graceful degradation**: System maintains accuracy even when individual channels fail completely
+- **Enhanced reliability**: Achieves high-availability displacement sensing robust to speckle and alignment variations
+
+### ⚡ **Real-Time Performance**
+- **Embeddable networks**: Lightweight architectures suitable for embedded systems
+- **Fast inference**: Process thousands of measurements in milliseconds
+- **No parameter estimation**: Direct displacement inference without complex signal processing
 
 ## Quick Start for Contributors
 
