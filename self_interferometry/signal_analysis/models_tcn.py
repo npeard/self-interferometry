@@ -14,6 +14,7 @@ class TCNConfig:
     output_size: int = 16384  # Length of output sequence (same as input for our case)
     in_channels: int = 1  # Number of input channels
     activation: str = 'LeakyReLU'
+    norm: str = 'layer'  # 'layer' or 'batch'
     dropout: float = 0.1
 
     # TCN specific parameters
@@ -21,11 +22,6 @@ class TCNConfig:
     num_channels: list[int] = None  # Number of channels in each layer
     dilation_base: int = 2  # Base for dilation
     stride: int = 1  # Stride for all layers
-
-    def __post_init__(self):
-        if self.num_channels is None:
-            self.num_channels = [16, 32, 64, 64]  # Default channel configuration
-
 
 class TemporalBlock(nn.Module):
     """Single block of temporal convolutions with dilation."""
@@ -39,6 +35,9 @@ class TemporalBlock(nn.Module):
         dilation: int,
         padding: int,
         dropout: float = 0.2,
+        activation: str = 'LeakyReLU',
+        norm: str = 'layer',
+        input_length: int = 16384,
     ):
         super().__init__()
         self.conv1 = nn.utils.weight_norm(
@@ -52,7 +51,6 @@ class TemporalBlock(nn.Module):
             )
         )
         self.chomp1 = Chomp1d(padding)  # Remove padding at the end
-        self.activation = nn.LeakyReLU()
         self.dropout1 = nn.Dropout(dropout)
 
         self.conv2 = nn.utils.weight_norm(
@@ -68,15 +66,29 @@ class TemporalBlock(nn.Module):
         self.chomp2 = Chomp1d(padding)  # Remove padding at the end
         self.dropout2 = nn.Dropout(dropout)
 
+        # Select normalization layer
+        if norm == 'batch':
+            self.norm = nn.BatchNorm1d(n_inputs)
+        elif norm == 'layer':
+            self.norm = nn.LayerNorm(input_length)
+        else:
+            raise ValueError(f"Unknown norm type: {norm}")
+
+        # Select activation function
+        if activation in act_fn_by_name:
+            self.activation_fn = act_fn_by_name[activation]
+        else:
+            raise ValueError(f"Unknown activation: {activation}")
+
         self.net = nn.Sequential(
-            nn.LayerNorm(16384),
+            self.norm,
             self.conv1,
             self.chomp1,
-            self.activation,
+            self.activation_fn,
             self.dropout1,
             self.conv2,
             self.chomp2,
-            self.activation,
+            self.activation_fn,
             self.dropout2,
         )
 
@@ -84,7 +96,7 @@ class TemporalBlock(nn.Module):
         self.downsample = (
             nn.Conv1d(n_inputs, n_outputs, 1) if n_inputs != n_outputs else None
         )
-        self.activation = nn.LeakyReLU()
+        self.activation = self.activation_fn
 
     def forward(self, x: Tensor) -> Tensor:
         out = self.net(x)
@@ -137,6 +149,9 @@ class TCN(nn.Module):
                     dilation=dilation_size,
                     padding=padding,
                     dropout=config.dropout,
+                    activation=config.activation,
+                    norm=config.norm,
+                    input_length=config.input_size,  # For LayerNorm
                 )
             )
 
