@@ -5,10 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import yaml
-from signal_analysis.generate_data import (
-    generate_pretraining_data,
-    generate_training_data_from_rp,
-)
+from signal_analysis.generate_data import generate_training_data_from_rp
 from signal_analysis.training import ModelTrainer, TrainingConfig
 
 
@@ -26,11 +23,6 @@ def parse_args() -> argparse.Namespace:
         '--checkpoint',
         type=str,
         help='Path to checkpoint for testing. If provided, will run in test mode.',
-    )
-    parser.add_argument(
-        '--generate_pretraining',
-        action='store_true',
-        help='Generate simulated pretraining datasets using interferometer models',
     )
     parser.add_argument(
         '--acquire_dataset',
@@ -95,7 +87,7 @@ def main():
         base_config.data_config if hasattr(base_config, 'data_config') else None
     )
 
-    if not data_config and (args.generate_pretraining or args.acquire_dataset):
+    if not data_config and args.acquire_dataset:
         # Load data config directly from YAML file
         with Path(args.config).open() as f:
             config_data = yaml.safe_load(f)
@@ -103,26 +95,6 @@ def main():
                 data_config = config_data['data']
             else:
                 raise ValueError(f'Could not find data configuration in {args.config}')
-
-    # Generate pretraining datasets if requested
-    if args.generate_pretraining:
-        print(f'\nGenerating pretraining datasets with random seed: {seed}')  # noqa: T201
-        # Extract dataset parameters
-        dataset_params = data_config['dataset_params']
-        train_samples = dataset_params['train_samples']
-        val_samples = dataset_params['val_samples']
-        test_samples = dataset_params['test_samples']
-
-        # Generate pretraining datasets
-        train_path, val_path, test_path = generate_pretraining_data(
-            output_dir=data_config['data_dir'],
-            train_samples=train_samples,
-            val_samples=val_samples,
-            test_samples=test_samples,
-            start_freq=1,
-            end_freq=1000,
-        )
-        print('Pretraining dataset generation complete!\n')  # noqa: T201
 
     # Acquire real data from Red Pitaya if requested
     if args.acquire_dataset:
@@ -186,10 +158,7 @@ if __name__ == '__main__':
     # Testing from checkpoint:
     # python main.py --checkpoint path/to/checkpoint.ckpt
 
-    # Fine-tuning from checkpoint:
-    # python main.py --config path/to/config.yaml --checkpoint path/to/checkpoint.ckpt
-
-    # Generating pretraining datasets:
-    # python main.py --config path/to/config.yaml --generate_pretraining
+    # Acquiring real data from Red Pitaya:
+    # python main.py --config path/to/config.yaml --acquire_dataset
 
     main()

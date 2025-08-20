@@ -17,7 +17,6 @@ from lightning.pytorch.loggers import WandbLogger
 from self_interferometry.signal_analysis.datasets import get_data_loaders
 from self_interferometry.signal_analysis.lightning_ensemble import Ensemble
 from self_interferometry.signal_analysis.lightning_standard import Standard
-from self_interferometry.signal_analysis.lightning_teacher import Teacher
 
 
 @dataclass
@@ -232,28 +231,9 @@ class ModelTrainer:
         data_dir = self.config.data_config['data_dir']
 
         # Resolve paths for data files
-        # Use real data inputs for the student and standard model
-        # Student model uses targets from teacher
-        if self.config.model_config.get('role') in ['standard', 'student', 'ensemble']:
-            train_path = resolve_path(
-                data_dir, self.config.data_config.get('train_file')
-            )
-            val_path = resolve_path(data_dir, self.config.data_config.get('val_file'))
-            test_path = resolve_path(data_dir, self.config.data_config.get('test_file'))
-        # Use simulated data inputs and targets for the teacher model
-        elif self.config.model_config.get('role') == 'teacher':
-            train_path = resolve_path(
-                data_dir, self.config.data_config.get('pretrain_file')
-            )
-            # Use real data inputs for validation and testing
-            # We need to understand how well the teacher will predict
-            # targets given real inputs
-            val_path = resolve_path(data_dir, self.config.data_config.get('val_file'))
-            test_path = resolve_path(data_dir, self.config.data_config.get('test_file'))
-        else:
-            raise ValueError(
-                f'Unknown model role: {self.config.model_config.get("role")}'
-            )
+        train_path = resolve_path(data_dir, self.config.data_config['train_file'])
+        val_path = resolve_path(data_dir, self.config.data_config['val_file'])
+        test_path = resolve_path(data_dir, self.config.data_config['test_file'])
 
         # Get channel_dropout parameter from config
         if self.config.model_config.get('role') == 'ensemble':
@@ -303,16 +283,6 @@ class ModelTrainer:
                 scheduler_hparams=scheduler_hparams,
                 loss_hparams=self.config.loss_config,
             )
-        elif model_role == 'teacher':
-            return Teacher(
-                model_hparams=self.config.model_config,
-                optimizer_hparams=optimizer_hparams,
-                scheduler_hparams=scheduler_hparams,
-                loss_hparams=self.config.loss_config,
-                interferometer_config=self.config.data_config.get(
-                    'interferometer_config'
-                ),
-            )
         elif model_role == 'ensemble':
             return Ensemble(
                 model_hparams=self.config.model_config,
@@ -321,7 +291,7 @@ class ModelTrainer:
                 loss_hparams=self.config.loss_config,
             )
         else:
-            raise ValueError(f'Unknown model role: {model_role}')
+            raise ValueError(f'Unknown model role: {model_role}. Supported roles: "standard", "ensemble"')
 
     def setup_trainer(self) -> L.Trainer:
         """Setup Lightning trainer with callbacks and loggers."""
@@ -403,12 +373,10 @@ class ModelTrainer:
         model_role = model.model_hparams.get('role')
         if model_role == 'standard':
             self.config.model_config['role'] = 'standard'
-        elif model_role == 'teacher':
-            self.config.model_config['role'] = 'teacher'
-        elif model_role == 'mean_single_channel':
-            self.config.model_config['role'] = 'mean_single_channel'
+        elif model_role == 'ensemble':
+            self.config.model_config['role'] = 'ensemble'
         else:
-            raise ValueError(f'Unknown model role: {model_role}')
+            raise ValueError(f'Unknown model role: {model_role}. Supported roles: "standard", "ensemble"')
 
         # Setup data loaders
         self.setup_data()

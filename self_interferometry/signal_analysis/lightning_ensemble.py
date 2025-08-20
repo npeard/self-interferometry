@@ -53,7 +53,7 @@ class Ensemble(Standard):
             ModuleList containing single-channel models
         """
         # Determine the number of input channels
-        in_channels = self.model_hparams.get('in_channels', 3)
+        in_channels = self.model_hparams['in_channels']
 
         # Create a list to store the models
         models = []
@@ -66,7 +66,7 @@ class Ensemble(Standard):
             single_channel_hparams['in_channels'] = 1
 
             # Create the appropriate model type
-            model_type = single_channel_hparams.get('type', 'CNN')
+            model_type = single_channel_hparams['type']
 
             if model_type == 'CNN':
                 print('Creating CNN model...')  # noqa: T201
@@ -87,27 +87,30 @@ class Ensemble(Standard):
         """Create CNNConfig for a single-channel model."""
         return BarlandCNNConfig(
             # Common parameters
-            input_size=self.model_hparams.get('input_size', 256),
-            output_size=self.model_hparams.get('output_size', 1),
+            input_size=self.model_hparams['input_size'],
+            output_size=self.model_hparams['output_size'],
             in_channels=1,  # Always 1 for single-channel models
-            activation=self.model_hparams.get('activation', 'LeakyReLU'),
-            dropout=self.model_hparams.get('dropout', 0.1),
+            activation=self.model_hparams['activation'],
+            dropout=self.model_hparams['dropout'],
             # BarlandCNN specific parameters
-            window_stride=self.model_hparams.get('window_stride', 128),
+            window_stride=self.model_hparams['window_stride'],
         )
 
     def _create_tcn_config_single_channel(self) -> TCNConfig:
         """Create TCNConfig for a single-channel model."""
         return TCNConfig(
             # Common parameters
-            input_size=self.model_hparams.get('input_size', 16384),
-            output_size=self.model_hparams.get('output_size', 16384),
+            input_size=self.model_hparams['input_size'],
+            output_size=self.model_hparams['output_size'],
             in_channels=1,  # Always 1 for single-channel models
-            activation=self.model_hparams.get('activation', 'LeakyReLU'),
-            dropout=self.model_hparams.get('dropout', 0.1),
+            activation=self.model_hparams['activation'],
+            norm=self.model_hparams['norm'],
+            dropout=self.model_hparams['dropout'],
             # TCN specific parameters
-            kernel_size=self.model_hparams.get('kernel_size', 7),
-            num_channels=self.model_hparams.get('num_channels', [16, 32, 64, 64]),
+            kernel_size=self.model_hparams['kernel_size'],
+            num_channels=self.model_hparams['num_channels'],
+            dilation_base=self.model_hparams['dilation_base'],
+            stride=self.model_hparams['stride'],
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

@@ -8,7 +8,7 @@ from torch import nn, optim
 
 from self_interferometry.redpitaya.coil_driver import CoilDriver
 from self_interferometry.redpitaya.redpitaya_config import RedPitayaConfig
-from self_interferometry.signal_analysis.models_cnn import BarlandCNN, BarlandCNNConfig
+from self_interferometry.signal_analysis.barland_cnn import BarlandCNN, BarlandCNNConfig
 from self_interferometry.signal_analysis.models_tcn import TCN, TCNConfig
 
 
@@ -38,8 +38,8 @@ class Standard(L.LightningModule):
 
         torch.set_float32_matmul_precision('high')
 
-    def _create_cnn_config(self) -> BarlandCNNConfig:
-        """Create CNNConfig from model configuration."""
+    def _create_barland_config(self) -> BarlandCNNConfig:
+        """Create BarlandCNNConfig from model configuration."""
         return BarlandCNNConfig(
             # Common parameters
             input_size=self.model_hparams['input_size'],
@@ -82,7 +82,7 @@ class Standard(L.LightningModule):
         model_type = self.model_hparams.get('type')
         if model_type == 'CNN':
             print('Creating CNN model...')  # noqa: T201
-            self.model_config = self._create_cnn_config()
+            self.model_config = self._create_barland_config()
             return BarlandCNN(self.model_config)
         elif model_type == 'TCN':
             print('Creating TCN model...')  # noqa: T201

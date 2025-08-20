@@ -10,18 +10,18 @@ act_fn_by_name = {'LeakyReLU': nn.LeakyReLU(), 'Tanh': nn.Tanh(), 'ReLU': nn.ReL
 @dataclass
 class TCNConfig:
     # Common parameters (consistent across all model configs)
-    input_size: int = 16384  # Length of input sequence
-    output_size: int = 16384  # Length of output sequence (same as input for our case)
-    in_channels: int = 1  # Number of input channels
-    activation: str = 'LeakyReLU'
-    norm: str = 'layer'  # 'layer' or 'batch'
-    dropout: float = 0.1
+    input_size: int  # Length of input sequence
+    output_size: int  # Length of output sequence (same as input for our case)
+    in_channels: int  # Number of input channels
+    activation: str
+    norm: str  # 'layer' or 'batch'
+    dropout: float
 
     # TCN specific parameters
-    kernel_size: int = 7  # Kernel size for all layers
-    num_channels: list[int] = None  # Number of channels in each layer
-    dilation_base: int = 2  # Base for dilation
-    stride: int = 1  # Stride for all layers
+    kernel_size: int  # Kernel size for all layers
+    num_channels: list[int]  # Number of channels in each layer
+    dilation_base: int  # Base for dilation
+    stride: int  # Stride for all layers
 
 class TemporalBlock(nn.Module):
     """Single block of temporal convolutions with dilation."""
