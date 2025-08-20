@@ -4,8 +4,8 @@
 import torch
 from torch import nn
 
-from self_interferometry.analysis.lightning_standard import Standard
 from self_interferometry.analysis.barland_cnn import BarlandCNN, BarlandCNNConfig
+from self_interferometry.analysis.lightning_standard import Standard
 from self_interferometry.analysis.models_tcn import TCN, TCNConfig
 
 

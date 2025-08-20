@@ -13,14 +13,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 from numpy.fft import fft
 
-# Import the scpi module directly
-from . import scpi
-
 # Import our custom classes
 from ..simulations.coil_driver import CoilDriver
-from .redpitaya_config import RedPitayaConfig
-from ..simulations.waveform import Waveform
 from ..simulations.interferometers import MichelsonInterferometer
+from ..simulations.waveform import Waveform
+
+# Import the scpi module directly
+from . import scpi
+from .redpitaya_config import RedPitayaConfig
 
 
 class RedPitayaManager:
@@ -81,9 +81,7 @@ class RedPitayaManager:
             self.data_save_path = Path(data_save_path)
         else:
             # Default to a data directory in the project
-            self.data_save_path = (
-                Path(__file__).parent.parent / 'analysis' / 'data'
-            )
+            self.data_save_path = Path(__file__).parent.parent / 'analysis' / 'data'
 
         # Ensure the data directory exists
         self.data_save_path.mkdir(parents=True, exist_ok=True)

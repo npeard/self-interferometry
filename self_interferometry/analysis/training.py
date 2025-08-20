@@ -291,7 +291,9 @@ class ModelTrainer:
                 loss_hparams=self.config.loss_config,
             )
         else:
-            raise ValueError(f'Unknown model role: {model_role}. Supported roles: "standard", "ensemble"')
+            raise ValueError(
+                f'Unknown model role: {model_role}. Supported roles: "standard", "ensemble"'
+            )
 
     def setup_trainer(self) -> L.Trainer:
         """Setup Lightning trainer with callbacks and loggers."""
@@ -376,7 +378,9 @@ class ModelTrainer:
         elif model_role == 'ensemble':
             self.config.model_config['role'] = 'ensemble'
         else:
-            raise ValueError(f'Unknown model role: {model_role}. Supported roles: "standard", "ensemble"')
+            raise ValueError(
+                f'Unknown model role: {model_role}. Supported roles: "standard", "ensemble"'
+            )
 
         # Setup data loaders
         self.setup_data()

@@ -7,8 +7,8 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from self_interferometry.acquisition.simulations.coil_driver import CoilDriver
 from self_interferometry.acquisition.redpitaya.redpitaya_config import RedPitayaConfig
+from self_interferometry.acquisition.simulations.coil_driver import CoilDriver
 
 
 class StandardVelocityDataset(Dataset):

@@ -23,6 +23,7 @@ class TCNConfig:
     dilation_base: int  # Base for dilation
     stride: int  # Stride for all layers
 
+
 class TemporalBlock(nn.Module):
     """Single block of temporal convolutions with dilation."""
 
@@ -72,13 +73,13 @@ class TemporalBlock(nn.Module):
         elif norm == 'layer':
             self.norm = nn.LayerNorm(input_length)
         else:
-            raise ValueError(f"Unknown norm type: {norm}")
+            raise ValueError(f'Unknown norm type: {norm}')
 
         # Select activation function
         if activation in act_fn_by_name:
             self.activation_fn = act_fn_by_name[activation]
         else:
-            raise ValueError(f"Unknown activation: {activation}")
+            raise ValueError(f'Unknown activation: {activation}')
 
         self.net = nn.Sequential(
             self.norm,
