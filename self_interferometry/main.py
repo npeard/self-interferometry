@@ -5,8 +5,8 @@ from pathlib import Path
 
 import numpy as np
 import yaml
-from signal_analysis.generate_data import generate_training_data_from_rp
-from signal_analysis.training import ModelTrainer, TrainingConfig
+from analysis.generate_data import generate_training_data_from_rp
+from analysis.training import ModelTrainer, TrainingConfig
 
 
 def parse_args() -> argparse.Namespace:
@@ -16,7 +16,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--config',
         type=str,
-        default='./signal_analysis/configs/cnn-tcn-config.yaml',
+        default='./analysis/configs/cnn-tcn-config.yaml',
         help='Path to YAML config file. Required for training, optional for testing.',
     )
     parser.add_argument(
@@ -98,7 +98,7 @@ def main():
 
     # Acquire real data from Red Pitaya if requested
     if args.acquire_dataset:
-        from redpitaya.manager import RedPitayaManager
+        from acquisition.redpitaya.manager import RedPitayaManager
 
         print('\nAcquiring datasets from Red Pitaya using default connection')  # noqa: T201
         # Create Red Pitaya Manager with default connection settings

@@ -10,8 +10,8 @@ import numpy as np
 import torch
 from numpy.fft import fft, fftfreq, ifft
 
-from self_interferometry.redpitaya.calib_params import CalibrationParameters
-from self_interferometry.redpitaya.waveform import Waveform
+from .calib_params import CalibrationParameters
+from .waveform import Waveform
 
 
 class CoilDriver:

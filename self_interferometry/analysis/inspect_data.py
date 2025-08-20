@@ -7,8 +7,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from torch.utils.data import DataLoader
 
-from self_interferometry.redpitaya.redpitaya_config import RedPitayaConfig
-from self_interferometry.signal_analysis.datasets import StandardVelocityDataset
+from self_interferometry.acquisition.redpitaya.redpitaya_config import RedPitayaConfig
+from self_interferometry.analysis.datasets import StandardVelocityDataset
 
 
 def visualize_dataset(
@@ -269,7 +269,7 @@ def analyze_dataset(dataset_path: str | Path):
 
 if __name__ == '__main__':
     # Example usage
-    dataset_path = './signal_analysis/data/train-trgdel-20x.h5'
+    dataset_path = './analysis/data/train-trgdel-20x.h5'
 
     # Visualize samples from the dataset
     # visualize_dataset(dataset_path, max_samples=5)

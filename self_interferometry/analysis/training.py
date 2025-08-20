@@ -14,9 +14,9 @@ import yaml
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 
-from self_interferometry.signal_analysis.datasets import get_data_loaders
-from self_interferometry.signal_analysis.lightning_ensemble import Ensemble
-from self_interferometry.signal_analysis.lightning_standard import Standard
+from self_interferometry.analysis.datasets import get_data_loaders
+from self_interferometry.analysis.lightning_ensemble import Ensemble
+from self_interferometry.analysis.lightning_standard import Standard
 
 
 @dataclass
@@ -48,7 +48,7 @@ class TrainingConfig:
         self.training_config.setdefault('batch_size', 64)
 
         # Data defaults
-        self.data_config.setdefault('data_dir', './signal_analysis/data')
+        self.data_config.setdefault('data_dir', './analysis/data')
         self.data_config.setdefault('train_file', 'train.h5')
         self.data_config.setdefault('val_file', 'val.h5')
         self.data_config.setdefault('test_file', 'test.h5')

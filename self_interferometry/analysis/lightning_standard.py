@@ -6,10 +6,10 @@ import lightning as L
 import torch
 from torch import nn, optim
 
-from self_interferometry.redpitaya.coil_driver import CoilDriver
-from self_interferometry.redpitaya.redpitaya_config import RedPitayaConfig
-from self_interferometry.signal_analysis.barland_cnn import BarlandCNN, BarlandCNNConfig
-from self_interferometry.signal_analysis.models_tcn import TCN, TCNConfig
+from self_interferometry.acquisition.simulations.coil_driver import CoilDriver
+from self_interferometry.acquisition.redpitaya.redpitaya_config import RedPitayaConfig
+from self_interferometry.analysis.barland_cnn import BarlandCNN, BarlandCNNConfig
+from self_interferometry.analysis.models_tcn import TCN, TCNConfig
 
 
 class Standard(L.LightningModule):

@@ -7,9 +7,9 @@ import h5py
 import numpy as np
 from tqdm import tqdm
 
-from self_interferometry.redpitaya.manager import RedPitayaManager
-from self_interferometry.redpitaya.redpitaya_config import RedPitayaConfig
-from self_interferometry.signal_analysis.interferometers import (
+from self_interferometry.acquisition.redpitaya.manager import RedPitayaManager
+from self_interferometry.acquisition.redpitaya.redpitaya_config import RedPitayaConfig
+from self_interferometry.acquisition.simulations.interferometers import (
     InterferometerArray,
     MichelsonInterferometer,
 )

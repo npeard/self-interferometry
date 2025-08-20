@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from plot_waveforms import calculate_fft
 
-from self_interferometry.redpitaya.waveform import Waveform
+from self_interferometry.acquisition.simulations.waveform import Waveform
 
 
 def test_waveform_sample_spectrum_consistency():

@@ -8,7 +8,7 @@ import numpy as np
 from numpy.fft import fft, fftfreq, ifft
 from numpy.random import default_rng
 
-from self_interferometry.redpitaya.redpitaya_config import RedPitayaConfig
+from ..redpitaya.redpitaya_config import RedPitayaConfig
 
 
 class Waveform:

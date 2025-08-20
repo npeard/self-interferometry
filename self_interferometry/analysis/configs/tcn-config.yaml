@@ -25,14 +25,14 @@ training:
   use_logging: true
   wandb_project: "self-interferometry"
   experiment_name: "tcn_norm_activation_comparison"
-  checkpoint_dir: "./signal_analysis/checkpoints"
+  checkpoint_dir: "./analysis/checkpoints"
 
 loss:
   velocity_loss_weight: 1.0
   displacement_loss_weight: 0.1
 
 data:
-  data_dir: "./signal_analysis/data"
+  data_dir: "./analysis/data"
   train_file: "train-mmfiber-5000.h5"
   val_file: "val-mmfiber-500.h5"
   test_file: "test-mmfiber-500.h5"

@@ -14,13 +14,13 @@ import numpy as np
 from numpy.fft import fft
 
 # Import the scpi module directly
-from self_interferometry.redpitaya import scpi
+from . import scpi
 
 # Import our custom classes
-from self_interferometry.redpitaya.coil_driver import CoilDriver
-from self_interferometry.redpitaya.redpitaya_config import RedPitayaConfig
-from self_interferometry.redpitaya.waveform import Waveform
-from self_interferometry.signal_analysis.interferometers import MichelsonInterferometer
+from ..simulations.coil_driver import CoilDriver
+from .redpitaya_config import RedPitayaConfig
+from ..simulations.waveform import Waveform
+from ..simulations.interferometers import MichelsonInterferometer
 
 
 class RedPitayaManager:
@@ -82,7 +82,7 @@ class RedPitayaManager:
         else:
             # Default to a data directory in the project
             self.data_save_path = (
-                Path(__file__).parent.parent / 'signal_analysis' / 'data'
+                Path(__file__).parent.parent / 'analysis' / 'data'
             )
 
         # Ensure the data directory exists
