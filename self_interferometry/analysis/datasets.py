@@ -97,7 +97,7 @@ class VelocityDataset(Dataset):
         This method processes the data in chunks to avoid loading everything into
         memory simultaneously, then computes overall statistics.
         """
-        logger.info("Computing normalization statistics for photodiode channels...")
+        logger.info('Computing normalization statistics for photodiode channels...')
 
         # Initialize accumulators for each channel
         channel_sums = np.zeros(self.num_pd_channels)
@@ -114,9 +114,9 @@ class VelocityDataset(Dataset):
                 end_idx = min(start_idx + chunk_size, self.length)
 
                 # Load chunk data for all channels
-                chunk_data = np.array([
-                    dataset[start_idx:end_idx] for dataset in pd_datasets
-                ])
+                chunk_data = np.array(
+                    [dataset[start_idx:end_idx] for dataset in pd_datasets]
+                )
                 # Shape: (num_channels, chunk_samples, signal_length)
 
                 # Accumulate statistics for each channel
@@ -130,9 +130,7 @@ class VelocityDataset(Dataset):
 
         # Compute final statistics
         channel_means = channel_sums / total_points_per_channel
-        channel_vars = (
-            channel_sq_sums / total_points_per_channel - channel_means**2
-        )
+        channel_vars = channel_sq_sums / total_points_per_channel - channel_means**2
         channel_stds = np.sqrt(channel_vars)
 
         # Add small epsilon to prevent division by zero
@@ -144,8 +142,8 @@ class VelocityDataset(Dataset):
         self.pd_stds = channel_stds.reshape(-1, 1)
 
         logger.info(
-            f"Normalization stats computed - "
-            f"Means: {channel_means}, Stds: {channel_stds}"
+            f'Normalization stats computed - '
+            f'Means: {channel_means}, Stds: {channel_stds}'
         )
 
     def open_hdf5(self):
@@ -213,8 +211,11 @@ class VelocityDataset(Dataset):
         signals = (signals - self.pd_means) / self.pd_stds
 
         # Apply channel dropout during training if probability > 0 and multiple channels
-        if (self.channel_dropout > 0 and self.num_pd_channels > 1 and
-                np.random.random() < self.channel_dropout):
+        if (
+            self.channel_dropout > 0
+            and self.num_pd_channels > 1
+            and np.random.random() < self.channel_dropout
+        ):
             # Randomly select a channel to drop
             channel_to_drop = np.random.randint(0, self.num_pd_channels)
             # Set the selected channel to zeros

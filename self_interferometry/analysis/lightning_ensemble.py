@@ -6,13 +6,13 @@ import torch
 from torch import nn
 
 from self_interferometry.analysis.barland_cnn import BarlandCNN, BarlandCNNConfig
-from self_interferometry.analysis.lightning_standard import Standard
+from self_interferometry.analysis.lightning_standard import Fusion
 from self_interferometry.analysis.models_tcn import TCN, TCNConfig
 
 logger = logging.getLogger(__name__)
 
 
-class Ensemble(Standard):
+class Ensemble(Fusion):
     """Lightning module that uses an ensemble of single-channel models.
 
     This module creates multiple single-channel models (one for each input channel)
@@ -71,9 +71,9 @@ class Ensemble(Standard):
             # Create the appropriate model type
             model_type = single_channel_hparams['type']
 
-            if model_type == 'CNN':
-                logger.debug('Creating CNN model...')
-                config = self._create_cnn_config_single_channel()
+            if model_type == 'Barland':
+                logger.debug('Creating BarlandCNN model...')
+                config = self._create_barland_config_single_channel()
                 models.append(BarlandCNN(config))
             elif model_type == 'TCN':
                 logger.debug('Creating TCN model...')
@@ -86,8 +86,8 @@ class Ensemble(Standard):
 
         return nn.ModuleList(models)
 
-    def _create_cnn_config_single_channel(self) -> BarlandCNNConfig:
-        """Create CNNConfig for a single-channel model."""
+    def _create_barland_config_single_channel(self) -> BarlandCNNConfig:
+        """Create BarlandCNNConfig for a single-channel model."""
         return BarlandCNNConfig(
             # Common parameters
             input_size=self.model_hparams['input_size'],

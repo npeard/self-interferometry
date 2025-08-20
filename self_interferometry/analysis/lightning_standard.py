@@ -15,8 +15,14 @@ from self_interferometry.analysis.models_tcn import TCN, TCNConfig
 logger = logging.getLogger(__name__)
 
 
-class Standard(L.LightningModule):
-    """Base Lightning Module for all models."""
+class Fusion(L.LightningModule):
+    """Lightning Module for fusing multiple sensor channels into velocity predictions.
+
+    This module differs from the Ensemble module by fusing sensor channels at the
+    feature level within a single model (CNN or TCN), rather than combining separate
+    models. It supports both static and dynamic loss weighting between velocity and
+    displacement loss terms for improved training stability.
+    """
 
     def __init__(
         self,
@@ -38,6 +44,19 @@ class Standard(L.LightningModule):
         self.loss_hparams = loss_hparams
         self.save_hyperparameters(ignore=['model'])
         self.model = self.create_model()
+
+        # Initialize dynamic loss weights if enabled
+        if 'dynamic' not in self.loss_hparams:
+            raise KeyError("'dynamic' key must be specified in loss_hparams config")
+        self.dynamic_weighting = self.loss_hparams['dynamic']
+
+        if self.dynamic_weighting:
+            # Initialize learnable weight parameters for homoscedastic uncertainty
+            # Start with reasonable initial values (e.g., 1.0)
+            self.log_weight_velocity = nn.Parameter(torch.tensor(0.0))  # log(1.0) = 0.0
+            self.log_weight_displacement = nn.Parameter(
+                torch.tensor(0.0)
+            )  # log(1.0) = 0.0
 
         torch.set_float32_matmul_precision('high')
 
@@ -80,11 +99,11 @@ class Standard(L.LightningModule):
         if self.model_hparams == 'ensemble':
             # This indicates that we are creating an ensemble of models
             # and no model will be created at this point.
-            # See Ensemble(Standard) class for more.
+            # See Ensemble(Fusion) class for more.
             return None
         model_type = self.model_hparams.get('type')
-        if model_type == 'CNN':
-            logger.debug('Creating CNN model...')
+        if model_type == 'Barland':
+            logger.debug('Creating BarlandCNN model...')
             self.model_config = self._create_barland_config()
             return BarlandCNN(self.model_config)
         elif model_type == 'TCN':
@@ -261,10 +280,27 @@ class Standard(L.LightningModule):
         }
 
         # Add a total loss entry with loss components weighted by loss weights
-        loss_dict['total'] = (
-            self.loss_hparams['velocity_loss_weight'] * velocity_loss
-            + self.loss_hparams['displacement_loss_weight'] * displacement_loss
-        )
+        if self.dynamic_weighting:
+            # Dynamic weighting using learnable parameters for homoscedastic uncertainty
+            # Formula: 1/weight**2 * loss + log(weight) for each term
+            weight_velocity = torch.exp(self.log_weight_velocity)
+            weight_displacement = torch.exp(self.log_weight_displacement)
+
+            loss_dict['total'] = (
+                (1.0 / weight_velocity**2) * velocity_loss
+                + (1.0 / weight_displacement**2) * displacement_loss
+                + torch.log(weight_velocity * weight_displacement)
+            )
+
+            # Add weight values to loss dict for logging
+            loss_dict['weight_velocity'] = weight_velocity
+            loss_dict['weight_displacement'] = weight_displacement
+        else:
+            # Static weighting using fixed hyperparameters
+            loss_dict['total'] = (
+                self.loss_hparams['velocity_loss_weight'] * velocity_loss
+                + self.loss_hparams['displacement_loss_weight'] * displacement_loss
+            )
 
         return loss_dict
 
@@ -282,7 +318,7 @@ class Standard(L.LightningModule):
             Total loss value for backpropagation
         """
         signals, velocity_target, _ = (
-            batch  # Ignore displacement_target for Standard model
+            batch  # Ignore displacement_target for Fusion model
         )
         velocity_hat = self(signals)
 
@@ -326,7 +362,7 @@ class Standard(L.LightningModule):
             batch_idx: Index of current batch
         """
         signals, velocity_target, _ = (
-            batch  # Ignore displacement_target for Standard model
+            batch  # Ignore displacement_target for Fusion model
         )
         velocity_hat = self(signals)
 
@@ -370,7 +406,7 @@ class Standard(L.LightningModule):
             batch_idx: Index of current batch
         """
         signals, velocity_target, _ = (
-            batch  # Ignore displacement_target for Standard model
+            batch  # Ignore displacement_target for Fusion model
         )
         velocity_hat = self(signals)
 

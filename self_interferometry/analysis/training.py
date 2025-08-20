@@ -17,7 +17,7 @@ from lightning.pytorch.loggers import WandbLogger
 
 from self_interferometry.analysis.datasets import get_data_loaders
 from self_interferometry.analysis.lightning_ensemble import Ensemble
-from self_interferometry.analysis.lightning_standard import Standard
+from self_interferometry.analysis.lightning_standard import Fusion
 
 logger = logging.getLogger(__name__)
 
@@ -282,7 +282,7 @@ class ModelTrainer:
         }
 
         if model_role == 'standard':
-            return Standard(
+            return Fusion(
                 model_hparams=self.config.model_config,
                 optimizer_hparams=optimizer_hparams,
                 scheduler_hparams=scheduler_hparams,
