@@ -1,19 +1,9 @@
 #!/usr/bin/env python
 
 import logging
-from datetime import datetime
 from pathlib import Path
 
-import h5py
-import numpy as np
-from tqdm import tqdm
-
 from self_interferometry.acquisition.redpitaya.manager import RedPitayaManager
-from self_interferometry.acquisition.redpitaya.redpitaya_config import RedPitayaConfig
-from self_interferometry.acquisition.simulations.interferometers import (
-    InterferometerArray,
-    MichelsonInterferometer,
-)
 
 logger = logging.getLogger(__name__)
 

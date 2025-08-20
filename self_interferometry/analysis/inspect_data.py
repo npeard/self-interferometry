@@ -9,7 +9,7 @@ import numpy as np
 from torch.utils.data import DataLoader
 
 from self_interferometry.acquisition.redpitaya.redpitaya_config import RedPitayaConfig
-from self_interferometry.analysis.datasets import StandardVelocityDataset
+from self_interferometry.analysis.datasets import VelocityDataset
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 def visualize_dataset(
     dataset_path: str | Path, max_samples: int = 10, batch_size: int = 1
 ):
-    """Visualize samples from a dataset using StandardVelocityDataset.
+    """Visualize samples from a dataset using VelocityDataset.
 
     Creates plots similar to the training.py visualization but without model predictions.
     Each plot includes:
@@ -46,7 +46,7 @@ def visualize_dataset(
         logger.info(f'Available channels: {list(f.keys())}')
 
     # Create dataset and dataloader
-    dataset = StandardVelocityDataset(dataset_path)
+    dataset = VelocityDataset(dataset_path)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     # Get samples from dataloader
