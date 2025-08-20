@@ -24,6 +24,7 @@ training:
   checkpoint_dir: "./analysis/checkpoints"
 
 loss:
+  dynamic: true # enable dynamic loss weighting, overrides weights below
   velocity_loss_weight: 1.0
   displacement_loss_weight: 0.1
 
