@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import contextlib
+import logging
 import random
 from dataclasses import dataclass
 from itertools import product
@@ -17,6 +18,8 @@ from lightning.pytorch.loggers import WandbLogger
 from self_interferometry.analysis.datasets import get_data_loaders
 from self_interferometry.analysis.lightning_ensemble import Ensemble
 from self_interferometry.analysis.lightning_standard import Standard
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -35,10 +38,10 @@ class TrainingConfig:
         need all config variables.
         """
         if self.model_config == {}:
-            print('TrainingConfig in checkpoint mode...')  # noqa: T201
+            logger.debug('TrainingConfig in checkpoint mode...')
             self._set_checkpoint_defaults()
         else:
-            print('TrainingConfig in training mode...')  # noqa: T201
+            logger.debug('TrainingConfig in training mode...')
 
     def _set_checkpoint_defaults(self):
         """Set default values for running checkpoints. Check points do not
@@ -196,17 +199,19 @@ class ModelTrainer:
             self.trainer = self.setup_trainer()
 
         # Check what version of PyTorch is installed
-        print(torch.__version__)  # noqa: T201
+        logger.info(f'PyTorch version: {torch.__version__}')
 
         # Check the current CUDA version being used
-        print('CUDA Version: ', torch.version.cuda)  # noqa: T201
+        logger.info(f'CUDA version: {torch.version.cuda}')
 
         if torch.version.cuda is not None:
             # Check if CUDA is available and if so, print the device name
-            print('Device name:', torch.cuda.get_device_properties('cuda').name)  # noqa: T201
+            logger.info(f'Device name: {torch.cuda.get_device_properties("cuda").name}')
 
             # Check if FlashAttention is available
-            print('FlashAttention available:', torch.backends.cuda.flash_sdp_enabled())  # noqa: T201
+            logger.info(
+                f'FlashAttention available: {torch.backends.cuda.flash_sdp_enabled()}'
+            )
 
     def setup_data(self):
         """Setup data loaders."""
@@ -402,11 +407,11 @@ class ModelTrainer:
         )  # Target displacement
         signals = predictions[batch_idx][4].cpu().numpy()  # Input signals
 
-        print(f'Signals shape: {signals.shape}')
-        print(f'Velocity hat shape: {velocity_hat.shape}')
-        print(f'Velocity target shape: {velocity_target.shape}')
-        print(f'Displacement hat shape: {displacement_hat.shape}')
-        print(f'Displacement target shape: {displacement_target.shape}')
+        logger.debug(f'Signals shape: {signals.shape}')
+        logger.debug(f'Velocity hat shape: {velocity_hat.shape}')
+        logger.debug(f'Velocity target shape: {velocity_target.shape}')
+        logger.debug(f'Displacement hat shape: {displacement_hat.shape}')
+        logger.debug(f'Displacement target shape: {displacement_target.shape}')
 
         # Get the number of samples in the batch and number of PD channels
         batch_size, num_channels, signal_length = signals.shape

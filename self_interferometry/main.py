@@ -1,4 +1,5 @@
 import argparse
+import logging
 import random
 import time
 from pathlib import Path
@@ -7,6 +8,24 @@ import numpy as np
 import yaml
 from analysis.generate_data import generate_training_data_from_rp
 from analysis.training import ModelTrainer, TrainingConfig
+
+
+def setup_logging(verbosity: str) -> None:
+    """Setup logging configuration based on verbosity level."""
+    level_map = {
+        'DEBUG': logging.DEBUG,
+        'INFO': logging.INFO,
+        'WARNING': logging.WARNING,
+        'ERROR': logging.ERROR,
+    }
+
+    level = level_map.get(verbosity.upper(), logging.INFO)
+
+    logging.basicConfig(
+        level=level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -29,6 +48,13 @@ def parse_args() -> argparse.Namespace:
         action='store_true',
         help='Acquire real data from Red Pitaya for training, validation, and test '
         'datasets',
+    )
+    parser.add_argument(
+        '--verbosity',
+        type=str,
+        default='INFO',
+        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+        help='Set the logging verbosity level (default: INFO)',
     )
     # IP address is now handled by RedPitayaManager defaults
     return parser.parse_args()
@@ -59,10 +85,14 @@ def setup_random_seed(seed: int | None = None) -> int:
 def main():
     args = parse_args()
 
+    # Setup logging based on verbosity argument
+    setup_logging(args.verbosity)
+    logger = logging.getLogger(__name__)
+
     # For testing mode (checkpoint provided), config is not necessary
     if args.checkpoint:
-        print('Loading from checkpoint for quick plotting...')  # noqa: T201
-        print(args.checkpoint)  # noqa: T201
+        logger.info('Loading from checkpoint for quick plotting...')
+        logger.info(f'Checkpoint path: {args.checkpoint}')
         model_trainer = ModelTrainer(
             TrainingConfig({}, {}, {}, {}), experiment_name='checkpoint_eval'
         )
@@ -77,6 +107,7 @@ def main():
 
     # Set random seed from time
     seed = setup_random_seed(int(time.time()))
+    logger.info(f'Using random seed: {seed}')
 
     # Convert single config to list for unified processing
     configs = config if isinstance(config, list) else [config]
@@ -100,7 +131,7 @@ def main():
     if args.acquire_dataset:
         from acquisition.redpitaya.manager import RedPitayaManager
 
-        print('\nAcquiring datasets from Red Pitaya using default connection')  # noqa: T201
+        logger.info('Acquiring datasets from Red Pitaya using default connection')
         # Create Red Pitaya Manager with default connection settings
         rp_manager = RedPitayaManager(
             ['rp-f0c04a.local', 'rp-f0c026.local'],
@@ -111,7 +142,7 @@ def main():
         # Configure the Red Pitaya for acquisition
         try:
             # Configure the Red Pitaya for acquisition
-            print('Configuring Red Pitaya for data acquisition...')  # noqa: T201
+            logger.info('Configuring Red Pitaya for data acquisition...')
             rp_manager.reset_all()
 
             # Extract dataset parameters
@@ -128,14 +159,14 @@ def main():
                 val_samples=val_samples,
                 test_samples=test_samples,
             )
-            print('Dataset acquisition complete!\n')  # noqa: T201
+            logger.info('Dataset acquisition complete!')
         finally:
             # Ensure we close the connection to the Red Pitaya
             rp_manager.close_all()
 
     # Train with each configuration
     for idx, train_config in enumerate(configs):
-        print(f'\nStarting training run {idx + 1}/{len(configs)}')  # noqa: T201
+        logger.info(f'Starting training run {idx + 1}/{len(configs)}')
         # Create trainer
         trainer = ModelTrainer(
             config=train_config,

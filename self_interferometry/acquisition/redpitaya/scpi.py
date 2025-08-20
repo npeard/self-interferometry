@@ -1,9 +1,12 @@
 """SCPI access to Red Pitaya."""
 
+import logging
 import socket
 import struct
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 __author__ = 'Luka Golinar, Iztok Jeras, Miha Gjura'
 __copyright__ = 'Copyright 2023, Red Pitaya'
@@ -31,7 +34,7 @@ class scpi:
             self._socket.connect((host, port))
 
         except OSError as e:
-            print(f'SCPI >> connect({host!s:s}:{port:d}) failed: {e!s:s}')  # noqa: T201
+            logger.error(f'SCPI >> connect({host!s:s}:{port:d}) failed: {e!s:s}')
 
     def __del__(self):
         if self._socket is not None:
@@ -113,7 +116,7 @@ class scpi:
                 err = self.err_n()
                 if err.startswith('0,'):
                     break
-                print(err)
+                logger.error(err)
                 n = err.split(',')
                 if len(n) > 0 and stop and int(n[0]) > 9500:
                     exit(1)
@@ -624,21 +627,20 @@ class scpi:
 
             settings.append(self.txrx_txt('ACQ:TRIG:EXT:LEV?'))
 
-        print(f'Decimation: {settings[0]}')  # noqa: T201
-        print(f'Averaging: {settings[1]}')  # noqa: T201
-        print(f'Trigger delay (samples): {settings[2]}')  # noqa: T201
-        print(f'Trigger delay (ns): {settings[3]}')  # noqa: T201
-        print(f'Trigger level (V): {settings[4]}')  # noqa: T201
-        print(f'Buffer size: {settings[5]}')  # noqa: T201
+        logger.info(f'Decimation: {settings[0]}')
+        logger.info(f'Averaging: {settings[1]}')
+        logger.info(f'Trigger delay (samples): {settings[2]}')
+        logger.info(f'Trigger delay (ns): {settings[3]}')
+        logger.info(f'Trigger level (V): {settings[4]}')
+        logger.info(f'Buffer size: {settings[5]}')
 
-        print(  # noqa: T201
-            f'Gain CH1/CH2/CH3/CH4: {settings[6]}, {settings[7]}, \
-            {settings[8]}, {settings[9]}'
+        logger.info(
+            f'Gain CH1/CH2/CH3/CH4: {settings[6]}, {settings[7]}, {settings[8]}, {settings[9]}'
         )
 
         if siglab:
-            print(f'Coupling CH1/CH2: {settings[8]}, {settings[9]}')  # noqa: T201
-            print(f'External trigger level (V): {settings[10]}')  # noqa: T201
+            logger.info(f'Coupling CH1/CH2: {settings[8]}, {settings[9]}')
+            logger.info(f'External trigger level (V): {settings[10]}')
 
         return settings
 
@@ -881,7 +883,7 @@ class scpi:
         self.tx_txt(f'UART:TIMEOUT {timeout}')
 
         self.tx_txt('UART:SETUP')
-        print('UART is configured')
+        logger.info('UART is configured')
 
     def uart_get_settings(self) -> list[str]:
         """Retrieves the settings from Red Pitaya, prints them in console and returns
@@ -905,11 +907,11 @@ class scpi:
         settings.append(self.txrx_txt('UART:PARITY?'))
         settings.append(self.txrx_txt('UART:TIMEOUT?'))
 
-        print(f'Baudrate/Speed: {settings[0]}')  # noqa: T201
-        print(f'Databits: {settings[1]}')  # noqa: T201
-        print(f'Stopbits: {settings[2]}')  # noqa: T201
-        print(f'Parity: {settings[3]}')  # noqa: T201
-        print(f'Timeout (0.1 sec): {settings[4]}')  # noqa: T201
+        logger.info(f'Baudrate/Speed: {settings[0]}')
+        logger.info(f'Databits: {settings[1]}')
+        logger.info(f'Stopbits: {settings[2]}')
+        logger.info(f'Parity: {settings[3]}')
+        logger.info(f'Timeout (0.1 sec): {settings[4]}')
 
         return settings
 
@@ -928,7 +930,7 @@ class scpi:
         arr = ',#H'.join(format(x, 'X') for x in bytearray(string, f'{code}'))
         self.tx_txt(f'UART:WRITE{len(string)} #H{arr}')
 
-        print('String sent')  # noqa: T201
+        logger.info('String sent')
 
     def uart_read_string(self, length: int) -> str:
         """Reads a string of data from UART and decodes it from ASCII to string.
@@ -1019,7 +1021,7 @@ class scpi:
         self.tx_txt(f'SPI:SET:WORD {word_len}')
 
         self.tx_txt('SPI:SET:SET')
-        print('SPI is configured')  # noqa: T201
+        logger.info('SPI is configured')
 
     def spi_get_settings(self) -> list[str]:
         """Retrieves the SPI settings from Red Pitaya, prints them in console and
@@ -1037,11 +1039,11 @@ class scpi:
         settings.append(self.txrx_txt('SPI:SET:WORD?'))
         settings.append(self.txrx_txt('SPI:MSG:SIZE?'))
 
-        print(f'SPI mode: {settings[0]}')  # noqa: T201
-        print(f'CS mode: {settings[1]}')  # noqa: T201
-        print(f'Speed: {settings[2]}')  # noqa: T201
-        print(f'Word length: {settings[3]}')  # noqa: T201
-        print(f'Message queue length: {settings[4]}')  # noqa: T201
+        logger.info(f'SPI mode: {settings[0]}')
+        logger.info(f'CS mode: {settings[1]}')
+        logger.info(f'Speed: {settings[2]}')
+        logger.info(f'Word length: {settings[3]}')
+        logger.info(f'Message queue length: {settings[4]}')
 
         return settings
 

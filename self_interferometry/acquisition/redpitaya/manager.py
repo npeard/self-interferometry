@@ -5,6 +5,7 @@ waveform generation, and device management for Red Pitaya devices.
 """
 
 import contextlib
+import logging
 import time
 from datetime import datetime
 from pathlib import Path
@@ -21,6 +22,8 @@ from ..simulations.waveform import Waveform
 # Import the scpi module directly
 from . import scpi
 from .redpitaya_config import RedPitayaConfig
+
+logger = logging.getLogger(__name__)
 
 
 class RedPitayaManager:
@@ -67,14 +70,14 @@ class RedPitayaManager:
                 device = scpi.scpi(ip)
                 self.devices.append(device)
                 self.device_names.append(f'RP{i + 1}')
-                print(f'Connected to {ip} as {self.device_names[-1]}')  # noqa: T201
+                logger.info(f'Connected to {ip} as {self.device_names[-1]}')
 
                 # Blink LED 0 if requested for connectivity confirmation
                 if blink_on_connect:
                     self.blink_led(device_idx=i, led_num=0, num_blinks=3, period=0.5)
 
             except Exception as e:
-                print(f'Failed to connect to {ip}: {e}')  # noqa: T201
+                logger.error(f'Failed to connect to {ip}: {e}')
 
         # Set data save path
         if data_save_path:
@@ -174,12 +177,12 @@ class RedPitayaManager:
         primary.tx_txt('DAISY:TRIG_O:SOUR ADC')
         primary.tx_txt('DIG:PIN LED5,1')  # LED Indicator
 
-        print(
+        logger.info(
             f'Primary device ({self.device_names[primary_idx]}) daisy chain configured:'
         )
-        print(f'  Trig: {primary.txrx_txt("DAISY:SYNC:TRig?")}')  # noqa: T201
-        print(f'  CLK: {primary.txrx_txt("DAISY:SYNC:CLK?")}')  # noqa: T201
-        print(f'  Sour: {primary.txrx_txt("DAISY:TRIG_O:SOUR?")}')  # noqa: T201
+        logger.debug(f'  Trig: {primary.txrx_txt("DAISY:SYNC:TRig?")}')
+        logger.debug(f'  CLK: {primary.txrx_txt("DAISY:SYNC:CLK?")}')
+        logger.debug(f'  Sour: {primary.txrx_txt("DAISY:TRIG_O:SOUR?")}')
 
         # Configure secondary units
         for idx in secondary_indices:
@@ -189,7 +192,9 @@ class RedPitayaManager:
             secondary.tx_txt('DAISY:TRIG_O:SOUR ADC')
             secondary.tx_txt('DIG:PIN LED5,1')  # LED Indicator
 
-            print(f'Secondary device ({self.device_names[idx]}) daisy chain configured')  # noqa: T201
+            logger.info(
+                f'Secondary device ({self.device_names[idx]}) daisy chain configured'
+            )
 
     def configure_generation(
         self,
@@ -292,9 +297,8 @@ class RedPitayaManager:
                 period=self.settings['burst_period'],
             )
 
-        print(
-            f'Generation configured on {self.device_names[device_idx]}, '
-            f'channel {channel}'
+        logger.info(
+            f'Generation configured on {self.device_names[device_idx]}, channel {channel}'
         )
 
     def enable_output(self, device_idx: int = 0, channel: int = 1, enable: bool = True):
@@ -312,12 +316,12 @@ class RedPitayaManager:
 
         if enable:
             device.tx_txt(f'OUTPUT{channel}:STATE ON')
-            print(  # noqa: T201
+            logger.info(
                 f'Output enabled on {self.device_names[device_idx]}, channel {channel}'
             )
         else:
             device.tx_txt(f'OUTPUT{channel}:STATE OFF')
-            print(  # noqa: T201
+            logger.info(
                 f'Output disabled on {self.device_names[device_idx]}, channel {channel}'
             )
 
@@ -333,9 +337,8 @@ class RedPitayaManager:
 
         device = self.devices[device_idx]
         device.tx_txt(f'SOUR{channel}:TRig:INT')
-        print(
-            f'Generation triggered on {self.device_names[device_idx]}, '
-            f'channel {channel}'
+        logger.info(
+            f'Generation triggered on {self.device_names[device_idx]}, channel {channel}'
         )
 
     def configure_acquisition(
@@ -360,7 +363,7 @@ class RedPitayaManager:
             device.acq_set(
                 dec=self.settings['acq_dec'], trig_delay=self.settings['trigger_delay']
             )
-            print(f'Acquisition configured on {device_name}')  # noqa: T201
+            logger.info(f'Acquisition configured on {device_name}')
 
     def start_acquisition(self, device_idx: int = 0):
         """Start acquisition on all devices.
@@ -392,13 +395,13 @@ class RedPitayaManager:
             device.tx_txt('ACQ:START')
             time.sleep(0.2)
             device.tx_txt('ACQ:TRig EXT_NE')
-            print(f'Acquisition started on {name} with trigger EXT_NE')  # noqa: T201
+            logger.info(f'Acquisition started on {name} with trigger EXT_NE')
 
         # Start acquisition on primary device
         primary_device.tx_txt('ACQ:START')
         time.sleep(0.2)
         primary_device.tx_txt('ACQ:TRig CH1_PE')
-        print(f'Acquisition started on {primary_name} with trigger CH1_PE')  # noqa: T201
+        logger.info(f'Acquisition started on {primary_name} with trigger CH1_PE')
 
         # Store the primary device index for later use
         self._primary_device_idx = device_idx
@@ -429,14 +432,14 @@ class RedPitayaManager:
                 secondary_names.append(self.device_names[i])
 
         # Wait for primary device trigger with timeout
-        print(f'Waiting for {primary_name} trigger (timeout: {timeout}s)...')  # noqa: T201
+        logger.info(f'Waiting for {primary_name} trigger (timeout: {timeout}s)...')
         start_time = time.time()
         triggered = False
 
         while time.time() - start_time < timeout:
             primary_device.tx_txt('ACQ:TRig:STAT?')
             status = primary_device.rx_txt()
-            print(f'Trigger status: {status}')  # noqa: T201
+            logger.info(f'Trigger status: {status}')
 
             if status == 'TD':  # Triggered
                 triggered = True
@@ -444,22 +447,24 @@ class RedPitayaManager:
             time.sleep(0.5)  # Check every half second
 
         if not triggered:
-            print(f'Timeout waiting for {primary_name} trigger')  # noqa: T201
+            logger.warning(f'Timeout waiting for {primary_name} trigger')
             # Try to recover by forcing a trigger
             primary_device.tx_txt('ACQ:TRig NOW')
             time.sleep(1)
         else:
-            print(f'Trigger detected on {primary_name}')  # noqa: T201
+            logger.info(f'Trigger detected on {primary_name}')
 
         # Wait for primary device buffer fill with timeout
-        print(f'Waiting for {primary_name} buffer to fill (timeout: {timeout}s)...')  # noqa: T201
+        logger.info(
+            f'Waiting for {primary_name} buffer to fill (timeout: {timeout}s)...'
+        )
         start_time = time.time()
         filled = False
 
         while time.time() - start_time < timeout:
             primary_device.tx_txt('ACQ:TRig:FILL?')
             fill_status = primary_device.rx_txt()
-            print(f'Fill status: {fill_status}')  # noqa: T201
+            logger.debug(f'Fill status: {fill_status}')
 
             if fill_status == '1':  # Buffer filled
                 filled = True
@@ -467,21 +472,21 @@ class RedPitayaManager:
             time.sleep(0.5)  # Check every half second
 
         if not filled:
-            print(f'Timeout waiting for {primary_name} buffer to fill')  # noqa: T201
+            logger.warning(f'Timeout waiting for {primary_name} buffer to fill')
         else:
-            print(f'Buffer filled on {primary_name}')  # noqa: T201
+            logger.info(f'Buffer filled on {primary_name}')
 
         # Wait for secondary devices with timeout
         for device, name in zip(secondary_devices, secondary_names, strict=False):
             # Wait for trigger
-            print(f'Waiting for {name} trigger (timeout: {timeout}s)...')  # noqa: T201
+            logger.info(f'Waiting for {name} trigger (timeout: {timeout}s)...')
             start_time = time.time()
             triggered = False
 
             while time.time() - start_time < timeout:
                 device.tx_txt('ACQ:TRig:STAT?')
                 status = device.rx_txt()
-                print(f'Trigger status: {status}')  # noqa: T201
+                logger.info(f'Trigger status: {status}')
 
                 if status == 'TD':  # Triggered
                     triggered = True
@@ -489,22 +494,22 @@ class RedPitayaManager:
                 time.sleep(0.5)  # Check every half second
 
             if not triggered:
-                print(f'Timeout waiting for {name} trigger')  # noqa: T201
+                logger.warning(f'Timeout waiting for {name} trigger')
                 # Try to recover by forcing a trigger
                 device.tx_txt('ACQ:TRig NOW')
                 time.sleep(1)
             else:
-                print(f'Trigger detected on {name}')  # noqa: T201
+                logger.info(f'Trigger detected on {name}')
 
             # Wait for buffer fill
-            print(f'Waiting for {name} buffer to fill (timeout: {timeout}s)...')  # noqa: T201
+            logger.info(f'Waiting for {name} buffer to fill (timeout: {timeout}s)...')
             start_time = time.time()
             filled = False
 
             while time.time() - start_time < timeout:
                 device.tx_txt('ACQ:TRig:FILL?')
                 fill_status = device.rx_txt()
-                print(f'Fill status: {fill_status}')  # noqa: T201
+                logger.debug(f'Fill status: {fill_status}')
 
                 if fill_status == '1':  # Buffer filled
                     filled = True
@@ -512,9 +517,9 @@ class RedPitayaManager:
                 time.sleep(0.5)  # Check every half second
 
             if not filled:
-                print(f'Timeout waiting for {name} buffer to fill')  # noqa: T201
+                logger.warning(f'Timeout waiting for {name} buffer to fill')
             else:
-                print(f'Buffer filled on {name}')  # noqa: T201
+                logger.info(f'Buffer filled on {name}')
 
         # Get data from all devices
         data = {}
@@ -528,15 +533,15 @@ class RedPitayaManager:
                             primary_device.acq_data(chan=chan, convert=True)
                         )
                         data[f'{primary_name}_CH{chan}'] = channel_data
-                        print(  # noqa: T201
+                        logger.info(
                             f'Successfully acquired data from {primary_name} Channel {chan}'
                         )
                     except Exception as e:
-                        print(  # noqa: T201
+                        logger.error(
                             f'Error acquiring data from {primary_name}, channel {chan}: {e}'
                         )
         except Exception as e:
-            print(f'Error during data acquisition from primary device: {e}')  # noqa: T201
+            logger.error(f'Error during data acquisition from primary device: {e}')
 
         # Get data from secondary devices
         for device, name in zip(secondary_devices, secondary_names, strict=False):
@@ -548,15 +553,15 @@ class RedPitayaManager:
                                 device.acq_data(chan=chan, convert=True)
                             )
                             data[f'{name}_CH{chan}'] = channel_data
-                            print(  # noqa: T201
+                            logger.info(
                                 f'Successfully acquired data from {name} Channel {chan}'
                             )
                         except Exception as e:
-                            print(  # noqa: T201
+                            logger.error(
                                 f'Error acquiring data from {name}, channel {chan}: {e}'
                             )
             except Exception as e:
-                print(f'Error during data acquisition from {name}: {e}')  # noqa: T201
+                logger.error(f'Error during data acquisition from {name}: {e}')
 
         return data
 
@@ -700,7 +705,7 @@ class RedPitayaManager:
                     channel_keys.append(key)
 
             if not channel_keys:
-                print('Warning: No Red Pitaya channel data found in acquisition')  # noqa: T201
+                logger.warning('No Red Pitaya channel data found in acquisition')
                 return str(file_path)
 
             # Get current dataset size if file exists
@@ -752,7 +757,7 @@ class RedPitayaManager:
             # Update the number of samples attribute
             f.attrs['num_samples'] = current_size + 1
 
-        print(f'Data saved to {file_path}')  # noqa: T201
+        logger.info(f'Data saved to {file_path}')
         return str(file_path)
 
     def setup_plot(self):
@@ -1108,7 +1113,7 @@ class RedPitayaManager:
             else:
                 plt.pause(0.01)  # Small pause to update plot
         except Exception as e:
-            print(f'Error in show_plot: {e}')  # noqa: T201
+            logger.error(f'Error in show_plot: {e}')
 
     def setup_histograms(self):
         """Set up the histogram and spectrum plots for signal visualization."""
@@ -1503,7 +1508,7 @@ class RedPitayaManager:
             else:
                 plt.pause(0.1)  # Increase pause time to ensure plot updates
         except Exception as e:
-            print(f'Error in show_histograms: {e}')  # noqa: T201
+            logger.error(f'Error in show_histograms: {e}')
 
     def run_one_shot(
         self,
@@ -1524,7 +1529,7 @@ class RedPitayaManager:
             Dictionary of acquired data
         """
         # Configure all devices
-        print(f'Configuring {len(self.devices)} device(s)...')  # noqa: T201
+        logger.info(f'Configuring {len(self.devices)} device(s)...')
 
         # Configure generation on the primary device
         self.configure_generation(device_idx=device_idx)
@@ -1541,7 +1546,7 @@ class RedPitayaManager:
         # Trigger generation on the primary device
         self.trigger_generation(device_idx=device_idx)
 
-        print('ACQ start')  # noqa: T201
+        logger.info('ACQ start')
 
         # Get the data
         data = self.get_acquisition_data(timeout=timeout)
@@ -1586,10 +1591,10 @@ class RedPitayaManager:
                 data['Displacement_FFT'] = disp_fft  # Displacement spectrum
                 data['Frequencies'] = freqs  # Frequency array
             except Exception as e:
-                print(f'Error processing data: {e}')  # noqa: T201
+                logger.error(f'Error processing data: {e}')
         else:
-            print(  # noqa: T201
-                f'Warning: No speaker data found for {self.device_names[device_idx]}_CH1'
+            logger.warning(
+                f'No speaker data found for {self.device_names[device_idx]}_CH1'
             )
 
         # Data is saved at the run_multiple_shots level if needed
@@ -1624,7 +1629,7 @@ class RedPitayaManager:
                         plt.draw()
                     plt.pause(0.01)  # Small pause to update both plots
             except Exception as e:
-                print(f'Error updating plots: {e}')  # noqa: T201
+                logger.error(f'Error updating plots: {e}')
 
         return data
 
@@ -1654,11 +1659,11 @@ class RedPitayaManager:
         Returns:
             List of dictionaries of acquired data
         """
-        print(f'Starting {num_shots} acquisition cycles')  # noqa: T201
+        logger.info(f'Starting {num_shots} acquisition cycles')
         start_time = datetime.now()
-        print(f'Start time: {start_time.strftime("%H:%M:%S.%f")}')  # noqa: T201
+        logger.info(f'Start time: {start_time.strftime("%H:%M:%S.%f")}')
 
-        print(f'delay_between_shots: {delay_between_shots}')
+        logger.info(f'delay_between_shots: {delay_between_shots}')
 
         all_data = []
 
@@ -1682,7 +1687,7 @@ class RedPitayaManager:
 
         try:
             for i in range(num_shots):
-                print(  # noqa: T201
+                logger.info(
                     f'Shot {i}/{num_shots} at {datetime.now().strftime("%H:%M:%S.%f")}'
                 )
 
@@ -1704,7 +1709,7 @@ class RedPitayaManager:
                         try:
                             self.save_data(shot_data, hdf5_file)
                         except Exception as e:
-                            print(f'Error saving data to HDF5 file: {e}')  # noqa: T201
+                            logger.error(f'Error saving data to HDF5 file: {e}')
 
                     all_data.append(shot_data)
 
@@ -1713,12 +1718,12 @@ class RedPitayaManager:
                         time.sleep(delay_between_shots)
 
                 except Exception as e:
-                    print(f'Error in shot {i}: {e}')  # noqa: T201
+                    logger.error(f'Error in shot {i}: {e}')
                     # Continue with next shot instead of stopping
                     continue
 
         except KeyboardInterrupt:
-            print('Acquisition interrupted by user')  # noqa: T201
+            logger.info('Acquisition interrupted by user')
 
         finally:
             # Make sure to reset devices
@@ -1744,11 +1749,11 @@ class RedPitayaManager:
                             'velocity': [],
                         }
                 except Exception as e:
-                    print(f'Error cleaning up plots: {e}')  # noqa: T201
+                    logger.error(f'Error cleaning up plots: {e}')
 
             end_time = datetime.now()
-            print(f'Completed {len(all_data)} acquisition cycles')  # noqa: T201
-            print(f'End time: {end_time.strftime("%H:%M:%S.%f")}')  # noqa: T201
+            logger.info(f'Completed {len(all_data)} acquisition cycles')
+            logger.info(f'End time: {end_time.strftime("%H:%M:%S.%f")}')
 
             return all_data
 
@@ -1768,13 +1773,13 @@ class RedPitayaManager:
             period: Period of each blink in seconds
         """
         if len(self.devices) <= device_idx:
-            print(f'No device at index {device_idx}')  # noqa: T201
+            logger.error(f'No device at index {device_idx}')
             return
 
         device = self.devices[device_idx]
         device_name = self.device_names[device_idx]
 
-        print(f'Blinking LED[{led_num}] on {device_name} {num_blinks} times')  # noqa: T201
+        logger.info(f'Blinking LED[{led_num}] on {device_name} {num_blinks} times')
 
         try:
             for i in range(num_blinks):
@@ -1786,9 +1791,9 @@ class RedPitayaManager:
                 device.tx_txt(f'DIG:PIN LED{led_num},0')
                 time.sleep(period / 2.0)
 
-            print(f'Finished blinking LED on {device_name}')  # noqa: T201
+            logger.info(f'Finished blinking LED on {device_name}')
         except Exception as e:
-            print(f'Error blinking LED on {device_name}: {e}')  # noqa: T201
+            logger.error(f'Error blinking LED on {device_name}: {e}')
 
 
 # Example usage

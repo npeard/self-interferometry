@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import logging
 from typing import Any, override
 
 import lightning as L
@@ -10,6 +11,8 @@ from self_interferometry.acquisition.redpitaya.redpitaya_config import RedPitaya
 from self_interferometry.acquisition.simulations.coil_driver import CoilDriver
 from self_interferometry.analysis.barland_cnn import BarlandCNN, BarlandCNNConfig
 from self_interferometry.analysis.models_tcn import TCN, TCNConfig
+
+logger = logging.getLogger(__name__)
 
 
 class Standard(L.LightningModule):
@@ -81,11 +84,11 @@ class Standard(L.LightningModule):
             return None
         model_type = self.model_hparams.get('type')
         if model_type == 'CNN':
-            print('Creating CNN model...')  # noqa: T201
+            logger.debug('Creating CNN model...')
             self.model_config = self._create_barland_config()
             return BarlandCNN(self.model_config)
         elif model_type == 'TCN':
-            print('Creating TCN model...')  # noqa: T201
+            logger.debug('Creating TCN model...')
             self.model_config = self._create_tcn_config()
             return TCN(self.model_config)
         else:

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import logging
 
 import torch
 from torch import nn
@@ -7,6 +8,8 @@ from torch import nn
 from self_interferometry.analysis.barland_cnn import BarlandCNN, BarlandCNNConfig
 from self_interferometry.analysis.lightning_standard import Standard
 from self_interferometry.analysis.models_tcn import TCN, TCNConfig
+
+logger = logging.getLogger(__name__)
 
 
 class Ensemble(Standard):
@@ -59,7 +62,7 @@ class Ensemble(Standard):
         models = []
 
         # Create one model per input channel
-        print(f'Creating {in_channels} single-channel models...')  # noqa: T201
+        logger.info(f'Creating {in_channels} single-channel models...')
         for _ in range(in_channels):
             # Create a copy of model_hparams with in_channels=1
             single_channel_hparams = self.model_hparams.copy()
@@ -69,17 +72,17 @@ class Ensemble(Standard):
             model_type = single_channel_hparams['type']
 
             if model_type == 'CNN':
-                print('Creating CNN model...')  # noqa: T201
+                logger.debug('Creating CNN model...')
                 config = self._create_cnn_config_single_channel()
                 models.append(BarlandCNN(config))
             elif model_type == 'TCN':
-                print('Creating TCN model...')  # noqa: T201
+                logger.debug('Creating TCN model...')
                 config = self._create_tcn_config_single_channel()
                 models.append(TCN(config))
             else:
                 raise ValueError(f'Unknown model type: {model_type}')
 
-            print(f'Created model {len(models)}')  # noqa: T201
+            logger.debug(f'Created model {len(models)}')
 
         return nn.ModuleList(models)
 

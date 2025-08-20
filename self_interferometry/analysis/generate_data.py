@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -13,6 +14,8 @@ from self_interferometry.acquisition.simulations.interferometers import (
     InterferometerArray,
     MichelsonInterferometer,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def generate_training_data_from_rp(
@@ -45,15 +48,15 @@ def generate_training_data_from_rp(
     test_path = output_dir / dataset_files[2]
 
     # Create training dataset
-    print('\nAcquiring training dataset...')  # noqa: T201
+    logger.info('\nAcquiring training dataset...')
     _ = rp_manager.run_multiple_shots(num_shots=train_samples, hdf5_file=train_path)
 
     # Create validation dataset
-    print('\nAcquiring validation dataset...')  # noqa: T201
+    logger.info('\nAcquiring validation dataset...')
     _ = rp_manager.run_multiple_shots(num_shots=val_samples, hdf5_file=val_path)
 
     # Create test dataset
-    print('\nAcquiring test dataset...')  # noqa: T201
+    logger.info('\nAcquiring test dataset...')
     _ = rp_manager.run_multiple_shots(num_shots=test_samples, hdf5_file=test_path)
 
     return train_path, val_path, test_path
@@ -97,7 +100,9 @@ def create_pretraining_dataset(
     output_dir.mkdir(parents=True, exist_ok=True)
     file_path = output_dir / dataset_name
 
-    print(f'Generating {num_samples} simulated samples for dataset: {dataset_name}')  # noqa: T201
+    logger.info(
+        f'Generating {num_samples} simulated samples for dataset: {dataset_name}'
+    )
 
     # Create file and initialize with metadata
     with h5py.File(file_path, 'w') as f:
@@ -209,7 +214,7 @@ def create_pretraining_dataset(
             # Update sample count
             f.attrs['num_samples'] = current_size + 1
 
-    print(f'Pretraining dataset saved to {file_path}')  # noqa: T201
+    logger.info(f'Pretraining dataset saved to {file_path}')
     return str(file_path)
 
 
@@ -252,7 +257,7 @@ def generate_pretraining_data(
     dataset_files = ['pretrain.h5', 'preval.h5', 'pretest.h5']
 
     # Create training dataset
-    print('\nGenerating pretraining training dataset...')  # noqa: T201
+    logger.info('\nGenerating pretraining training dataset...')
     train_path = create_pretraining_dataset(
         interferometer_array=interferometer_array,
         output_dir=output_dir,
@@ -269,7 +274,7 @@ def generate_pretraining_data(
     # InterferometerArray.sample_simulated(), so we should get a flat velocity spectrum.
 
     # Create validation dataset
-    print('\nGenerating pretraining validation dataset...')  # noqa: T201
+    logger.info('\nGenerating pretraining validation dataset...')
     val_path = create_pretraining_dataset(
         interferometer_array=interferometer_array,
         output_dir=output_dir,
@@ -286,7 +291,7 @@ def generate_pretraining_data(
     # InterferometerArray.sample_simulated(), so we should get a flat velocity spectrum.
 
     # Create test dataset
-    print('\nGenerating pretraining test dataset...')  # noqa: T201
+    logger.info('\nGenerating pretraining test dataset...')
     test_path = create_pretraining_dataset(
         interferometer_array=interferometer_array,
         output_dir=output_dir,

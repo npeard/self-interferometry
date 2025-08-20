@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import logging
 from pathlib import Path
 
 import h5py
@@ -9,6 +10,8 @@ from torch.utils.data import DataLoader, Dataset
 
 from self_interferometry.acquisition.redpitaya.redpitaya_config import RedPitayaConfig
 from self_interferometry.acquisition.simulations.coil_driver import CoilDriver
+
+logger = logging.getLogger(__name__)
 
 
 class StandardVelocityDataset(Dataset):
@@ -97,8 +100,8 @@ class StandardVelocityDataset(Dataset):
             else:
                 # Default sample rate for Red Pitaya with decimation of 256
                 self.sample_rate = RedPitayaConfig.SAMPLE_RATE_DEC1 / 256
-                print(  # noqa: T201
-                    f'Warning: Using default sample rate of {self.sample_rate:.2f} Hz'
+                logger.warning(
+                    f'Using default sample rate of {self.sample_rate:.2f} Hz'
                 )
 
             self.opened_flag = True
