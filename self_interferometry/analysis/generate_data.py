@@ -8,45 +8,33 @@ from self_interferometry.acquisition.redpitaya.manager import RedPitayaManager
 logger = logging.getLogger(__name__)
 
 
-def generate_training_data_from_rp(
+def generate_dataset_from_rp(
     rp_manager: RedPitayaManager,
     output_dir: str | Path,
-    train_samples: int,
-    val_samples: int,
-    test_samples: int,
-) -> tuple[str, str, str]:
-    """Create train, validation, and test datasets from Red Pitaya data.
+    num_samples: int,
+    dataset_filename: str = 'dataset.h5',
+) -> str:
+    """Create a single dataset from Red Pitaya data.
     RedPitayaManager handles saving to HDF5 internally shot by shot, to protect against
     connection loss. See RedPitayaManager.save_data for more details.
 
     Args:
         rp_manager: RedPitayaManager instance to use for data acquisition
-        output_dir: Directory to save the datasets
-        train_samples: Number of training samples to acquire
-        val_samples: Number of validation samples to acquire
-        test_samples: Number of test samples to acquire
+        output_dir: Directory to save the dataset
+        num_samples: Total number of samples to acquire
+        dataset_filename: Name of the output HDF5 file
 
     Returns:
-        Tuple of (train_path, val_path, test_path)
+        Path to the created dataset file
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    dataset_files = ['train.h5', 'val.h5', 'test.h5']
-    train_path = output_dir / dataset_files[0]
-    val_path = output_dir / dataset_files[1]
-    test_path = output_dir / dataset_files[2]
+    dataset_path = output_dir / dataset_filename
 
-    # Create training dataset
-    logger.info('\nAcquiring training dataset...')
-    _ = rp_manager.run_multiple_shots(num_shots=train_samples, hdf5_file=train_path)
+    # Create the single dataset
+    logger.info(f'\nAcquiring {num_samples} samples into {dataset_path}...')
+    _ = rp_manager.run_multiple_shots(num_shots=num_samples, hdf5_file=dataset_path)
 
-    # Create validation dataset
-    logger.info('\nAcquiring validation dataset...')
-    _ = rp_manager.run_multiple_shots(num_shots=val_samples, hdf5_file=val_path)
-
-    # Create test dataset
-    logger.info('\nAcquiring test dataset...')
-    _ = rp_manager.run_multiple_shots(num_shots=test_samples, hdf5_file=test_path)
-
-    return train_path, val_path, test_path
+    logger.info(f'Dataset creation complete: {dataset_path}')
+    return str(dataset_path)

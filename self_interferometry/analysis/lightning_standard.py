@@ -101,7 +101,7 @@ class Fusion(L.LightningModule):
             # and no model will be created at this point.
             # See Ensemble(Fusion) class for more.
             return None
-        model_type = self.model_hparams.get('type')
+        model_type = self.model_hparams['type']
         if model_type == 'Barland':
             logger.debug('Creating BarlandCNN model...')
             self.model_config = self._create_barland_config()
@@ -214,10 +214,10 @@ class Fusion(L.LightningModule):
             raise ValueError(f'Unknown optimizer: {optimizer_name}')
 
         # Configure multi-stage scheduler: linear warmup then cosine annealing
-        warmup_epochs = self.scheduler_hparams.get('warmup_epochs', 0)
-        cosine_epochs = self.scheduler_hparams.get('cosine_epochs', 0)
-        eta_min = self.scheduler_hparams.get('eta_min', 0)
-        T_max = self.scheduler_hparams.get('T_max', cosine_epochs)
+        warmup_epochs = self.scheduler_hparams['warmup_epochs']
+        cosine_epochs = self.scheduler_hparams['cosine_epochs']
+        eta_min = self.scheduler_hparams['eta_min']
+        T_max = self.scheduler_hparams['T_max']
 
         # LambdaLR for linear warmup
         def warmup_lambda(epoch):

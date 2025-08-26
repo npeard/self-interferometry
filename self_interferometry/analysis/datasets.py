@@ -246,29 +246,49 @@ class VelocityDataset(Dataset):
 
 
 def get_data_loaders(
-    train_path: str,
-    val_path: str,
-    test_path: str,
-    batch_size: int,
+    dataset_path: str,
+    split_ratios: tuple[int, int, int] = (80, 10, 10),
+    batch_size: int = 32,
     num_workers: int = 4,
+    seed: int = 42,
     **dataset_kwargs: dict[str],
 ) -> tuple[DataLoader, DataLoader, DataLoader]:
-    """Create DataLoaders for training, validation, and testing.
+    """Create DataLoaders for training, validation, and testing from a single dataset.
 
     Args:
-        train_path: Path to training data HDF5 file
-        val_path: Path to validation data HDF5 file
-        test_path: Path to test data HDF5 file
+        dataset_path: Path to the single HDF5 dataset file
+        split_ratios: Tuple of (train, val, test) percentages that sum to 100
         batch_size: Batch size for all dataloaders
         num_workers: Number of worker processes for data loading
+        seed: Random seed for reproducible splits
         **dataset_kwargs: Additional arguments to pass to the dataset class
 
     Returns:
         Tuple of (train_loader, val_loader, test_loader)
     """
-    train_dataset = VelocityDataset(train_path, **dataset_kwargs)
-    val_dataset = VelocityDataset(val_path, **dataset_kwargs)
-    test_dataset = VelocityDataset(test_path, **dataset_kwargs)
+    # Validate split ratios
+    if sum(split_ratios) != 100:
+        raise ValueError(f'Split ratios must sum to 100, got {sum(split_ratios)}')
+
+    # Create the full dataset to get its length
+    full_dataset = VelocityDataset(dataset_path, **dataset_kwargs)
+    total_length = len(full_dataset)
+
+    # Calculate split sizes
+    train_size = int(total_length * split_ratios[0] / 100)
+    val_size = int(total_length * split_ratios[1] / 100)
+    test_size = total_length - train_size - val_size  # Remainder goes to test
+
+    # Create random split
+    generator = torch.Generator().manual_seed(seed)
+    train_dataset, val_dataset, test_dataset = torch.utils.data.random_split(
+        full_dataset, [train_size, val_size, test_size], generator=generator
+    )
+
+    logger.info(
+        f'Dataset split - Total: {total_length}, Train: {train_size}, '
+        f'Val: {val_size}, Test: {test_size}'
+    )
 
     train_loader = DataLoader(
         train_dataset,

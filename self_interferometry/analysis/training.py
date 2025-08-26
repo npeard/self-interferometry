@@ -52,9 +52,8 @@ class TrainingConfig:
 
         # Data defaults
         self.data_config.setdefault('data_dir', './analysis/data')
-        self.data_config.setdefault('train_file', 'train.h5')
-        self.data_config.setdefault('val_file', 'val.h5')
-        self.data_config.setdefault('test_file', 'test.h5')
+        self.data_config.setdefault('dataset_file', 'dataset.h5')
+        self.data_config.setdefault('split_ratios', (80, 10, 10))
         self.data_config.setdefault('num_workers', 4)
 
     @classmethod
@@ -232,53 +231,53 @@ class ModelTrainer:
             # If filename is provided, join it with the directory
             return str(abs_dir / filename) if filename else str(abs_dir)
 
-        # Get absolute data directory
+        # Get absolute data directory and dataset path
         data_dir = self.config.data_config['data_dir']
+        dataset_path = resolve_path(data_dir, self.config.data_config['dataset_file'])
 
-        # Resolve paths for data files
-        train_path = resolve_path(data_dir, self.config.data_config['train_file'])
-        val_path = resolve_path(data_dir, self.config.data_config['val_file'])
-        test_path = resolve_path(data_dir, self.config.data_config['test_file'])
+        # Get split configuration
+        split_ratios = self.config.data_config['split_ratios']
+        seed = self.config.data_config['split_seed']
 
         # Get channel_dropout parameter from config
-        if self.config.model_config.get('role') == 'ensemble':
+        if self.config.model_config['role'] == 'ensemble':
             channel_dropout = 0.0
         else:
-            channel_dropout = self.config.data_config.get('channel_dropout', 0.1)
+            channel_dropout = self.config.data_config['channel_dropout']
 
         self.train_loader, self.val_loader, self.test_loader = get_data_loaders(
-            train_path=train_path,
-            val_path=val_path,
-            test_path=test_path,
+            dataset_path=dataset_path,
+            split_ratios=split_ratios,
             batch_size=self.config.training_config['batch_size'],
             num_workers=self.config.data_config['num_workers'],
-            channel_dropout=channel_dropout,  # Only pass the channel_dropout parameter
+            seed=seed,
+            channel_dropout=channel_dropout,
         )
 
     def create_lightning_module(self):
         """Create lightning module based on model type."""
-        model_role = self.config.model_config.get('role', 'standard')
+        model_role = self.config.model_config['role']
 
         # Common optimizer hyperparameters
         optimizer_hparams = {
-            'name': self.config.training_config.get('optimizer', 'Adam'),
+            'name': self.config.training_config['optimizer'],
             # TODO: why is lr a string?
-            'lr': eval(self.config.training_config.get('learning_rate', 1e-3)),
-            'momentum': self.config.training_config.get('momentum', 0.9),
+            'lr': eval(self.config.training_config['learning_rate']),
+            'momentum': self.config.training_config['momentum'],
         }
 
         # Common scheduler hyperparameters
-        max_epochs = self.config.training_config.get('max_epochs', 500)
+        max_epochs = self.config.training_config['max_epochs']
         warmup_epochs = int(0.1 * max_epochs)
         cosine_epochs = max_epochs - warmup_epochs
-        target_lr = eval(self.config.training_config.get('learning_rate', 1e-3))
+        target_lr = eval(self.config.training_config['learning_rate'])
 
         scheduler_hparams = {
             'warmup_epochs': warmup_epochs,
             'cosine_epochs': cosine_epochs,
             'target_lr': target_lr,
             'T_max': cosine_epochs,  # For CosineAnnealingLR
-            'eta_min': self.config.training_config.get('eta_min', 0),
+            'eta_min': self.config.training_config['eta_min'],
         }
 
         if model_role == 'standard':
@@ -297,19 +296,18 @@ class ModelTrainer:
             )
         else:
             raise ValueError(
-                f'Unknown model role: {model_role}. Supported roles: "standard", "ensemble"'
+                f'Unknown model role: {model_role}. '
+                f'Supported roles: "standard", "ensemble"'
             )
 
     def setup_trainer(self) -> L.Trainer:
         """Setup Lightning trainer with callbacks and loggers."""
         callbacks = []
         # Add WandB logger if configured
-        if self.config.training_config.get('use_logging', False):
+        if self.config.training_config['use_logging']:
             loggers = [
                 WandbLogger(
-                    project=self.config.training_config.get(
-                        'wandb_project', 'ml-template'
-                    ),
+                    project=self.config.training_config['wandb_project'],
                     name=self.experiment_name,
                     save_dir=self.checkpoint_dir,
                 )
@@ -329,8 +327,8 @@ class ModelTrainer:
             loggers = []
 
         # Get accelerator and device settings from config
-        accelerator = self.config.training_config.get('accelerator', 'auto')
-        devices = self.config.training_config.get('devices', 1)
+        accelerator = self.config.training_config['accelerator']
+        devices = self.config.training_config['devices']
 
         # Convert devices to proper type if it's a string
         if isinstance(devices, str):
@@ -373,18 +371,19 @@ class ModelTrainer:
             checkpoint_path: Path to the checkpoint file
         """
         # Load the model from checkpoint
-        model = Standard.load_from_checkpoint(checkpoint_path)
+        model = Fusion.load_from_checkpoint(checkpoint_path)
         trainer = L.Trainer(accelerator='cpu', logger=[])
 
         # Figure out which role the model was trained in so we setup the correct data
-        model_role = model.model_hparams.get('role')
+        model_role = model.model_hparams['role']
         if model_role == 'standard':
             self.config.model_config['role'] = 'standard'
         elif model_role == 'ensemble':
             self.config.model_config['role'] = 'ensemble'
         else:
             raise ValueError(
-                f'Unknown model role: {model_role}. Supported roles: "standard", "ensemble"'
+                f'Unknown model role: {model_role}. '
+                f'Supported roles: "standard", "ensemble"'
             )
 
         # Setup data loaders
@@ -448,7 +447,8 @@ class ModelTrainer:
                 velocity_hat[i], label='Predicted Velocity', color='red', linestyle='--'
             )
             axs[0].set_title(
-                f'Velocity (MSE: {sample_velocity_mse:.2e}) and Displacement (MSE: {sample_displacement_mse:.2e})'
+                f'Velocity (MSE: {sample_velocity_mse:.2e}) and '
+                f'Displacement (MSE: {sample_displacement_mse:.2e})'
             )
             axs[0].set_ylabel('Velocity (μm/s)', color='blue')
             axs[0].tick_params(axis='y', labelcolor='blue')
@@ -488,7 +488,9 @@ class ModelTrainer:
 
             # Add overall title with batch MSE values
             plt.suptitle(
-                f'Sample {i + 1} from Batch {batch_idx + 1}\nBatch MSE: Velocity={batch_velocity_mse:.2e}, Displacement={batch_displacement_mse:.2e}'
+                f'Sample {i + 1} from Batch {batch_idx + 1}\n'
+                f'Batch MSE: Velocity={batch_velocity_mse:.2e}, '
+                f'Displacement={batch_displacement_mse:.2e}'
             )
             plt.tight_layout()
             plt.show()

@@ -4,8 +4,8 @@ model:
   type: "TCN"
   input_size: 16384
   output_size: 16384
-  activation: ["LeakyReLU", "Tanh"]
-  norm: ["layer", "batch"]
+  activation: "LeakyReLU"
+  norm: "layer"
   in_channels: 3
   dropout: 0.1
   # TCN specific parameters
@@ -18,28 +18,26 @@ training:
   max_epochs: 500
   batch_size: 16
   optimizer: "Adam"
+  momentum: 0.9 # Unused if optimizer is not SGD
   learning_rate: 7e-2
   eta_min: 0
   accelerator: "cpu"
   devices: 1
   use_logging: false
   wandb_project: "self-interferometry"
-  experiment_name: "z-score_tcn_norm_activation_comparison"
+  experiment_name: "single_dataset"
   checkpoint_dir: "./analysis/checkpoints"
 
 loss:
-  dynamic: true # enable dynamic loss weighting, overrides weights below
+  dynamic: false # enable dynamic loss weighting, overrides weights below
   velocity_loss_weight: 1.0
   displacement_loss_weight: 0.1
 
 data:
   data_dir: "./analysis/data"
-  train_file: "train-mmfiber-5000.h5"
-  val_file: "val-mmfiber-500.h5"
-  test_file: "test-mmfiber-500.h5"
+  dataset_file: "train-mmfiber-5000.h5"
+  split_ratios: [80, 10, 10]  # train, val, test percentages
+  split_seed: 42
   num_workers: 7
   channel_dropout: 0.5  # chance of dropping a channel during training
-  dataset_params:
-    train_samples: 5000
-    val_samples: 500
-    test_samples: 500
+  num_acquire_samples: 6000  # total samples to acquire from RedPitaya

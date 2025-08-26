@@ -7,6 +7,7 @@ and plots all waveforms and their FFTs.
 """
 
 import logging
+
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import gridspec
@@ -326,7 +327,7 @@ def plot_waveform_histograms(
     all_voltages = []
 
     # Generate multiple waveform samples
-    for i in range(num_samples):
+    for _ in range(num_samples):
         # Generate a random waveform with phase randomization only
         # The spectrum amplitudes are kept the same
         t, voltage, voltage_spectrum = waveform.sample(randomize_phase_only=True)

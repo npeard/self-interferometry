@@ -163,8 +163,8 @@ class Ensemble(Fusion):
 
             else:
                 # CNN approach - sliding window implementation
-                window_size = self.model_hparams.get('input_size', 256)
-                window_stride = self.model_hparams.get('window_stride', 128)
+                window_size = self.model_hparams['input_size']
+                window_stride = self.model_hparams['window_stride']
 
                 # Calculate number of windows
                 num_windows = (signal_length + window_stride - 1) // window_stride

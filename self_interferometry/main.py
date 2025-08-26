@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 import yaml
-from analysis.generate_data import generate_training_data_from_rp
+from analysis.generate_data import generate_dataset_from_rp
 from analysis.training import ModelTrainer, TrainingConfig
 
 
@@ -146,18 +146,15 @@ def main():
             rp_manager.reset_all()
 
             # Extract dataset parameters
-            dataset_params = data_config['dataset_params']
-            train_samples = dataset_params['train_samples']
-            val_samples = dataset_params['val_samples']
-            test_samples = dataset_params['test_samples']
+            num_samples = data_config['num_acquire_samples']
+            dataset_filename = data_config['dataset_file']
 
-            # Create datasets using the new function that accepts a RedPitayaManager
-            generate_training_data_from_rp(
+            # Create single dataset using the new function
+            generate_dataset_from_rp(
                 rp_manager=rp_manager,
                 output_dir=data_config['data_dir'],
-                train_samples=train_samples,
-                val_samples=val_samples,
-                test_samples=test_samples,
+                num_samples=num_samples,
+                dataset_filename=dataset_filename,
             )
             logger.info('Dataset acquisition complete!')
         finally:
