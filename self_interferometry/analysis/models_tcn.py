@@ -174,8 +174,6 @@ class TCN(nn.Module):
         # Process through the TCN network
         features = self.network(x)
 
-        # Map to output using 1x1 convolution
-        out = self.output_layer(features)
-
+        # Map to output using 1x1 convolution and return
         # Return output with shape [batch_size, 1, sequence_length]
-        return out
+        return self.output_layer(features)

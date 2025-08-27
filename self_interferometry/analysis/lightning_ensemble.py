@@ -135,7 +135,8 @@ class Ensemble(Fusion):
         # Check if number of channels matches number of models
         if num_channels != len(self.models):
             raise ValueError(
-                f'Input has {num_channels} channels but ensemble has {len(self.models)} models'
+                f'Input has {num_channels} channels but ensemble has '
+                f'{len(self.models)} models'
             )
 
         # Initialize list to store predictions from each model

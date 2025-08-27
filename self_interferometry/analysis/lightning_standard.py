@@ -140,9 +140,7 @@ class Fusion(L.LightningModule):
                 output = self.model(x)
 
                 # Reshape to [batch_size, signal_length]
-                velocity_hat = output.squeeze(1)
-
-            return velocity_hat
+            return output.squeeze(1)
 
         else:
             # CNN approach - sliding window implementation
@@ -215,12 +213,11 @@ class Fusion(L.LightningModule):
 
         # Configure multi-stage scheduler: linear warmup then cosine annealing
         warmup_epochs = self.scheduler_hparams['warmup_epochs']
-        cosine_epochs = self.scheduler_hparams['cosine_epochs']
         eta_min = self.scheduler_hparams['eta_min']
         T_max = self.scheduler_hparams['T_max']
 
         # LambdaLR for linear warmup
-        def warmup_lambda(epoch):
+        def warmup_lambda(epoch: int) -> float:
             if warmup_epochs == 0:
                 return 1.0
             return float(epoch + 1) / float(warmup_epochs)
@@ -369,7 +366,6 @@ class Fusion(L.LightningModule):
         # For CNN with stride > 1, extract the corresponding target values
         if hasattr(self, '_output_full_signal') and not self._output_full_signal:
             # Extract targets at the same positions where predictions were made
-            batch_size = velocity_target.shape[0]
             downsampled_target = torch.zeros_like(velocity_hat)
 
             for window_idx, i in enumerate(
@@ -413,7 +409,6 @@ class Fusion(L.LightningModule):
         # For CNN with stride > 1, extract the corresponding target values
         if hasattr(self, '_output_full_signal') and not self._output_full_signal:
             # Extract targets at the same positions where predictions were made
-            batch_size = velocity_target.shape[0]
             downsampled_target = torch.zeros_like(velocity_hat)
 
             for window_idx, i in enumerate(

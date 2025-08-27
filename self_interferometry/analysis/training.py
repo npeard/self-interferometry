@@ -254,7 +254,7 @@ class ModelTrainer:
             channel_dropout=channel_dropout,
         )
 
-    def create_lightning_module(self):
+    def create_lightning_module(self) -> Fusion | Ensemble:
         """Create lightning module based on model type."""
         model_role = self.config.model_config['role']
 

@@ -19,7 +19,8 @@ def visualize_dataset(
 ):
     """Visualize samples from a dataset using VelocityDataset.
 
-    Creates plots similar to the training.py visualization but without model predictions.
+    Creates plots similar to the training.py visualization but without model
+    predictions.
     Each plot includes:
     1. Velocity and displacement on dual y-axes
     2-4. Input signals from photodiode channels
@@ -121,7 +122,8 @@ def visualize_dataset(
 def plot_histograms(dataset_path: str | Path):
     """Plot histograms and spectra for each channel in the dataset.
 
-    Creates histograms in the first row and FFT spectra in the second row for each channel.
+    Creates histograms in the first row and FFT spectra in the second row for each
+    channel.
 
     Args:
         dataset_path: Path to the HDF5 dataset file
@@ -267,7 +269,8 @@ def analyze_dataset(dataset_path: str | Path):
     plot_histograms(dataset_path)
 
 
-# frequency_analysis function has been removed as it's now redundant with plot_histograms
+# frequency_analysis function has been removed as it's now redundant with
+# plot_histograms
 
 
 if __name__ == '__main__':

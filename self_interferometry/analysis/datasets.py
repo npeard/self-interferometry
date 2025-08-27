@@ -24,11 +24,12 @@ class VelocityDataset(Dataset):
 
     The dataset automatically applies z-score normalization to photodiode signals:
     Each photodiode channel is normalized by computing the mean and standard deviation
-    across all samples in the dataset, then applying (signal - mean) / std for each sample.
-    This ensures stable training with balanced channel contributions.
+    across all samples in the dataset, then applying (signal - mean) / std for each
+    sample. This ensures stable training with balanced channel contributions.
 
     The dataset returns:
-    - signals: Z-score normalized photodiode signals (1-3 channels based on num_pd_channels)
+    - signals: Z-score normalized photodiode signals (1-3 channels based on
+      num_pd_channels)
     - velocity: Velocity computed from speaker drive voltage
     - displacement: Displacement computed by integrating velocity
 
@@ -39,7 +40,8 @@ class VelocityDataset(Dataset):
         file_path: Path to HDF5 file
         num_pd_channels: Number of photodiode channels to use (1-3)
         cache_size: Number of items to cache in memory (0 for no caching)
-        channel_dropout: Probability of dropping a channel during training (default: 0.0)
+        channel_dropout: Probability of dropping a channel during training
+            (default: 0.0)
     """
 
     def __init__(
