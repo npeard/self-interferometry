@@ -35,10 +35,10 @@ class TemporalBlock(nn.Module):
         stride: int,
         dilation: int,
         padding: int,
-        dropout: float = 0.2,
-        activation: str = 'LeakyReLU',
-        norm: str = 'layer',
-        input_length: int = 16384,
+        dropout: float,
+        activation: str,
+        norm: str,
+        input_length: int,
     ):
         super().__init__()
         self.conv1 = nn.utils.weight_norm(
