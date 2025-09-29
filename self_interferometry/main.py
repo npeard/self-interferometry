@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import yaml
 from analysis.generate_data import generate_dataset_from_rp
-from analysis.training import ModelTrainer, TrainingConfig
+from analysis.training_interface import TrainingConfig, TrainingInterface
 
 
 def setup_logging(verbosity: str) -> None:
@@ -93,10 +93,10 @@ def main():
     if args.checkpoint:
         logger.info('Loading from checkpoint for quick plotting...')
         logger.info(f'Checkpoint path: {args.checkpoint}')
-        model_trainer = ModelTrainer(
+        trainer = TrainingInterface(
             TrainingConfig({}, {}, {}, {}), experiment_name='checkpoint_eval'
         )
-        model_trainer.plot_predictions_from_checkpoint(checkpoint_path=args.checkpoint)
+        trainer.plot_predictions_from_checkpoint(checkpoint_path=args.checkpoint)
         return
 
     # For training mode, load config
@@ -165,7 +165,7 @@ def main():
     for idx, train_config in enumerate(configs):
         logger.info(f'Starting training run {idx + 1}/{len(configs)}')
         # Create trainer
-        trainer = ModelTrainer(
+        trainer = TrainingInterface(
             config=train_config,
             experiment_name=train_config.training_config['experiment_name'],
             checkpoint_dir=train_config.training_config['checkpoint_dir'],

@@ -10,7 +10,8 @@ from torch import nn, optim
 from self_interferometry.acquisition.redpitaya.redpitaya_config import RedPitayaConfig
 from self_interferometry.acquisition.simulations.coil_driver import CoilDriver
 from self_interferometry.analysis.barland_cnn import BarlandCNN, BarlandCNNConfig
-from self_interferometry.analysis.models_tcn import TCN, TCNConfig
+from self_interferometry.analysis.fno import FNO1d, FNOConfig
+from self_interferometry.analysis.tcn import TCN, TCNConfig
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +91,37 @@ class Fusion(L.LightningModule):
             stride=self.model_hparams['stride'],
         )
 
+    def _create_fno_config(self) -> FNOConfig:
+        """Create FNOConfig from model configuration."""
+        return FNOConfig(
+            # Common parameters (required by training interface)
+            input_size=self.model_hparams['input_size'],
+            output_size=self.model_hparams['output_size'],
+            in_channels=self.model_hparams['in_channels'],
+            # FNO specific parameters
+            n_modes=tuple(self.model_hparams['n_modes']),
+            hidden_channels=self.model_hparams['hidden_channels'],
+            n_layers=self.model_hparams['n_layers'],
+            max_n_modes=self.model_hparams['max_n_modes'],
+            fno_block_precision=self.model_hparams['fno_block_precision'],
+            use_mlp=self.model_hparams['use_mlp'],
+            mlp_dropout=self.model_hparams['mlp_dropout'],
+            mlp_expansion=self.model_hparams['mlp_expansion'],
+            non_linearity=self.model_hparams['non_linearity'],
+            stabilizer=self.model_hparams['stabilizer'],
+            norm=self.model_hparams['norm'],
+            preactivation=self.model_hparams['preactivation'],
+            fno_skip=self.model_hparams['fno_skip'],
+            mlp_skip=self.model_hparams['mlp_skip'],
+            separable=self.model_hparams['separable'],
+            factorization=self.model_hparams['factorization'],
+            rank=self.model_hparams['rank'],
+            joint_factorization=self.model_hparams['joint_factorization'],
+            fixed_rank_modes=self.model_hparams['fixed_rank_modes'],
+            implementation=self.model_hparams['implementation'],
+            decomposition_kwargs=self.model_hparams['decomposition_kwargs'],
+        )
+
     def create_model(self) -> nn.Module:
         """Create model instance based on config.
 
@@ -110,6 +142,10 @@ class Fusion(L.LightningModule):
             logger.debug('Creating TCN model...')
             self.model_config = self._create_tcn_config()
             return TCN(self.model_config)
+        elif model_type == 'FNO':
+            logger.debug('Creating FNO model...')
+            self.model_config = self._create_fno_config()
+            return FNO1d(self.model_config)
         else:
             raise ValueError(f'Unknown model type: {model_type}')
 
@@ -129,14 +165,14 @@ class Fusion(L.LightningModule):
         """
         batch_size, num_channels, signal_length = x.shape
 
-        # Check if we're using a TCN model (which can process the entire sequence at
+        # Check if we're using a TCN or FNO model (which can process the entire sequence at
         # once)
         if hasattr(self.model, '__class__') and (
-            self.model.__class__.__name__ in {'TCN'}
+            self.model.__class__.__name__ in {'TCN', 'FNO1d'}
         ):
-            # TCN approach - process the entire sequence at once
+            # TCN/FNO approach - process the entire sequence at once
             with torch.set_grad_enabled(self.training):
-                # TCN returns shape [batch_size, 1, signal_length]
+                # TCN/FNO returns shape [batch_size, 1, signal_length]
                 output = self.model(x)
 
                 # Reshape to [batch_size, signal_length]

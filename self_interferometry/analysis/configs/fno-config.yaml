@@ -1,0 +1,57 @@
+model:
+  # Common parameters for all model types
+  role: "standard" # "standard" or "ensemble"
+  type: "FNO"
+  input_size: 16384  # Used for validation, FNO processes full sequence
+  output_size: 16384  # Used for validation, FNO processes full sequence
+  in_channels: 3
+  # FNO specific parameters
+  n_modes: [16]  # Number of modes for 1D FNO (list gets converted to tuple)
+  hidden_channels: 64
+  n_layers: 4
+  max_n_modes: null
+  fno_block_precision: "full"
+  use_mlp: false
+  mlp_dropout: 0.0
+  mlp_expansion: 0.5
+  non_linearity: "gelu"  # FNO internal activation function
+  stabilizer: null
+  norm: null
+  preactivation: false
+  fno_skip: "linear"
+  mlp_skip: "soft-gating"
+  separable: false
+  factorization: null
+  rank: 1.0
+  joint_factorization: false
+  fixed_rank_modes: false
+  implementation: "factorized"
+  decomposition_kwargs: null
+
+training:
+  max_epochs: 500
+  batch_size: 128
+  optimizer: "Adam"
+  momentum: 0.9 # Unused if optimizer is not SGD
+  learning_rate: 1e-3  # Typically lower learning rate for FNO
+  eta_min: 1e-6
+  accelerator: "gpu"
+  devices: 1
+  use_logging: true
+  wandb_project: "self-interferometry"
+  experiment_name: "fno_baseline"
+  checkpoint_dir: "./analysis/checkpoints"
+
+loss:
+  dynamic: false # enable dynamic loss weighting, overrides weights below
+  velocity_loss_weight: 1.0
+  displacement_loss_weight: 0.1
+
+data:
+  data_dir: "./analysis/data"
+  dataset_file: "val-mmfiber-500.h5"
+  split_ratios: [80, 10, 10]  # train, val, test percentages
+  split_seed: 42
+  num_workers: 7
+  channel_dropout: 0.5  # chance of dropping a channel during training
+  num_acquire_samples: 6000  # total samples to acquire from RedPitaya
