@@ -5,6 +5,12 @@ from dataclasses import dataclass
 from neuralop.models import FNO
 from torch import Tensor, nn
 
+act_fn_by_name = {
+    'LeakyReLU': nn.LeakyReLU(),
+    'Tanh': nn.Tanh(),
+    'ReLU': nn.ReLU(),
+    'gelu': nn.GELU(),
+}
 
 @dataclass
 class FNOConfig:
@@ -64,7 +70,7 @@ class FNO1d(nn.Module):
             'use_mlp': config.use_mlp,
             'mlp_dropout': config.mlp_dropout,
             'mlp_expansion': config.mlp_expansion,
-            'non_linearity': config.non_linearity,
+            'non_linearity': act_fn_by_name[config.non_linearity],
             'stabilizer': config.stabilizer,
             'norm': config.norm,
             'preactivation': config.preactivation,

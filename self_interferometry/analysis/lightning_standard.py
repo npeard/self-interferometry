@@ -99,7 +99,7 @@ class Fusion(L.LightningModule):
             output_size=self.model_hparams['output_size'],
             in_channels=self.model_hparams['in_channels'],
             # FNO specific parameters
-            n_modes=tuple(self.model_hparams['n_modes']),
+            n_modes=eval(self.model_hparams['n_modes']),
             hidden_channels=self.model_hparams['hidden_channels'],
             n_layers=self.model_hparams['n_layers'],
             max_n_modes=self.model_hparams['max_n_modes'],
@@ -262,7 +262,7 @@ class Fusion(L.LightningModule):
             optimizer, lr_lambda=warmup_lambda
         )
         cosine_scheduler = optim.lr_scheduler.CosineAnnealingLR(
-            optimizer, T_max=T_max, eta_min=eta_min
+            optimizer, T_max=T_max, eta_min=eval(eta_min)
         )
 
         scheduler = optim.lr_scheduler.SequentialLR(
