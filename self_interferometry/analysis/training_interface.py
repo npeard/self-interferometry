@@ -166,7 +166,7 @@ class TrainingConfig:
         return configs
 
 
-class ModelTrainer:
+class TrainingInterface:
     """Main trainer class for managing model training."""
 
     def __init__(
