@@ -268,7 +268,7 @@ class TrainingInterface:
 
         # Common scheduler hyperparameters
         max_epochs = self.config.training_config['max_epochs']
-        warmup_epochs = int(0.1 * max_epochs)
+        warmup_epochs = self.config.training_config['warmup_epochs']
         cosine_epochs = max_epochs - warmup_epochs
         target_lr = eval(self.config.training_config['learning_rate'])
 
@@ -317,8 +317,8 @@ class TrainingInterface:
                 ModelCheckpoint(
                     dirpath=Path(self.checkpoint_dir) / self.experiment_name,
                     filename=str(loggers[0].experiment.id)
-                    + '_{epoch}-{val_total_loss:.4f}',
-                    monitor='val_total_loss',
+                    + '_{epoch}-{val_total_unweighted_loss:.4f}',
+                    monitor='val/total_unweighted_loss',
                     mode='min',
                     save_top_k=1,
                 )

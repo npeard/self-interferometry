@@ -25,15 +25,15 @@ class FNOConfig:
     n_layers: int
     max_n_modes: int | None
     fno_block_precision: str
-    use_mlp: bool
-    mlp_dropout: float
-    mlp_expansion: float
+    use_channel_mlp: bool
+    channel_mlp_dropout: float
+    channel_mlp_expansion: float
     non_linearity: str
     stabilizer: str | None
     norm: str | None
     preactivation: bool
     fno_skip: str
-    mlp_skip: str
+    channel_mlp_skip: str
     separable: bool
     factorization: str | None
     rank: float
@@ -67,15 +67,15 @@ class FNO1d(nn.Module):
             'n_layers': config.n_layers,
             'max_n_modes': config.max_n_modes,
             'fno_block_precision': config.fno_block_precision,
-            'use_mlp': config.use_mlp,
-            'mlp_dropout': config.mlp_dropout,
-            'mlp_expansion': config.mlp_expansion,
+            'use_channel_mlp': config.use_channel_mlp,
+            'channel_mlp_dropout': config.channel_mlp_dropout,
+            'channel_mlp_expansion': config.channel_mlp_expansion,
             'non_linearity': act_fn_by_name[config.non_linearity],
             'stabilizer': config.stabilizer,
             'norm': config.norm,
             'preactivation': config.preactivation,
             'fno_skip': config.fno_skip,
-            'mlp_skip': config.mlp_skip,
+            'channel_mlp_skip': config.channel_mlp_skip,
             'separable': config.separable,
             'factorization': config.factorization,
             'rank': config.rank,

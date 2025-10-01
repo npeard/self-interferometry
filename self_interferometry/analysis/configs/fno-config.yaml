@@ -6,20 +6,20 @@ model:
   output_size: 16384  # Used for validation, FNO processes full sequence
   in_channels: 3
   # FNO specific parameters
-  n_modes: (16,)  # Number of modes for 1D FNO (list gets converted to tuple)
-  hidden_channels: 16
-  n_layers: 4
+  n_modes: [8,16,32]  # Number of modes for 1D FNO (list gets converted to tuple)
+  hidden_channels: [8,16,32]
+  n_layers: 2
   max_n_modes: null
   fno_block_precision: "full"
-  use_mlp: false
-  mlp_dropout: 0.0
-  mlp_expansion: 0.5
+  use_channel_mlp: true
+  channel_mlp_dropout: 0.2
+  channel_mlp_expansion: 0.5
   non_linearity: "gelu"  # FNO internal activation function
   stabilizer: null
   norm: null
   preactivation: false
   fno_skip: "linear"
-  mlp_skip: "soft-gating"
+  channel_mlp_skip: "soft-gating"
   separable: false
   factorization: null
   rank: 1.0
@@ -30,16 +30,18 @@ model:
 
 training:
   max_epochs: 500
-  batch_size: 128
+  warmup_epochs: 0
+  batch_size: 256
   optimizer: "Adam"
   momentum: 0.9 # Unused if optimizer is not SGD
-  learning_rate: 1e-3  # Typically lower learning rate for FNO
-  eta_min: 1e-6
+  weight_decay: 0 # Unused if optimizer is not Adam
+  learning_rate: 1e-2
+  eta_min: 1e-4
   accelerator: "gpu"
   devices: 1
-  use_logging: false
+  use_logging: true
   wandb_project: "self-interferometry"
-  experiment_name: "fno_baseline"
+  experiment_name: "fno_0_weight_decay"
   checkpoint_dir: "./analysis/checkpoints"
 
 loss:
@@ -49,7 +51,7 @@ loss:
 
 data:
   data_dir: "./analysis/data"
-  dataset_file: "val-mmfiber-500.h5"
+  dataset_file: "train5000.h5"
   split_ratios: [80, 10, 10]  # train, val, test percentages
   split_seed: 42
   num_workers: 7

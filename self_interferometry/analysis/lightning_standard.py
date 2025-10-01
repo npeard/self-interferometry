@@ -99,20 +99,20 @@ class Fusion(L.LightningModule):
             output_size=self.model_hparams['output_size'],
             in_channels=self.model_hparams['in_channels'],
             # FNO specific parameters
-            n_modes=eval(self.model_hparams['n_modes']),
+            n_modes=(self.model_hparams['n_modes'],), # Expects tuple of length 1
             hidden_channels=self.model_hparams['hidden_channels'],
             n_layers=self.model_hparams['n_layers'],
             max_n_modes=self.model_hparams['max_n_modes'],
             fno_block_precision=self.model_hparams['fno_block_precision'],
-            use_mlp=self.model_hparams['use_mlp'],
-            mlp_dropout=self.model_hparams['mlp_dropout'],
-            mlp_expansion=self.model_hparams['mlp_expansion'],
+            use_channel_mlp=self.model_hparams['use_channel_mlp'],
+            channel_mlp_dropout=self.model_hparams['channel_mlp_dropout'],
+            channel_mlp_expansion=self.model_hparams['channel_mlp_expansion'],
             non_linearity=self.model_hparams['non_linearity'],
             stabilizer=self.model_hparams['stabilizer'],
             norm=self.model_hparams['norm'],
             preactivation=self.model_hparams['preactivation'],
             fno_skip=self.model_hparams['fno_skip'],
-            mlp_skip=self.model_hparams['mlp_skip'],
+            channel_mlp_skip=self.model_hparams['channel_mlp_skip'],
             separable=self.model_hparams['separable'],
             factorization=self.model_hparams['factorization'],
             rank=self.model_hparams['rank'],
@@ -243,6 +243,8 @@ class Fusion(L.LightningModule):
             _ = self.optimizer_hparams.pop('momentum', None)
             optimizer = optim.AdamW(self.parameters(), **self.optimizer_hparams)
         elif optimizer_name == 'SGD':
+            # Discard weight_decay hyperparameter for SGD optimizer
+            _ = self.optimizer_hparams.pop('weight_decay', None)
             optimizer = optim.SGD(self.parameters(), **self.optimizer_hparams)
         else:
             raise ValueError(f'Unknown optimizer: {optimizer_name}')
@@ -375,7 +377,7 @@ class Fusion(L.LightningModule):
         # Log each loss component with train_ prefix
         for loss_name, loss_value in loss_dict.items():
             self.log(
-                f'train_{loss_name}_loss',
+                f'train/{loss_name}_loss',
                 loss_value,
                 prog_bar=(loss_name == 'total'),  # Only show total loss in progress bar
                 on_epoch=True,
@@ -421,7 +423,7 @@ class Fusion(L.LightningModule):
         # Log each loss component with val_ prefix
         for loss_name, loss_value in loss_dict.items():
             self.log(
-                f'val_{loss_name}_loss',
+                f'val/{loss_name}_loss',
                 loss_value,
                 prog_bar=(loss_name == 'total'),  # Only show total loss in progress bar
                 sync_dist=True,
@@ -463,7 +465,7 @@ class Fusion(L.LightningModule):
 
         # Log each loss component with test_ prefix
         for loss_name, loss_value in loss_dict.items():
-            self.log(f'test_{loss_name}_loss', loss_value, sync_dist=True)
+            self.log(f'test/{loss_name}_loss', loss_value, sync_dist=True)
 
     @override
     def predict_step(
