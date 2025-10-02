@@ -10,8 +10,15 @@ from torch import nn, optim
 from self_interferometry.acquisition.redpitaya.redpitaya_config import RedPitayaConfig
 from self_interferometry.acquisition.simulations.coil_driver import CoilDriver
 from self_interferometry.analysis.barland_cnn import BarlandCNN, BarlandCNNConfig
-from self_interferometry.analysis.fno import FNO1d, FNOConfig
 from self_interferometry.analysis.tcn import TCN, TCNConfig
+
+# Conditional import for FNO - only available with torch >= 2.8
+try:
+    from self_interferometry.analysis.fno import FNO1d, FNOConfig, NEURALOP_AVAILABLE
+except ImportError:
+    NEURALOP_AVAILABLE = False
+    FNO1d = None
+    FNOConfig = None
 
 logger = logging.getLogger(__name__)
 
@@ -91,8 +98,13 @@ class Fusion(L.LightningModule):
             stride=self.model_hparams['stride'],
         )
 
-    def _create_fno_config(self) -> FNOConfig:
+    def _create_fno_config(self):
         """Create FNOConfig from model configuration."""
+        if not NEURALOP_AVAILABLE:
+            raise ImportError(
+                "FNO model requires the neuralop library, which requires PyTorch >= 2.8. "
+                "Please upgrade PyTorch or use a different model (CNN/TCN)."
+            )
         return FNOConfig(
             # Common parameters (required by training interface)
             input_size=self.model_hparams['input_size'],
@@ -143,6 +155,11 @@ class Fusion(L.LightningModule):
             self.model_config = self._create_tcn_config()
             return TCN(self.model_config)
         elif model_type == 'FNO':
+            if not NEURALOP_AVAILABLE:
+                raise ImportError(
+                    "FNO model requires the neuralop library, which requires PyTorch >= 2.8. "
+                    "Please upgrade PyTorch or use a different model (CNN/TCN)."
+                )
             logger.debug('Creating FNO model...')
             self.model_config = self._create_fno_config()
             return FNO1d(self.model_config)

@@ -1,6 +1,7 @@
 import argparse
 import logging
 import random
+import sys
 import time
 from pathlib import Path
 
@@ -35,7 +36,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--config',
         type=str,
-        default='./analysis/configs/cnn-tcn-config.yaml',
+        default='./analysis/configs/tcn-config.yaml',
         help='Path to YAML config file. Required for training, optional for testing.',
     )
     parser.add_argument(
@@ -160,6 +161,7 @@ def main():
         finally:
             # Ensure we close the connection to the Red Pitaya
             rp_manager.close_all()
+            sys.exit()
 
     # Train with each configuration
     for idx, train_config in enumerate(configs):
