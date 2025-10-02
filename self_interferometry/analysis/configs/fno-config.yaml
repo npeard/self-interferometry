@@ -6,12 +6,12 @@ model:
   output_size: 16384  # Used for validation, FNO processes full sequence
   in_channels: 3
   # FNO specific parameters
-  n_modes: [8,16,32]  # Number of modes for 1D FNO (list gets converted to tuple)
-  hidden_channels: [8,16,32]
-  n_layers: 2
+  n_modes: [64,128]  # Number of modes for 1D FNO (list gets converted to tuple)
+  hidden_channels: 16
+  n_layers: [2,4, 8]
   max_n_modes: null
   fno_block_precision: "full"
-  use_channel_mlp: true
+  use_channel_mlp: false # using a channel mlp seems to always lead to overtraining
   channel_mlp_dropout: 0.2
   channel_mlp_expansion: 0.5
   non_linearity: "gelu"  # FNO internal activation function
@@ -34,20 +34,20 @@ training:
   batch_size: 256
   optimizer: "Adam"
   momentum: 0.9 # Unused if optimizer is not SGD
-  weight_decay: 0 # Unused if optimizer is not Adam
+  weight_decay: 1e-5 # Unused if optimizer is not Adam
   learning_rate: 1e-2
   eta_min: 1e-4
   accelerator: "gpu"
   devices: 1
   use_logging: true
   wandb_project: "self-interferometry"
-  experiment_name: "fno_0_weight_decay"
+  experiment_name: "fno_disploss_onoff_no_mlp"
   checkpoint_dir: "./analysis/checkpoints"
 
 loss:
   dynamic: false # enable dynamic loss weighting, overrides weights below
   velocity_loss_weight: 1.0
-  displacement_loss_weight: 0.1
+  displacement_loss_weight: [0., 1.0]
 
 data:
   data_dir: "./analysis/data"
