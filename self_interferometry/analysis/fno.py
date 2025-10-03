@@ -7,6 +7,7 @@ from torch import Tensor, nn
 # Conditional import for neuralop - requires torch >= 2.8
 try:
     from neuralop.models import FNO
+
     NEURALOP_AVAILABLE = True
 except ImportError:
     NEURALOP_AVAILABLE = False
@@ -18,6 +19,7 @@ act_fn_by_name = {
     'ReLU': nn.ReLU(),
     'gelu': nn.GELU(),
 }
+
 
 @dataclass
 class FNOConfig:
@@ -64,8 +66,8 @@ class FNO1d(nn.Module):
 
         if not NEURALOP_AVAILABLE:
             raise ImportError(
-                "FNO model requires the neuralop library, which requires PyTorch >= 2.8. "
-                "Please upgrade PyTorch or use a different model (CNN/TCN)."
+                'FNO model requires the neuralop library, which requires PyTorch >= 2.8. '
+                'Please upgrade PyTorch or use a different model (CNN/TCN).'
             )
 
         self.input_size = config.input_size

@@ -14,7 +14,7 @@ from self_interferometry.analysis.tcn import TCN, TCNConfig
 
 # Conditional import for FNO - only available with torch >= 2.8
 try:
-    from self_interferometry.analysis.fno import FNO1d, FNOConfig, NEURALOP_AVAILABLE
+    from self_interferometry.analysis.fno import NEURALOP_AVAILABLE, FNO1d, FNOConfig
 except ImportError:
     NEURALOP_AVAILABLE = False
     FNO1d = None
@@ -102,8 +102,8 @@ class Fusion(L.LightningModule):
         """Create FNOConfig from model configuration."""
         if not NEURALOP_AVAILABLE:
             raise ImportError(
-                "FNO model requires the neuralop library, which requires PyTorch >= 2.8. "
-                "Please upgrade PyTorch or use a different model (CNN/TCN)."
+                'FNO model requires the neuralop library, which requires PyTorch >= 2.8. '
+                'Please upgrade PyTorch or use a different model (CNN/TCN).'
             )
         return FNOConfig(
             # Common parameters (required by training interface)
@@ -111,7 +111,7 @@ class Fusion(L.LightningModule):
             output_size=self.model_hparams['output_size'],
             in_channels=self.model_hparams['in_channels'],
             # FNO specific parameters
-            n_modes=(self.model_hparams['n_modes'],), # Expects tuple of length 1
+            n_modes=(self.model_hparams['n_modes'],),  # Expects tuple of length 1
             hidden_channels=self.model_hparams['hidden_channels'],
             n_layers=self.model_hparams['n_layers'],
             max_n_modes=self.model_hparams['max_n_modes'],
@@ -157,8 +157,8 @@ class Fusion(L.LightningModule):
         elif model_type == 'FNO':
             if not NEURALOP_AVAILABLE:
                 raise ImportError(
-                    "FNO model requires the neuralop library, which requires PyTorch >= 2.8. "
-                    "Please upgrade PyTorch or use a different model (CNN/TCN)."
+                    'FNO model requires the neuralop library, which requires PyTorch >= 2.8. '
+                    'Please upgrade PyTorch or use a different model (CNN/TCN).'
                 )
             logger.debug('Creating FNO model...')
             self.model_config = self._create_fno_config()
@@ -515,8 +515,9 @@ class Fusion(L.LightningModule):
         # 256 is the acq_dec value we typically use in RedPitayaManager, but could
         # change in the future. TODO: Probably should read this from the data file.
         sample_rate = RedPitayaConfig.SAMPLE_RATE_DEC1 / 256
-        displacement_hat = CoilDriver.integrate_velocity(velocity_hat,
-                                                        sample_rate=sample_rate)
+        displacement_hat = CoilDriver.integrate_velocity(
+            velocity_hat, sample_rate=sample_rate
+        )
 
         # Shift all displacements to start at zero for easy comparison
         displacement_hat -= displacement_hat[:, 0:1]

@@ -33,7 +33,6 @@ class TrainingConfig:
     is_hyperparameter_search: bool = False
     search_space: dict[str, list[Any]] | None = None
 
-
     @classmethod
     def from_yaml(
         cls, config_path: str
@@ -231,7 +230,9 @@ class TrainingInterface:
         # Use provided arguments or fall back to config
         if dataset_path is None:
             data_dir = self.config.data_config['data_dir']
-            dataset_path = resolve_path(data_dir, self.config.data_config['dataset_file'])
+            dataset_path = resolve_path(
+                data_dir, self.config.data_config['dataset_file']
+            )
 
         if split_ratios is None:
             split_ratios = self.config.data_config['split_ratios']
