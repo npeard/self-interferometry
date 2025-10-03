@@ -33,28 +33,6 @@ class TrainingConfig:
     is_hyperparameter_search: bool = False
     search_space: dict[str, list[Any]] | None = None
 
-    def __post_init__(self):
-        """Set default values for running checkpoints. Check points do not
-        need all config variables.
-        """
-        if self.model_config == {}:
-            logger.debug('TrainingConfig in checkpoint mode...')
-            self._set_checkpoint_defaults()
-        else:
-            logger.debug('TrainingConfig in training mode...')
-
-    def _set_checkpoint_defaults(self):
-        """Set default values for running checkpoints. Check points do not
-        need all config variables.
-        """
-        # Training defaults
-        self.training_config.setdefault('batch_size', 64)
-
-        # Data defaults
-        self.data_config.setdefault('data_dir', './analysis/data')
-        self.data_config.setdefault('dataset_file', 'dataset.h5')
-        self.data_config.setdefault('split_ratios', (80, 10, 10))
-        self.data_config.setdefault('num_workers', 4)
 
     @classmethod
     def from_yaml(
@@ -171,23 +149,25 @@ class TrainingInterface:
 
     def __init__(
         self,
-        config: TrainingConfig,
+        config: TrainingConfig | None = None,
         experiment_name: str | None = None,
         checkpoint_dir: str | None = None,
     ):
         """Args:
-        config: Training configuration
+        config: Training configuration (None for checkpoint evaluation mode)
         experiment_name: Name for logging and checkpointing
         checkpoint_dir: Directory for saving checkpoints.
         """
         self.config = config
-        self.experiment_name = experiment_name or config.model_config['type']
-        self.checkpoint_dir = checkpoint_dir or './checkpoints'
 
-        # Create checkpoint directory
-        Path(self.checkpoint_dir).mkdir(parents=True, exist_ok=True)
+        # Only setup training components if config is provided
+        if config is not None:
+            self.experiment_name = experiment_name or config.model_config['type']
+            self.checkpoint_dir = checkpoint_dir or './checkpoints'
 
-        if experiment_name != 'checkpoint_eval':
+            # Create checkpoint directory
+            Path(self.checkpoint_dir).mkdir(parents=True, exist_ok=True)
+
             # Setup data
             self.setup_data()
 
@@ -212,8 +192,25 @@ class TrainingInterface:
                 f'FlashAttention available: {torch.backends.cuda.flash_sdp_enabled()}'
             )
 
-    def setup_data(self):
-        """Setup data loaders."""
+    def setup_data(
+        self,
+        dataset_path: str | None = None,
+        batch_size: int | None = None,
+        split_ratios: tuple[int, int, int] | None = None,
+        num_workers: int | None = None,
+        seed: int | None = None,
+        channel_dropout: float | None = None,
+    ):
+        """Setup data loaders.
+
+        Args:
+            dataset_path: Path to dataset file (if None, uses config)
+            batch_size: Batch size (if None, uses config)
+            split_ratios: Train/val/test split ratios (if None, uses config)
+            num_workers: Number of data loader workers (if None, uses config)
+            seed: Random seed for splitting (if None, uses config)
+            channel_dropout: Channel dropout rate (if None, uses config)
+        """
         # Convert data_dir to absolute path
         base_dir = Path(__file__).parent.parent  # Go up two levels from training.py
 
@@ -231,25 +228,35 @@ class TrainingInterface:
             # If filename is provided, join it with the directory
             return str(abs_dir / filename) if filename else str(abs_dir)
 
-        # Get absolute data directory and dataset path
-        data_dir = self.config.data_config['data_dir']
-        dataset_path = resolve_path(data_dir, self.config.data_config['dataset_file'])
+        # Use provided arguments or fall back to config
+        if dataset_path is None:
+            data_dir = self.config.data_config['data_dir']
+            dataset_path = resolve_path(data_dir, self.config.data_config['dataset_file'])
 
-        # Get split configuration
-        split_ratios = self.config.data_config['split_ratios']
-        seed = self.config.data_config['split_seed']
+        if split_ratios is None:
+            split_ratios = self.config.data_config['split_ratios']
 
-        # Get channel_dropout parameter from config
-        if self.config.model_config['role'] == 'ensemble':
-            channel_dropout = 0.0
-        else:
-            channel_dropout = self.config.data_config['channel_dropout']
+        if seed is None:
+            seed = self.config.data_config['split_seed']
+
+        if batch_size is None:
+            batch_size = self.config.training_config['batch_size']
+
+        if num_workers is None:
+            num_workers = self.config.data_config['num_workers']
+
+        if channel_dropout is None:
+            # Get channel_dropout parameter from config
+            if self.config.model_config['role'] == 'ensemble':
+                channel_dropout = 0.0
+            else:
+                channel_dropout = self.config.data_config['channel_dropout']
 
         self.train_loader, self.val_loader, self.test_loader = get_data_loaders(
             dataset_path=dataset_path,
             split_ratios=split_ratios,
-            batch_size=self.config.training_config['batch_size'],
-            num_workers=self.config.data_config['num_workers'],
+            batch_size=batch_size,
+            num_workers=num_workers,
             seed=seed,
             channel_dropout=channel_dropout,
         )
@@ -360,7 +367,15 @@ class TrainingInterface:
         if hasattr(self, 'test_loader'):
             self.trainer.test(self.lightning_module, dataloaders=self.test_loader)
 
-    def plot_predictions_from_checkpoint(self, checkpoint_path: str):
+    def plot_predictions_from_checkpoint(
+        self,
+        checkpoint_path: str,
+        dataset_path: str,
+        batch_size: int = 64,
+        split_ratios: tuple[int, int, int] = (80, 10, 10),
+        num_workers: int = 4,
+        seed: int = 42,
+    ):
         """Plot predictions from a checkpoint.
 
         Creates a plot with up to 4 rows:
@@ -369,25 +384,37 @@ class TrainingInterface:
 
         Args:
             checkpoint_path: Path to the checkpoint file
+            dataset_path: Path to the dataset file
+            batch_size: Batch size for data loader
+            split_ratios: Train/val/test split ratios
+            num_workers: Number of data loader workers
+            seed: Random seed for data splitting
         """
         # Load the model from checkpoint
-        model = Fusion.load_from_checkpoint(checkpoint_path)
+        model = Fusion.load_from_checkpoint(checkpoint_path, strict=False)
         trainer = L.Trainer(accelerator='cpu', logger=[])
 
         # Figure out which role the model was trained in so we setup the correct data
         model_role = model.model_hparams['role']
         if model_role == 'standard':
-            self.config.model_config['role'] = 'standard'
+            channel_dropout = 0.0  # Standard models use all channels
         elif model_role == 'ensemble':
-            self.config.model_config['role'] = 'ensemble'
+            channel_dropout = 0.0  # Ensemble models don't use dropout for evaluation
         else:
             raise ValueError(
                 f'Unknown model role: {model_role}. '
                 f'Supported roles: "standard", "ensemble"'
             )
 
-        # Setup data loaders
-        self.setup_data()
+        # Setup data loaders with explicit parameters
+        self.setup_data(
+            dataset_path=dataset_path,
+            batch_size=batch_size,
+            split_ratios=split_ratios,
+            num_workers=num_workers,
+            seed=seed,
+            channel_dropout=channel_dropout,
+        )
 
         # Get predictions
         predictions = trainer.predict(model, self.test_loader)

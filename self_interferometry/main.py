@@ -42,7 +42,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--checkpoint',
         type=str,
-        help='Path to checkpoint for testing. If provided, will run in test mode.',
+        help='Path to checkpoint file for evaluation. Requires --dataset argument.',
+    )
+    parser.add_argument(
+        '--dataset',
+        type=str,
+        help='Path to dataset file for checkpoint evaluation. Required when using --checkpoint.',
     )
     parser.add_argument(
         '--acquire_dataset',
@@ -90,14 +95,23 @@ def main():
     setup_logging(args.verbosity)
     logger = logging.getLogger(__name__)
 
-    # For testing mode (checkpoint provided), config is not necessary
+    # For checkpoint evaluation mode
     if args.checkpoint:
-        logger.info('Loading from checkpoint for quick plotting...')
+        if not args.dataset:
+            raise ValueError(
+                '--dataset argument is required when using --checkpoint. '
+                'Please specify the path to the dataset file.'
+            )
+
+        logger.info('Loading from checkpoint for evaluation...')
         logger.info(f'Checkpoint path: {args.checkpoint}')
-        trainer = TrainingInterface(
-            TrainingConfig({}, {}, {}, {}), experiment_name='checkpoint_eval'
+        logger.info(f'Dataset path: {args.dataset}')
+
+        # Create trainer with no config for checkpoint evaluation
+        trainer = TrainingInterface(config=None)
+        trainer.plot_predictions_from_checkpoint(
+            checkpoint_path=args.checkpoint, dataset_path=args.dataset
         )
-        trainer.plot_predictions_from_checkpoint(checkpoint_path=args.checkpoint)
         return
 
     # For training mode, load config
@@ -185,8 +199,8 @@ if __name__ == '__main__':
     # Training new model:
     # python main.py --config path/to/config.yaml
 
-    # Testing from checkpoint:
-    # python main.py --checkpoint path/to/checkpoint.ckpt
+    # Evaluating from checkpoint:
+    # python main.py --checkpoint path/to/checkpoint.ckpt --dataset path/to/dataset.h5
 
     # Acquiring real data from Red Pitaya:
     # python main.py --config path/to/config.yaml --acquire_dataset

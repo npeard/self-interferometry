@@ -512,9 +512,11 @@ class Fusion(L.LightningModule):
             self.model_config.window_stride = 1
 
         velocity_hat = self(signals)
-        # Use default sample rate determined by hardware in integration
-        # Should be 125e6 / 256 - but generally ought to be read from data file.
-        displacement_hat = CoilDriver.integrate_velocity(velocity_hat)
+        # 256 is the acq_dec value we typically use in RedPitayaManager, but could
+        # change in the future. TODO: Probably should read this from the data file.
+        sample_rate = RedPitayaConfig.SAMPLE_RATE_DEC1 / 256
+        displacement_hat = CoilDriver.integrate_velocity(velocity_hat,
+                                                        sample_rate=sample_rate)
 
         # Shift all displacements to start at zero for easy comparison
         displacement_hat -= displacement_hat[:, 0:1]
