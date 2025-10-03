@@ -12,7 +12,7 @@ __author__ = 'Luka Golinar, Iztok Jeras, Miha Gjura'
 __copyright__ = 'Copyright 2023, Red Pitaya'
 
 
-class scpi:
+class SCPI:
     """SCPI class used to access Red Pitaya over an IP network."""
 
     delimiter = '\r\n'

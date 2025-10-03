@@ -2,6 +2,6 @@
 
 from .manager import RedPitayaManager
 from .redpitaya_config import RedPitayaConfig
-from .scpi import scpi
+from .scpi import SCPI
 
-__all__ = ['RedPitayaConfig', 'RedPitayaManager', 'scpi']
+__all__ = ['RedPitayaConfig', 'RedPitayaManager', 'SCPI']

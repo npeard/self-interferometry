@@ -15,13 +15,24 @@ import numpy as np
 from numpy.fft import fft
 
 # Import our custom classes
-from ..simulations.coil_driver import CoilDriver
-from ..simulations.interferometers import MichelsonInterferometer
-from ..simulations.waveform import Waveform
-
-# Import the scpi module directly
-from . import scpi
-from .redpitaya_config import RedPitayaConfig
+try:
+    # Try relative imports first (when used as a package)
+    from ..simulations.coil_driver import CoilDriver
+    from ..simulations.interferometers import MichelsonInterferometer
+    from ..simulations.waveform import Waveform
+    from .redpitaya_config import RedPitayaConfig
+    from .scpi import SCPI
+except ImportError:
+    # Fall back to absolute imports (when run as a script)
+    from self_interferometry.acquisition.redpitaya.redpitaya_config import (
+        RedPitayaConfig,
+    )
+    from self_interferometry.acquisition.redpitaya.scpi import SCPI
+    from self_interferometry.acquisition.simulations.coil_driver import CoilDriver
+    from self_interferometry.acquisition.simulations.interferometers import (
+        MichelsonInterferometer,
+    )
+    from self_interferometry.acquisition.simulations.waveform import Waveform
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +78,7 @@ class RedPitayaManager:
         for i, ip in enumerate(ip_addresses):
             try:
                 # Create SCPI instance
-                device = scpi.scpi(ip)
+                device = SCPI(ip)
                 self.devices.append(device)
                 self.device_names.append(f'RP{i + 1}')
                 logger.info(f'Connected to {ip} as {self.device_names[-1]}')
@@ -1793,7 +1804,8 @@ class RedPitayaManager:
 
             logger.info(f'Finished blinking LED on {device_name}')
         except Exception as e:
-            logger.error(f'Error blinking LED on {device_name}: {e}')
+            logger.exception(f'Error blinking LED on {device_name}: {e}')
+            logger.exception('Are you sure the SCPI server is running?')
 
 
 # Example usage
@@ -1817,7 +1829,7 @@ if __name__ == '__main__':
 
     # Run multiple acquisitions
     rp_manager.run_multiple_shots(
-        num_shots=2,
+        num_shots=7,
         delay_between_shots=1.0,
         plot_data=True,
         keep_final_plot=True,  # Keep the final plot open
