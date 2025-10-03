@@ -26,12 +26,16 @@ class Ensemble(Fusion):
         optimizer_hparams: dict | None = None,
         scheduler_hparams: dict | None = None,
         loss_hparams: dict | None = None,
+        training_hparams: dict | None = None,
     ):
-        """Initialize the MeanSingleChannel module.
+        """Initialize the Ensemble module.
 
         Args:
             model_hparams: Model hyperparameters
             optimizer_hparams: Optimizer hyperparameters
+            scheduler_hparams: Scheduler hyperparameters
+            loss_hparams: Loss hyperparameters
+            training_hparams: Training hyperparameters (includes target)
         """
         # Initialize the parent class but don't create the model yet
         super().__init__(
@@ -39,6 +43,7 @@ class Ensemble(Fusion):
             optimizer_hparams=optimizer_hparams,
             scheduler_hparams=scheduler_hparams,
             loss_hparams=loss_hparams,
+            training_hparams=training_hparams,
         )
         self.model_hparams = model_hparams
         self.save_hyperparameters()

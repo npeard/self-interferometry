@@ -348,38 +348,66 @@ class CoilDriver:
 
     @staticmethod
     def derivative_displacement(
-        displacement_waveform: np.ndarray, sample_rate: float
-    ) -> np.ndarray:
+        displacement_waveform: np.ndarray | torch.Tensor, sample_rate: float
+    ) -> np.ndarray | torch.Tensor:
         """Calculate the time derivative of a displacement waveform to get velocity.
 
         This method uses central differences to compute the derivative.
+        Compatible with both NumPy arrays and PyTorch tensors.
 
         Args:
             displacement_waveform: Displacement waveform (microns)
+                                  Can be a NumPy array or PyTorch tensor
+                                  For PyTorch tensors, supports batch dimensions
+                                  [batch_size, signal_length]
             sample_rate: Sample rate of the displacement waveform (Hz)
 
         Returns:
-            Velocity waveform (microns/s)
+            Velocity waveform (microns/s) in the same format as input
         """
+        # Check if input is a PyTorch tensor
+        is_torch = 'torch' in str(type(displacement_waveform).__module__)
+
         # Time step
         dt = 1.0 / sample_rate
 
-        # Use central differences for better accuracy
-        # For the first point, use forward difference
-        # For the last point, use backward difference
-        # For all other points, use central difference
-        velocity = np.zeros_like(displacement_waveform)
+        if is_torch:
+            # Handle batch dimensions if present
+            if len(displacement_waveform.shape) > 1:
+                batch_size, signal_length = displacement_waveform.shape
+                velocity = torch.zeros_like(displacement_waveform)
 
-        # First point (forward difference)
-        velocity[0] = (displacement_waveform[1] - displacement_waveform[0]) / dt
+                # First point (forward difference)
+                velocity[:, 0] = (displacement_waveform[:, 1] - displacement_waveform[:, 0]) / dt
 
-        # Middle points (central difference)
-        velocity[1:-1] = (displacement_waveform[2:] - displacement_waveform[:-2]) / (
-            2 * dt
-        )
+                # Middle points (central difference)
+                velocity[:, 1:-1] = (displacement_waveform[:, 2:] - displacement_waveform[:, :-2]) / (2 * dt)
 
-        # Last point (backward difference)
-        velocity[-1] = (displacement_waveform[-1] - displacement_waveform[-2]) / dt
+                # Last point (backward difference)
+                velocity[:, -1] = (displacement_waveform[:, -1] - displacement_waveform[:, -2]) / dt
+            else:
+                velocity = torch.zeros_like(displacement_waveform)
+
+                # First point (forward difference)
+                velocity[0] = (displacement_waveform[1] - displacement_waveform[0]) / dt
+
+                # Middle points (central difference)
+                velocity[1:-1] = (displacement_waveform[2:] - displacement_waveform[:-2]) / (2 * dt)
+
+                # Last point (backward difference)
+                velocity[-1] = (displacement_waveform[-1] - displacement_waveform[-2]) / dt
+        else:
+            # NumPy implementation
+            velocity = np.zeros_like(displacement_waveform)
+
+            # First point (forward difference)
+            velocity[0] = (displacement_waveform[1] - displacement_waveform[0]) / dt
+
+            # Middle points (central difference)
+            velocity[1:-1] = (displacement_waveform[2:] - displacement_waveform[:-2]) / (2 * dt)
+
+            # Last point (backward difference)
+            velocity[-1] = (displacement_waveform[-1] - displacement_waveform[-2]) / dt
 
         return velocity
 

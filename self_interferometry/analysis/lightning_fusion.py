@@ -38,20 +38,37 @@ class Fusion(L.LightningModule):
         optimizer_hparams: dict | None = None,
         scheduler_hparams: dict | None = None,
         loss_hparams: dict | None = None,
+        training_hparams: dict | None = None,
     ):
         """Args:
         model_hparams: Hyperparameters for the model
         optimizer_hparams: Hyperparameters for the optimizer
         scheduler_hparams: Hyperparameters for the learning rate scheduler
-        loss_hparams: Hyperparameters for the loss function.
+        loss_hparams: Hyperparameters for the loss function
+        training_hparams: Hyperparameters for training configuration (includes target)
         """
         super().__init__()
         self.model_hparams = model_hparams
         self.optimizer_hparams = optimizer_hparams
         self.scheduler_hparams = scheduler_hparams
         self.loss_hparams = loss_hparams
+        self.training_hparams = training_hparams
         self.save_hyperparameters(ignore=['model'])
         self.model = self.create_model()
+
+        # Determine what the model should target
+        if training_hparams and 'target' in training_hparams:
+            self.target = training_hparams['target']
+            if self.target not in ['velocity', 'displacement']:
+                raise ValueError(
+                    f"target must be 'velocity' or 'displacement', got '{self.target}'"
+                )
+        else:
+            # Default to velocity for backward compatibility
+            self.target = 'velocity'
+            logger.warning(
+                "No 'target' specified in training config, defaulting to 'velocity'"
+            )
 
         # Initialize dynamic loss weights if enabled
         if 'dynamic' not in self.loss_hparams:
@@ -61,8 +78,8 @@ class Fusion(L.LightningModule):
         if self.dynamic_weighting:
             # Initialize learnable weight parameters for homoscedastic uncertainty
             # Start with reasonable initial values (e.g., 1.0)
-            self.log_weight_velocity = nn.Parameter(torch.tensor(0.0))  # log(1.0) = 0.0
-            self.log_weight_displacement = nn.Parameter(
+            self.log_weight_primary = nn.Parameter(torch.tensor(0.0))  # log(1.0) = 0.0
+            self.log_weight_auxiliary = nn.Parameter(
                 torch.tensor(0.0)
             )  # log(1.0) = 0.0
 
@@ -172,13 +189,14 @@ class Fusion(L.LightningModule):
         This method handles different model architectures:
         1. For CNN models: Uses a sliding window approach to process each window
         separately
-        2. For TCN model: Processes the entire sequence at once efficiently
+        2. For TCN/FNO model: Processes the entire sequence at once efficiently
 
         Args:
             x: Input tensor of shape [batch_size, num_channels, signal_length]
 
         Returns:
-            Tensor of shape [batch_size, signal_length] containing predicted velocity
+            Tensor of shape [batch_size, signal_length] containing model predictions
+            (velocity or displacement depending on self.target)
         """
         batch_size, num_channels, signal_length = x.shape
 
@@ -293,66 +311,88 @@ class Fusion(L.LightningModule):
         return {'optimizer': optimizer, 'lr_scheduler': {'scheduler': scheduler}}
 
     def loss_function(
-        self, velocity_hat: torch.Tensor, velocity_target: torch.Tensor
+        self,
+        prediction: torch.Tensor,
+        velocity_target: torch.Tensor,
+        displacement_target: torch.Tensor,
     ) -> dict[str, torch.Tensor]:
         """Custom loss function that returns a dictionary of loss components.
 
+        Supports two modes based on self.target:
+        - 'velocity': Model predicts velocity, displacement loss is auxiliary (physics-informed)
+        - 'displacement': Model predicts displacement, velocity loss is not used
+
         Args:
-            velocity_hat: Model predictions
-            velocity_target: Ground truth targets
-            signals: Input signals
+            prediction: Model predictions (velocity or displacement based on self.target)
+            velocity_target: Ground truth velocity
+            displacement_target: Ground truth displacement
 
         Returns:
             Dictionary of loss components with keys representing loss types
             and values representing the corresponding loss tensors.
         """
-        # Base velocity loss (MSE)
-        velocity_loss = nn.MSELoss()(velocity_hat, velocity_target)
-        # Convert velocity loss units to um**2/ms**2 instead of um**2/s**2
-        # This allows SGD optimizer to run, apparently it can't handle large
-        # loss values.
-        velocity_loss /= 1e6
-
-        # Displacement loss (MSE)
-        # 256 is the acq_dec value we typically use in RedPitayaManager, but could
-        # change in the future. TODO: Probably should read this from the data file.
         sample_rate = RedPitayaConfig.SAMPLE_RATE_DEC1 / 256
-        displacement_hat = CoilDriver.integrate_velocity(velocity_hat, sample_rate)
-        displacement_target = CoilDriver.integrate_velocity(
-            velocity_target, sample_rate
-        )
-        displacement_loss = nn.MSELoss()(displacement_hat, displacement_target)
 
-        # Create a dictionary of unweighted loss components
-        loss_dict = {
-            'velocity': velocity_loss,
-            'displacement': displacement_loss,
-            'total_unweighted': velocity_loss + displacement_loss,
-            # Add more loss components as needed
-        }
+        if self.target == 'velocity':
+            # Model predicts velocity
+            velocity_hat = prediction
 
-        # Add a total loss entry with loss components weighted by loss weights
-        if self.dynamic_weighting:
-            # Dynamic weighting using learnable parameters for homoscedastic uncertainty
-            # Formula: 1/weight**2 * loss + log(weight) for each term
-            weight_velocity = torch.exp(self.log_weight_velocity)
-            weight_displacement = torch.exp(self.log_weight_displacement)
+            # Primary loss: velocity (MSE)
+            velocity_loss = nn.MSELoss()(velocity_hat, velocity_target)
+            # Convert velocity loss units to um**2/ms**2 instead of um**2/s**2
+            # This allows SGD optimizer to run, apparently it can't handle large loss values.
+            velocity_loss /= 1e6
 
-            loss_dict['total'] = (
-                (1.0 / weight_velocity**2) * velocity_loss
-                + (1.0 / weight_displacement**2) * displacement_loss
-                + torch.log(weight_velocity * weight_displacement)
+            # Auxiliary loss: displacement (physics-informed, derived from velocity)
+            displacement_hat = CoilDriver.integrate_velocity(velocity_hat, sample_rate)
+            displacement_loss = nn.MSELoss()(displacement_hat, displacement_target)
+
+            # Create loss dictionary
+            loss_dict = {
+                'velocity': velocity_loss,
+                'displacement': displacement_loss,
+                'total_unweighted': velocity_loss + displacement_loss,
+            }
+
+            # Weighted total loss
+            if self.dynamic_weighting:
+                weight_primary = torch.exp(self.log_weight_primary)
+                weight_auxiliary = torch.exp(self.log_weight_auxiliary)
+
+                loss_dict['total'] = (
+                    (1.0 / weight_primary**2) * velocity_loss
+                    + (1.0 / weight_auxiliary**2) * displacement_loss
+                    + torch.log(weight_primary * weight_auxiliary)
+                )
+                loss_dict['weight_velocity'] = weight_primary
+                loss_dict['weight_displacement'] = weight_auxiliary
+            else:
+                loss_dict['total'] = (
+                    self.loss_hparams['velocity_loss_weight'] * velocity_loss
+                    + self.loss_hparams['displacement_loss_weight'] * displacement_loss
+                )
+
+        else:  # self.target == 'displacement'
+            # Model predicts displacement directly
+            displacement_hat = prediction
+
+            # Primary loss: displacement (MSE)
+            displacement_loss = nn.MSELoss()(displacement_hat, displacement_target)
+
+            # Derive velocity from predicted displacement for logging/visualization only
+            velocity_hat = CoilDriver.derivative_displacement(
+                displacement_hat, sample_rate
             )
+            velocity_loss = nn.MSELoss()(velocity_hat, velocity_target)
+            velocity_loss /= 1e6
 
-            # Add weight values to loss dict for logging
-            loss_dict['weight_velocity'] = weight_velocity
-            loss_dict['weight_displacement'] = weight_displacement
-        else:
-            # Static weighting using fixed hyperparameters
-            loss_dict['total'] = (
-                self.loss_hparams['velocity_loss_weight'] * velocity_loss
-                + self.loss_hparams['displacement_loss_weight'] * displacement_loss
-            )
+            # Create loss dictionary - only displacement loss is used for training
+            loss_dict = {
+                'displacement': displacement_loss,
+                'velocity': velocity_loss,  # For logging only
+                'total_unweighted': displacement_loss,
+                'total': displacement_loss,  # No auxiliary loss when targeting displacement
+            }
 
         return loss_dict
 
@@ -369,27 +409,27 @@ class Fusion(L.LightningModule):
         Returns:
             Total loss value for backpropagation
         """
-        signals, velocity_target, _ = (
-            batch  # Ignore displacement_target for Fusion model
-        )
-        velocity_hat = self(signals)
+        signals, velocity_target, displacement_target = batch
+        prediction = self(signals)  # Model prediction (velocity or displacement)
 
         # For CNN with stride > 1, extract the corresponding target values
         if hasattr(self, '_output_full_signal') and not self._output_full_signal:
-            # Extract targets at the same positions where predictions were made
-            # For each window, we want the target at the center of the window
-            downsampled_target = torch.zeros_like(velocity_hat)
+            # Downsample both targets to match prediction stride
+            downsampled_velocity = torch.zeros_like(prediction)
+            downsampled_displacement = torch.zeros_like(prediction)
 
             for window_idx, i in enumerate(
                 range(0, velocity_target.shape[1], self._window_stride)
             ):
                 if window_idx >= self._num_windows:
                     break
-                downsampled_target[:, window_idx] = velocity_target[:, i]
+                downsampled_velocity[:, window_idx] = velocity_target[:, i]
+                downsampled_displacement[:, window_idx] = displacement_target[:, i]
 
-            velocity_target = downsampled_target
+            velocity_target = downsampled_velocity
+            displacement_target = downsampled_displacement
 
-        loss_dict = self.loss_function(velocity_hat, velocity_target)
+        loss_dict = self.loss_function(prediction, velocity_target, displacement_target)
 
         # Log each loss component with train_ prefix
         for loss_name, loss_value in loss_dict.items():
@@ -413,29 +453,27 @@ class Fusion(L.LightningModule):
             batch: Tuple of (signals, velocity_target, displacement_target)
             batch_idx: Index of current batch
         """
-        signals, velocity_target, _ = (
-            batch  # Ignore displacement_target for Fusion model
-        )
-        velocity_hat = self(signals)
+        signals, velocity_target, displacement_target = batch
+        prediction = self(signals)  # Model prediction (velocity or displacement)
 
         # For CNN with stride > 1, extract the corresponding target values
         if hasattr(self, '_output_full_signal') and not self._output_full_signal:
-            # Extract targets at the same positions where predictions were made
-            downsampled_target = torch.zeros_like(velocity_hat)
+            # Downsample both targets to match prediction stride
+            downsampled_velocity = torch.zeros_like(prediction)
+            downsampled_displacement = torch.zeros_like(prediction)
 
             for window_idx, i in enumerate(
                 range(0, velocity_target.shape[1], self._window_stride)
             ):
                 if window_idx >= self._num_windows:
                     break
-                downsampled_target[:, window_idx] = velocity_target[:, i]
+                downsampled_velocity[:, window_idx] = velocity_target[:, i]
+                downsampled_displacement[:, window_idx] = displacement_target[:, i]
 
-            velocity_target = downsampled_target
+            velocity_target = downsampled_velocity
+            displacement_target = downsampled_displacement
 
-            # For prediction, we might want to interpolate back to full signal length
-            # This is optional and depends on how you want to visualize the results
-
-        loss_dict = self.loss_function(velocity_hat, velocity_target)
+        loss_dict = self.loss_function(prediction, velocity_target, displacement_target)
 
         # Log each loss component with val_ prefix
         for loss_name, loss_value in loss_dict.items():
@@ -456,29 +494,27 @@ class Fusion(L.LightningModule):
             batch: Tuple of (signals, velocity_target, displacement_target)
             batch_idx: Index of current batch
         """
-        signals, velocity_target, _ = (
-            batch  # Ignore displacement_target for Fusion model
-        )
-        velocity_hat = self(signals)
+        signals, velocity_target, displacement_target = batch
+        prediction = self(signals)  # Model prediction (velocity or displacement)
 
         # For CNN with stride > 1, extract the corresponding target values
         if hasattr(self, '_output_full_signal') and not self._output_full_signal:
-            # Extract targets at the same positions where predictions were made
-            downsampled_target = torch.zeros_like(velocity_hat)
+            # Downsample both targets to match prediction stride
+            downsampled_velocity = torch.zeros_like(prediction)
+            downsampled_displacement = torch.zeros_like(prediction)
 
             for window_idx, i in enumerate(
                 range(0, velocity_target.shape[1], self._window_stride)
             ):
                 if window_idx >= self._num_windows:
                     break
-                downsampled_target[:, window_idx] = velocity_target[:, i]
+                downsampled_velocity[:, window_idx] = velocity_target[:, i]
+                downsampled_displacement[:, window_idx] = displacement_target[:, i]
 
-            velocity_target = downsampled_target
+            velocity_target = downsampled_velocity
+            displacement_target = downsampled_displacement
 
-            # For prediction, we might want to interpolate back to full signal length
-            # This is optional and depends on how you want to visualize the results
-
-        loss_dict = self.loss_function(velocity_hat, velocity_target)
+        loss_dict = self.loss_function(prediction, velocity_target, displacement_target)
 
         # Log each loss component with test_ prefix
         for loss_name, loss_value in loss_dict.items():
@@ -511,13 +547,20 @@ class Fusion(L.LightningModule):
         ):
             self.model_config.window_stride = 1
 
-        velocity_hat = self(signals)
-        # 256 is the acq_dec value we typically use in RedPitayaManager, but could
-        # change in the future. TODO: Probably should read this from the data file.
+        prediction = self(signals)  # Model prediction (velocity or displacement)
         sample_rate = RedPitayaConfig.SAMPLE_RATE_DEC1 / 256
-        displacement_hat = CoilDriver.integrate_velocity(
-            velocity_hat, sample_rate=sample_rate
-        )
+
+        # Derive both velocity and displacement for plotting, regardless of target
+        if self.target == 'velocity':
+            velocity_hat = prediction
+            displacement_hat = CoilDriver.integrate_velocity(
+                velocity_hat, sample_rate=sample_rate
+            )
+        else:  # self.target == 'displacement'
+            displacement_hat = prediction
+            velocity_hat = CoilDriver.derivative_displacement(
+                displacement_hat, sample_rate
+            )
 
         # Shift all displacements to start at zero for easy comparison
         displacement_hat -= displacement_hat[:, 0:1]

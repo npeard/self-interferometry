@@ -12,8 +12,10 @@ model:
 
 training:
   max_epochs: 500
+  warmup_epochs: 0
   batch_size: 256
   optimizer: "Adam"
+  momentum: 0.9 # Unused if optimizer is not SGD
   learning_rate: 7e-2
   eta_min: 0
   accelerator: "gpu"
@@ -22,6 +24,7 @@ training:
   wandb_project: "self-interferometry"
   experiment_name: "barland_cnn_training"
   checkpoint_dir: "./analysis/checkpoints"
+  target: "velocity"  # "velocity" or "displacement" - what the model predicts
 
 loss:
   dynamic: true # enable dynamic loss weighting, overrides weights below
