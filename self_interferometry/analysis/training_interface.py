@@ -17,7 +17,7 @@ from lightning.pytorch.loggers import WandbLogger
 
 from self_interferometry.analysis.datasets import get_data_loaders
 from self_interferometry.analysis.lightning_ensemble import Ensemble
-from self_interferometry.analysis.lightning_standard import Fusion
+from self_interferometry.analysis.lightning_fusion import Fusion
 
 logger = logging.getLogger(__name__)
 

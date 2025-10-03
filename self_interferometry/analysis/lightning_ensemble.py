@@ -6,7 +6,7 @@ import torch
 from torch import nn
 
 from self_interferometry.analysis.barland_cnn import BarlandCNN, BarlandCNNConfig
-from self_interferometry.analysis.lightning_standard import Fusion
+from self_interferometry.analysis.lightning_fusion import Fusion
 from self_interferometry.analysis.tcn import TCN, TCNConfig
 
 logger = logging.getLogger(__name__)
