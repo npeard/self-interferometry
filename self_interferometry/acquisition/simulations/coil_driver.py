@@ -378,13 +378,19 @@ class CoilDriver:
                 velocity = torch.zeros_like(displacement_waveform)
 
                 # First point (forward difference)
-                velocity[:, 0] = (displacement_waveform[:, 1] - displacement_waveform[:, 0]) / dt
+                velocity[:, 0] = (
+                    displacement_waveform[:, 1] - displacement_waveform[:, 0]
+                ) / dt
 
                 # Middle points (central difference)
-                velocity[:, 1:-1] = (displacement_waveform[:, 2:] - displacement_waveform[:, :-2]) / (2 * dt)
+                velocity[:, 1:-1] = (
+                    displacement_waveform[:, 2:] - displacement_waveform[:, :-2]
+                ) / (2 * dt)
 
                 # Last point (backward difference)
-                velocity[:, -1] = (displacement_waveform[:, -1] - displacement_waveform[:, -2]) / dt
+                velocity[:, -1] = (
+                    displacement_waveform[:, -1] - displacement_waveform[:, -2]
+                ) / dt
             else:
                 velocity = torch.zeros_like(displacement_waveform)
 
@@ -392,10 +398,14 @@ class CoilDriver:
                 velocity[0] = (displacement_waveform[1] - displacement_waveform[0]) / dt
 
                 # Middle points (central difference)
-                velocity[1:-1] = (displacement_waveform[2:] - displacement_waveform[:-2]) / (2 * dt)
+                velocity[1:-1] = (
+                    displacement_waveform[2:] - displacement_waveform[:-2]
+                ) / (2 * dt)
 
                 # Last point (backward difference)
-                velocity[-1] = (displacement_waveform[-1] - displacement_waveform[-2]) / dt
+                velocity[-1] = (
+                    displacement_waveform[-1] - displacement_waveform[-2]
+                ) / dt
         else:
             # NumPy implementation
             velocity = np.zeros_like(displacement_waveform)
@@ -404,7 +414,9 @@ class CoilDriver:
             velocity[0] = (displacement_waveform[1] - displacement_waveform[0]) / dt
 
             # Middle points (central difference)
-            velocity[1:-1] = (displacement_waveform[2:] - displacement_waveform[:-2]) / (2 * dt)
+            velocity[1:-1] = (
+                displacement_waveform[2:] - displacement_waveform[:-2]
+            ) / (2 * dt)
 
             # Last point (backward difference)
             velocity[-1] = (displacement_waveform[-1] - displacement_waveform[-2]) / dt
