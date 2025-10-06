@@ -11,6 +11,7 @@ from self_interferometry.acquisition.redpitaya.redpitaya_config import RedPitaya
 from self_interferometry.acquisition.simulations.coil_driver import CoilDriver
 from self_interferometry.analysis.barland_cnn import BarlandCNN, BarlandCNNConfig
 from self_interferometry.analysis.tcn import TCN, TCNConfig
+from self_interferometry.analysis.utcn import UTCN, UTCNConfig
 
 # Conditional import for FNO and UNO - only available with torch >= 2.8
 try:
@@ -118,6 +119,26 @@ class Fusion(L.LightningModule):
             stride=self.model_hparams['stride'],
         )
 
+    def _create_utcn_config(self) -> UTCNConfig:
+        """Create UTCNConfig from model configuration."""
+        return UTCNConfig(
+            # Common parameters
+            input_size=self.model_hparams['input_size'],
+            output_size=self.model_hparams['output_size'],
+            in_channels=self.model_hparams['in_channels'],
+            activation=self.model_hparams['activation'],
+            norm=self.model_hparams['norm'],
+            dropout=self.model_hparams['dropout'],
+            # UTCN specific parameters
+            kernel_size=self.model_hparams['kernel_size'],
+            n_layers=self.model_hparams['n_layers'],
+            utcn_out_channels=self.model_hparams['utcn_out_channels'],
+            utcn_dilations=self.model_hparams['utcn_dilations'],
+            horizontal_skips_map=self.model_hparams['horizontal_skips_map'],
+            horizontal_skip=self.model_hparams['horizontal_skip'],
+            stride=self.model_hparams['stride'],
+        )
+
     def _create_fno_config(self):
         """Create FNOConfig from model configuration."""
         if not NEURALOP_AVAILABLE:
@@ -215,6 +236,10 @@ class Fusion(L.LightningModule):
             logger.debug('Creating TCN model...')
             self.model_config = self._create_tcn_config()
             return TCN(self.model_config)
+        elif model_type == 'UTCN':
+            logger.debug('Creating UTCN model...')
+            self.model_config = self._create_utcn_config()
+            return UTCN(self.model_config)
         elif model_type == 'FNO':
             if not NEURALOP_AVAILABLE:
                 raise ImportError(

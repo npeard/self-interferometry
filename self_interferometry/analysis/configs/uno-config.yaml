@@ -11,20 +11,20 @@ model:
   lifting_channels: 256  # Hidden channels in the lifting block
   projection_channels: 256  # Hidden channels in the projection block
   positional_embedding: "grid"  # "grid" or null - adds positional encoding
-  n_layers: 5  # Number of Fourier layers (U-Net style: encoder + decoder)
+  n_layers: 4  # Number of Fourier layers (U-Net style: encoder + decoder)
 
   # UNO layer-wise configuration (must all be same length as n_layers)
   # For a 5-layer UNO: layers 0-1 are encoder (downsample), layer 2 is bottleneck, layers 3-4 are decoder (upsample)
-  uno_out_channels: [[32, 64, 64, 64, 32]]  # Output channels for each layer
-  uno_n_modes: [[[32], [32], [32], [32], [32]]]  # Fourier modes per layer (1D, so single value per layer)
-  uno_scalings: [[[1.0], [0.5], [1.0], [1.0], [2.0]]]  # Resolution scaling factors per layer
+  uno_out_channels: [[32, 64, 64, 32]]  # Output channels for each layer
+  uno_n_modes: [[[32], [32], [32], [32]]]  # Fourier modes per layer (1D, so single value per layer)
+  uno_scalings: [[[1.0], [1.0], [1.0], [1.0]]]  # Resolution scaling factors per layer
 
   # Skip connections (default: symmetric U-Net skips)
   horizontal_skips_map: null  # null uses default: {4: 0, 3: 1} for 5 layers
   horizontal_skip: "linear"  # Type of horizontal skip connections
 
   # Channel MLP and activation
-  channel_mlp_dropout: 0.0
+  channel_mlp_dropout: 0.2
   channel_mlp_expansion: 0.5
   non_linearity: "gelu"  # Activation function
 
@@ -53,7 +53,7 @@ training:
   max_epochs: 500
   warmup_epochs: 0
   batch_size: 128
-  optimizer: "Adam"
+  optimizer: ["Adam", "SGD"]
   momentum: 0.9 # Unused if optimizer is not SGD
   weight_decay: 1e-4 # Unused if optimizer is not Adam
   learning_rate: 1e-2
@@ -67,7 +67,7 @@ training:
   target: "displacement"  # "velocity" or "displacement" - what the model predicts
 
 loss:
-  dynamic: false # enable dynamic loss weighting, overrides weights below
+  dynamic: [true, false] # enable dynamic loss weighting, overrides weights below
   velocity_loss_weight: 1.0
   displacement_loss_weight: 1.0
 
