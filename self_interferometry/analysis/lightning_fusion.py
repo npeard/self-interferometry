@@ -81,8 +81,8 @@ class Fusion(L.LightningModule):
         if self.dynamic_weighting:
             # Initialize learnable weight parameters for homoscedastic uncertainty
             # Start with reasonable initial values (e.g., 1.0)
-            self.log_weight_primary = nn.Parameter(torch.tensor(0.0))  # log(1.0) = 0.0
-            self.log_weight_auxiliary = nn.Parameter(
+            self.log_weight_velocity = nn.Parameter(torch.tensor(0.0))  # log(1.0) = 0.0
+            self.log_weight_displacement = nn.Parameter(
                 torch.tensor(0.0)
             )  # log(1.0) = 0.0
 
@@ -389,72 +389,59 @@ class Fusion(L.LightningModule):
         if self.target == 'velocity':
             # Model predicts velocity
             velocity_hat = prediction
-
-            # Primary loss: velocity (MSE)
-            velocity_loss = nn.MSELoss()(velocity_hat, velocity_target)
-            # Convert velocity loss units to um**2/ms**2 instead of um**2/s**2
-            # This allows SGD optimizer to run, apparently it can't handle large loss values.
-            velocity_loss /= 1e6
-
             # Auxiliary loss: displacement (physics-informed, derived from velocity)
             displacement_hat = CoilDriver.integrate_velocity(velocity_hat, sample_rate)
             # Shift displacements to start at 0 for fair comparison
             displacement_hat -= displacement_hat[:, 0:1]
             displacement_target -= displacement_target[:, 0:1]
-            displacement_loss = nn.MSELoss()(displacement_hat, displacement_target)
-
-            # Create loss dictionary
-            loss_dict = {
-                'velocity': velocity_loss,
-                'displacement': displacement_loss,
-                'total_unweighted': velocity_loss + displacement_loss,
-            }
-
-            # Weighted total loss
-            if self.dynamic_weighting:
-                weight_primary = torch.exp(self.log_weight_primary)
-                weight_auxiliary = torch.exp(self.log_weight_auxiliary)
-
-                loss_dict['total'] = (
-                    (1.0 / weight_primary**2) * velocity_loss
-                    + (1.0 / weight_auxiliary**2) * displacement_loss
-                    + torch.log(weight_primary * weight_auxiliary)
-                )
-                loss_dict['weight_velocity'] = weight_primary
-                loss_dict['weight_displacement'] = weight_auxiliary
-            else:
-                loss_dict['total'] = (
-                    self.loss_hparams['velocity_loss_weight'] * velocity_loss
-                    + self.loss_hparams['displacement_loss_weight'] * displacement_loss
-                )
-
-        else:  # self.target == 'displacement'
-            # Model predicts displacement directly
+        elif self.target == 'displacement':
+            # Model predicts displacement
             displacement_hat = prediction
-
             # Shift displacements to start at 0 for fair comparison
             displacement_hat -= displacement_hat[:, 0:1]
             displacement_target -= displacement_target[:, 0:1]
+            # Auxiliary loss: velocity (physics-informed, derived from displacement)
+            velocity_hat = CoilDriver.derivative_displacement(displacement_hat, sample_rate)
+        else:
+            raise ValueError(f'Unknown target: {self.target}')
 
-            # Primary loss: displacement (MSE)
-            displacement_loss = nn.MSELoss()(displacement_hat, displacement_target)
+        # Convert velocity to um/ms instead of um/s stored in Dataset
+        velocity_hat *= 1e-3
+        velocity_target *= 1e-3
 
-            # Derive velocity from predicted displacement for logging/visualization only
-            velocity_hat = CoilDriver.derivative_displacement(
-                displacement_hat, sample_rate
+        # Velocity Loss
+        velocity_loss = nn.MSELoss()(velocity_hat, velocity_target)
+
+        # Displacement Loss
+        displacement_loss = nn.MSELoss()(displacement_hat, displacement_target)
+
+        # Create loss dictionary
+        loss_dict = {
+            'velocity': velocity_loss,
+            'displacement': displacement_loss,
+            'total_unweighted': velocity_loss + displacement_loss,
+        }
+
+        # Weighted total loss
+        if self.dynamic_weighting:
+            weight_velocity = torch.exp(self.log_weight_velocity)
+            weight_displacement = torch.exp(self.log_weight_displacement)
+
+            loss_dict['total'] = (
+                (1.0 / weight_velocity**2) * velocity_loss
+                + (1.0 / weight_displacement**2) * displacement_loss
+                + torch.log(weight_velocity * weight_displacement)
             )
-            velocity_loss = nn.MSELoss()(velocity_hat, velocity_target)
-            velocity_loss /= 1e6
-
-            # Create loss dictionary - only displacement loss is used for training
-            loss_dict = {
-                'displacement': displacement_loss,
-                'velocity': velocity_loss,  # For logging only
-                'total_unweighted': displacement_loss,
-                'total': displacement_loss,  # No auxiliary loss when targeting displacement
-            }
+            loss_dict['weight_velocity'] = weight_velocity
+            loss_dict['weight_displacement'] = weight_displacement
+        else:
+            loss_dict['total'] = (
+                self.loss_hparams['velocity_loss_weight'] * velocity_loss
+                + self.loss_hparams['displacement_loss_weight'] * displacement_loss
+            )
 
         return loss_dict
+
 
     @override
     def training_step(
