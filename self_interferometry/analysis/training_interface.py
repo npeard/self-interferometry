@@ -328,7 +328,7 @@ class TrainingInterface:
                     dirpath=Path(self.checkpoint_dir) / self.experiment_name,
                     filename=str(loggers[0].experiment.id)
                     + '_{epoch}-{val_total_unweighted_loss:.4f}',
-                    monitor='val/total_unweighted_loss',
+                    monitor=None, #'val/total_unweighted_loss',
                     mode='min',
                     save_top_k=1,
                 )

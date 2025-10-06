@@ -345,6 +345,9 @@ class Fusion(L.LightningModule):
 
             # Auxiliary loss: displacement (physics-informed, derived from velocity)
             displacement_hat = CoilDriver.integrate_velocity(velocity_hat, sample_rate)
+            # Shift displacements to start at 0 for fair comparison
+            displacement_hat -= displacement_hat[:, 0:1]
+            displacement_target -= displacement_target[:, 0:1]
             displacement_loss = nn.MSELoss()(displacement_hat, displacement_target)
 
             # Create loss dictionary
@@ -375,6 +378,10 @@ class Fusion(L.LightningModule):
         else:  # self.target == 'displacement'
             # Model predicts displacement directly
             displacement_hat = prediction
+
+            # Shift displacements to start at 0 for fair comparison
+            displacement_hat -= displacement_hat[:, 0:1]
+            displacement_target -= displacement_target[:, 0:1]
 
             # Primary loss: displacement (MSE)
             displacement_loss = nn.MSELoss()(displacement_hat, displacement_target)
