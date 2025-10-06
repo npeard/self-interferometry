@@ -12,13 +12,16 @@ from self_interferometry.acquisition.simulations.coil_driver import CoilDriver
 from self_interferometry.analysis.barland_cnn import BarlandCNN, BarlandCNNConfig
 from self_interferometry.analysis.tcn import TCN, TCNConfig
 
-# Conditional import for FNO - only available with torch >= 2.8
+# Conditional import for FNO and UNO - only available with torch >= 2.8
 try:
     from self_interferometry.analysis.fno import NEURALOP_AVAILABLE, FNO1d, FNOConfig
+    from self_interferometry.analysis.uno import UNO1d, UNOConfig
 except ImportError:
     NEURALOP_AVAILABLE = False
     FNO1d = None
     FNOConfig = None
+    UNO1d = None
+    UNOConfig = None
 
 logger = logging.getLogger(__name__)
 
@@ -151,6 +154,47 @@ class Fusion(L.LightningModule):
             decomposition_kwargs=self.model_hparams['decomposition_kwargs'],
         )
 
+    def _create_uno_config(self):
+        """Create UNOConfig from model configuration."""
+        if not NEURALOP_AVAILABLE:
+            raise ImportError(
+                'UNO model requires the neuralop library, which requires PyTorch >= 2.8. '
+                'Please upgrade PyTorch or use a different model (CNN/TCN).'
+            )
+        return UNOConfig(
+            # Common parameters (required by training interface)
+            input_size=self.model_hparams['input_size'],
+            output_size=self.model_hparams['output_size'],
+            in_channels=self.model_hparams['in_channels'],
+            # UNO specific parameters
+            hidden_channels=self.model_hparams['hidden_channels'],
+            lifting_channels=self.model_hparams['lifting_channels'],
+            projection_channels=self.model_hparams['projection_channels'],
+            positional_embedding=self.model_hparams['positional_embedding'],
+            n_layers=self.model_hparams['n_layers'],
+            uno_out_channels=self.model_hparams['uno_out_channels'],
+            uno_n_modes=self.model_hparams['uno_n_modes'],
+            uno_scalings=self.model_hparams['uno_scalings'],
+            horizontal_skips_map=self.model_hparams['horizontal_skips_map'],
+            incremental_n_modes=self.model_hparams['incremental_n_modes'],
+            channel_mlp_dropout=self.model_hparams['channel_mlp_dropout'],
+            channel_mlp_expansion=self.model_hparams['channel_mlp_expansion'],
+            non_linearity=self.model_hparams['non_linearity'],
+            norm=self.model_hparams['norm'],
+            preactivation=self.model_hparams['preactivation'],
+            fno_skip=self.model_hparams['fno_skip'],
+            horizontal_skip=self.model_hparams['horizontal_skip'],
+            channel_mlp_skip=self.model_hparams['channel_mlp_skip'],
+            separable=self.model_hparams['separable'],
+            factorization=self.model_hparams['factorization'],
+            rank=self.model_hparams['rank'],
+            fixed_rank_modes=self.model_hparams['fixed_rank_modes'],
+            implementation=self.model_hparams['implementation'],
+            decomposition_kwargs=self.model_hparams['decomposition_kwargs'],
+            domain_padding=self.model_hparams['domain_padding'],
+            domain_padding_mode=self.model_hparams['domain_padding_mode'],
+        )
+
     def create_model(self) -> nn.Module:
         """Create model instance based on config.
 
@@ -180,6 +224,15 @@ class Fusion(L.LightningModule):
             logger.debug('Creating FNO model...')
             self.model_config = self._create_fno_config()
             return FNO1d(self.model_config)
+        elif model_type == 'UNO':
+            if not NEURALOP_AVAILABLE:
+                raise ImportError(
+                    'UNO model requires the neuralop library, which requires PyTorch >= 2.8. '
+                    'Please upgrade PyTorch or use a different model (CNN/TCN).'
+                )
+            logger.debug('Creating UNO model...')
+            self.model_config = self._create_uno_config()
+            return UNO1d(self.model_config)
         else:
             raise ValueError(f'Unknown model type: {model_type}')
 
@@ -203,7 +256,7 @@ class Fusion(L.LightningModule):
         # Check if we're using a TCN or FNO model (which can process the entire sequence at
         # once)
         if hasattr(self.model, '__class__') and (
-            self.model.__class__.__name__ in {'TCN', 'FNO1d'}
+            self.model.__class__.__name__ in {'TCN', 'FNO1d', 'UNO1d'}
         ):
             # TCN/FNO approach - process the entire sequence at once
             with torch.set_grad_enabled(self.training):
