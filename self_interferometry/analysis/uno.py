@@ -122,7 +122,7 @@ class UNO1d(nn.Module):
             uno_kwargs['decomposition_kwargs'] = config.decomposition_kwargs
 
         self.uno = UNO(**uno_kwargs)
-        logger.info(f"Number of parameters in UNO: {count_model_params(self.uno)}")
+        logger.info(f'Number of parameters in UNO: {count_model_params(self.uno)}')
 
     def forward(self, x: Tensor) -> Tensor:
         """Forward pass through the UNO.

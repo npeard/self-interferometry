@@ -426,7 +426,9 @@ class Fusion(L.LightningModule):
             displacement_hat -= displacement_hat[:, 0:1]
             displacement_target -= displacement_target[:, 0:1]
             # Auxiliary loss: velocity (physics-informed, derived from displacement)
-            velocity_hat = CoilDriver.derivative_displacement(displacement_hat, sample_rate)
+            velocity_hat = CoilDriver.derivative_displacement(
+                displacement_hat, sample_rate
+            )
         else:
             raise ValueError(f'Unknown target: {self.target}')
 
@@ -466,7 +468,6 @@ class Fusion(L.LightningModule):
             )
 
         return loss_dict
-
 
     @override
     def training_step(

@@ -112,7 +112,7 @@ class FNO1d(nn.Module):
             fno_kwargs['decomposition_kwargs'] = config.decomposition_kwargs
 
         self.fno = FNO(**fno_kwargs)
-        logger.info(f"Number of parameters in FNO: {count_model_params(self.fno)}")
+        logger.info(f'Number of parameters in FNO: {count_model_params(self.fno)}')
 
     def forward(self, x: Tensor) -> Tensor:
         """Forward pass through the FNO.

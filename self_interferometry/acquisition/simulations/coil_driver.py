@@ -222,13 +222,8 @@ class CoilDriver:
         # Multiply by the transfer function
         displacement_spectrum = voltage_spectrum * transfer_function
 
-        # Divide by 2pi to account for change of variables used when fitting the
-        # transfer functions
-        # Need to do this whenever we inverse FFT the spectrum
-        displacement_spectrum /= 2 * np.pi
-        # Multiply by 2 since we changed how spectra are generated (two-sided instead of
-        # one-sided)
-        displacement_spectrum *= 2
+        # Divide by 2 to account for the fact that we are using a two-sided spectrum
+        displacement_spectrum /= 2
 
         return displacement_spectrum, freq
 
@@ -422,52 +417,3 @@ class CoilDriver:
             velocity[-1] = (displacement_waveform[-1] - displacement_waveform[-2]) / dt
 
         return velocity
-
-    def set_calibration_parameters(self, params: CalibrationParameters):
-        """Update the calibration parameters.
-
-        Args:
-            params: New calibration parameters
-        """
-        self.params = params
-
-    def get_calibration_parameters(self) -> CalibrationParameters:
-        """Get the current calibration parameters.
-
-        Returns:
-            Current calibration parameters
-        """
-        return self.params
-
-    def save_calibration_to_dict(self) -> dict:
-        """Save the calibration parameters to a dictionary.
-
-        Returns:
-            Dictionary containing the calibration parameters
-        """
-        return {
-            'f0': self.params.f0,
-            'Q': self.params.Q,
-            'k': self.params.k,
-            'c': self.params.c,
-            'speaker_part_number': self.params.speaker_part_number,
-        }
-
-    @classmethod
-    def from_dict(cls, params_dict: dict) -> 'CoilDriver':
-        """Create a CoilDriver from a dictionary of parameters.
-
-        Args:
-            params_dict: Dictionary containing the calibration parameters
-
-        Returns:
-            New CoilDriver instance with the specified parameters
-        """
-        params = CalibrationParameters(
-            f0=params_dict.get('f0', 257.20857316296724),
-            Q=params_dict.get('Q', 15.804110908084784),
-            k=params_dict.get('k', 33.42493417407945),
-            c=params_dict.get('c', -3.208233068626455),
-            speaker_part_number=params_dict.get('speaker_part_number'),
-        )
-        return cls(params)

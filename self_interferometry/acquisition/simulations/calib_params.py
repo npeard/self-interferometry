@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 
-
 # @dataclass
 # class CalibrationParameters:
 #     """Calibration parameters for the coil driver.
@@ -34,6 +33,8 @@ class CalibrationParameters:
 
     f0: float = 258.936
     Q: float = 16.98
-    k: float = 14.553
+    k: float = (
+        14.553  # This value is correct. Incorrect fringe counts in 2024 calibration?
+    )
     c: float = -3.220
     speaker_part_number: str | None = None

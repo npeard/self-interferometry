@@ -68,12 +68,12 @@ class UTCN(nn.Module):
 
         # Validate layer-wise configurations
         assert len(config.utcn_out_channels) == config.n_layers, (
-            f"utcn_out_channels length ({len(config.utcn_out_channels)}) "
-            f"must match n_layers ({config.n_layers})"
+            f'utcn_out_channels length ({len(config.utcn_out_channels)}) '
+            f'must match n_layers ({config.n_layers})'
         )
         assert len(config.utcn_dilations) == config.n_layers, (
-            f"utcn_dilations length ({len(config.utcn_dilations)}) "
-            f"must match n_layers ({config.n_layers})"
+            f'utcn_dilations length ({len(config.utcn_dilations)}) '
+            f'must match n_layers ({config.n_layers})'
         )
 
         self.utcn_out_channels = config.utcn_out_channels
@@ -82,7 +82,7 @@ class UTCN(nn.Module):
         # Setup horizontal skip connections (default: symmetric U-Net skips)
         if config.horizontal_skips_map is None:
             self.horizontal_skips_map = {}
-            for i in range(0, config.n_layers // 2):
+            for i in range(config.n_layers // 2):
                 # Example: if n_layers = 5, then 4:0, 3:1
                 self.horizontal_skips_map[config.n_layers - i - 1] = i
         else:
@@ -139,7 +139,7 @@ class UTCN(nn.Module):
 
         # Log model info
         total_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        logger.info(f"Number of parameters in UTCN: {total_params:,}")
+        logger.info(f'Number of parameters in UTCN: {total_params:,}')
 
     def forward(self, x: Tensor) -> Tensor:
         """Forward pass through the UTCN.
