@@ -10,14 +10,14 @@ model:
   dropout: 0.1
 
   # UTCN specific parameters
-  kernel_size: 3  # Kernel size for all temporal blocks
+  kernel_size: 7  # Kernel size for all temporal blocks
   n_layers: 5  # Total number of TemporalBlock layers (U-Net structure)
   stride: 1  # Stride for all layers
 
   # UTCN layer-wise configuration (must all be same length as n_layers)
   # For a 5-layer UTCN: layers 0-1 are encoder, layer 2 is bottleneck, layers 3-4 are decoder
-  utcn_out_channels: [16, 32, 64, 32, 16]  # Output channels for each layer
-  utcn_dilations: [1, 2, 4, 2, 1]  # Dilation factors per layer (increase then decrease)
+  utcn_out_channels: [[16, 32, 64, 32, 16]]  # Output channels for each layer
+  utcn_dilations: [[1, 2, 4, 2, 1]]  # Dilation factors per layer (increase then decrease)
 
   # Skip connections (default: symmetric U-Net skips)
   horizontal_skips_map: null  # null uses default: {4: 0, 3: 1} for 5 layers
@@ -36,14 +36,14 @@ training:
   devices: 1
   use_logging: true
   wandb_project: "self-interferometry"
-  experiment_name: "utcn_vel_target"
+  experiment_name: "utcn_first_attempt"
   checkpoint_dir: "./analysis/checkpoints"
   target: "velocity"  # "velocity" or "displacement" - what the model predicts
 
 loss:
   dynamic: false # enable dynamic loss weighting, overrides weights below
   velocity_loss_weight: 1.0
-  displacement_loss_weight: 0.0
+  displacement_loss_weight: 0.1
 
 data:
   data_dir: "./analysis/data"

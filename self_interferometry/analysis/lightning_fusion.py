@@ -281,7 +281,7 @@ class Fusion(L.LightningModule):
         # Check if we're using a TCN or FNO model (which can process the entire sequence at
         # once)
         if hasattr(self.model, '__class__') and (
-            self.model.__class__.__name__ in {'TCN', 'FNO1d', 'UNO1d'}
+            self.model.__class__.__name__ in {'TCN', 'UTCN', 'FNO1d', 'UNO1d'}
         ):
             # TCN/FNO approach - process the entire sequence at once
             with torch.set_grad_enabled(self.training):
