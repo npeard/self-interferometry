@@ -4,20 +4,22 @@ model:
   type: "UTCN"
   input_size: 16384
   output_size: 16384
-  activation: "LeakyReLU"
+  activation: "GELU" # GELU better than LeakyReLU
   norm: "layer"  # 'layer' or 'batch'
   in_channels: 3
   dropout: 0.1
 
   # UTCN specific parameters
   kernel_size: 7  # Kernel size for all temporal blocks
-  n_layers: 5  # Total number of TemporalBlock layers (U-Net structure)
+  n_layers: 7  # Total number of TemporalBlock layers (U-Net structure)
   stride: 1  # Stride for all layers
 
   # UTCN layer-wise configuration (must all be same length as n_layers)
   # For a 5-layer UTCN: layers 0-1 are encoder, layer 2 is bottleneck, layers 3-4 are decoder
-  utcn_out_channels: [[16, 32, 64, 32, 16]]  # Output channels for each layer
-  utcn_dilations: [[1, 2, 4, 2, 1]]  # Dilation factors per layer (increase then decrease)
+  # Fewer channels in middle layers with larger dilations
+  utcn_out_channels: [[64, 32, 16, 8, 16, 32, 64]] # [[64, 32, 16, 32, 64]]  # Output channels for each layer
+  utcn_dilations: [[2,4,8,16,8,4,2], [2,8,16,32,16,8,2], [4, 8, 16, 32, 16, 8, 4], [2,4,4,32,4,4,2]] # [[2, 5, 10, 5, 2]]  # Dilation factors per layer (increase then decrease)
+# So far, best results from largest dilation in middle layer
 
   # Skip connections (default: symmetric U-Net skips)
   horizontal_skips_map: null  # null uses default: {4: 0, 3: 1} for 5 layers
@@ -29,9 +31,9 @@ training:
   batch_size: 128
   optimizer: "Adam"
   momentum: 0.9 # Unused if optimizer is not SGD
-  weight_decay: 1e-4
+  weight_decay: 1e-6 # free-space: 1e-6, fiber: ?
   learning_rate: 1e-2
-  eta_min: 1e-4
+  eta_min: 1e-6
   accelerator: "gpu"
   devices: 1
   use_logging: true
