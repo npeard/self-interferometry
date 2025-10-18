@@ -7,6 +7,16 @@ import lightning as L
 import torch
 from torch import nn, optim
 
+# Conditional import for Muon optimizer
+try:
+    from muon import Muon, MuonWithAuxAdam, SingleDeviceMuonWithAuxAdam
+    MUON_AVAILABLE = True
+except ImportError:
+    MUON_AVAILABLE = False
+    Muon = None
+    MuonWithAuxAdam = None
+    SingleDeviceMuonWithAuxAdam = None
+
 from self_interferometry.acquisition.redpitaya.redpitaya_config import RedPitayaConfig
 from self_interferometry.acquisition.simulations.coil_driver import CoilDriver
 from self_interferometry.analysis.barland_cnn import BarlandCNN, BarlandCNNConfig
@@ -349,16 +359,65 @@ class Fusion(L.LightningModule):
 
     def configure_optimizers(self) -> dict[str, Any]:
         """Configure optimizer and learning rate scheduler."""
+        # Make a copy to avoid modifying the original hparams dict
+        optimizer_hparams = self.optimizer_hparams.copy()
+
         # Configure optimizer
-        optimizer_name = self.optimizer_hparams.pop('name')
+        optimizer_name = optimizer_hparams.pop('name')
         if optimizer_name == 'Adam':
             # Discard momentum hyperparameter for Adam optimizer
-            _ = self.optimizer_hparams.pop('momentum', None)
-            optimizer = optim.AdamW(self.parameters(), **self.optimizer_hparams)
+            _ = optimizer_hparams.pop('momentum', None)
+            optimizer = optim.AdamW(self.parameters(), **optimizer_hparams)
         elif optimizer_name == 'SGD':
             # Discard weight_decay hyperparameter for SGD optimizer
-            _ = self.optimizer_hparams.pop('weight_decay', None)
-            optimizer = optim.SGD(self.parameters(), **self.optimizer_hparams)
+            _ = optimizer_hparams.pop('weight_decay', None)
+            optimizer = optim.SGD(self.parameters(), **optimizer_hparams)
+        elif optimizer_name == 'Muon':
+            if not MUON_AVAILABLE:
+                raise ImportError(
+                    'Muon optimizer requires the muon-optimizer library. '
+                    'Install it with: pip install muon-optimizer'
+                )
+            # Discard momentum hyperparameter for Muon optimizer
+            _ = optimizer_hparams.pop('momentum', None)
+
+            # Muon uses MuonWithAuxAdam which applies:
+            # - Muon to hidden layer weights (parameters with ndim >= 2)
+            # - AdamW to other parameters (biases, norms, etc.)
+
+            # Separate parameters by dimensionality
+            # For models with body/head structure, we need to handle all model parameters
+            hidden_weights = [p for p in self.model.parameters() if p.ndim >= 2]
+            other_params = [p for p in self.model.parameters() if p.ndim < 2]
+
+            # Get hyperparameters
+            lr = optimizer_hparams.pop('lr', optimizer_hparams.pop('learning_rate', 1e-3))
+            weight_decay = optimizer_hparams.pop('weight_decay', 0.0)
+
+            # Configure parameter groups
+            # Muon for hidden weights, AdamW for biases/norms
+            param_groups = [
+                dict(
+                    params=hidden_weights,
+                    use_muon=True,
+                    lr=lr,
+                    weight_decay=weight_decay,
+                ),
+                dict(
+                    params=other_params,
+                    use_muon=False,
+                    lr=lr * 0.1,  # Typically use lower LR for non-Muon params
+                    betas=(0.9, 0.95),
+                    weight_decay=weight_decay,
+                ),
+            ]
+
+            # Use SingleDeviceMuonWithAuxAdam for single GPU/CPU training
+            # Use MuonWithAuxAdam for distributed training
+            if torch.distributed.is_available() and torch.distributed.is_initialized():
+                optimizer = MuonWithAuxAdam(param_groups, **optimizer_hparams)
+            else:
+                optimizer = SingleDeviceMuonWithAuxAdam(param_groups, **optimizer_hparams)
         else:
             raise ValueError(f'Unknown optimizer: {optimizer_name}')
 
@@ -554,7 +613,7 @@ class Fusion(L.LightningModule):
                 f'val/{loss_name}_loss',
                 loss_value,
                 prog_bar=(loss_name == 'total'),  # Only show total loss in progress bar
-                sync_dist=True,
+                sync_dist=torch.distributed.is_available() and torch.distributed.is_initialized(),
             )
 
     @override
@@ -591,7 +650,7 @@ class Fusion(L.LightningModule):
 
         # Log each loss component with test_ prefix
         for loss_name, loss_value in loss_dict.items():
-            self.log(f'test/{loss_name}_loss', loss_value, sync_dist=True)
+            self.log(f'test/{loss_name}_loss', loss_value, sync_dist=torch.distributed.is_available() and torch.distributed.is_initialized())
 
     @override
     def predict_step(

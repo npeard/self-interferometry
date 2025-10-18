@@ -14,7 +14,7 @@ training:
   max_epochs: 500
   warmup_epochs: 0
   batch_size: 256
-  optimizer: "Adam"
+  optimizer: "Adam"  # Options: "Adam", "SGD", "Muon"
   momentum: 0.9 # Unused if optimizer is not SGD
   learning_rate: 7e-2
   eta_min: 0
