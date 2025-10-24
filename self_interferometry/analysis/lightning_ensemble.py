@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 
+import logging
 
 import torch
 from torch import nn
 
-from self_interferometry.signal_analysis.lightning_standard import Standard
-from self_interferometry.signal_analysis.models_cnn import BarlandCNN, BarlandCNNConfig
-from self_interferometry.signal_analysis.models_tcn import TCN, TCNConfig
+from self_interferometry.analysis.barland_cnn import BarlandCNN, BarlandCNNConfig
+from self_interferometry.analysis.lightning_fusion import Fusion
+from self_interferometry.analysis.tcn import TCN, TCNConfig
+
+logger = logging.getLogger(__name__)
 
 
-class Ensemble(Standard):
+class Ensemble(Fusion):
     """Lightning module that uses an ensemble of single-channel models.
 
     This module creates multiple single-channel models (one for each input channel)
@@ -23,12 +26,16 @@ class Ensemble(Standard):
         optimizer_hparams: dict | None = None,
         scheduler_hparams: dict | None = None,
         loss_hparams: dict | None = None,
+        training_hparams: dict | None = None,
     ):
-        """Initialize the MeanSingleChannel module.
+        """Initialize the Ensemble module.
 
         Args:
             model_hparams: Model hyperparameters
             optimizer_hparams: Optimizer hyperparameters
+            scheduler_hparams: Scheduler hyperparameters
+            loss_hparams: Loss hyperparameters
+            training_hparams: Training hyperparameters (includes target)
         """
         # Initialize the parent class but don't create the model yet
         super().__init__(
@@ -36,6 +43,7 @@ class Ensemble(Standard):
             optimizer_hparams=optimizer_hparams,
             scheduler_hparams=scheduler_hparams,
             loss_hparams=loss_hparams,
+            training_hparams=training_hparams,
         )
         self.model_hparams = model_hparams
         self.save_hyperparameters()
@@ -53,61 +61,64 @@ class Ensemble(Standard):
             ModuleList containing single-channel models
         """
         # Determine the number of input channels
-        in_channels = self.model_hparams.get('in_channels', 3)
+        in_channels = self.model_hparams['in_channels']
 
         # Create a list to store the models
         models = []
 
         # Create one model per input channel
-        print(f'Creating {in_channels} single-channel models...')  # noqa: T201
+        logger.info(f'Creating {in_channels} single-channel models...')
         for _ in range(in_channels):
             # Create a copy of model_hparams with in_channels=1
             single_channel_hparams = self.model_hparams.copy()
             single_channel_hparams['in_channels'] = 1
 
             # Create the appropriate model type
-            model_type = single_channel_hparams.get('type', 'CNN')
+            model_type = single_channel_hparams['type']
 
-            if model_type == 'CNN':
-                print('Creating CNN model...')  # noqa: T201
-                config = self._create_cnn_config_single_channel()
+            if model_type == 'Barland':
+                logger.debug('Creating BarlandCNN model...')
+                config = self._create_barland_config_single_channel()
                 models.append(BarlandCNN(config))
             elif model_type == 'TCN':
-                print('Creating TCN model...')  # noqa: T201
+                logger.debug('Creating TCN model...')
                 config = self._create_tcn_config_single_channel()
                 models.append(TCN(config))
             else:
                 raise ValueError(f'Unknown model type: {model_type}')
 
-            print(f'Created model {len(models)}')  # noqa: T201
+            logger.debug(f'Created model {len(models)}')
 
         return nn.ModuleList(models)
 
-    def _create_cnn_config_single_channel(self) -> BarlandCNNConfig:
-        """Create CNNConfig for a single-channel model."""
+    def _create_barland_config_single_channel(self) -> BarlandCNNConfig:
+        """Create BarlandCNNConfig for a single-channel model."""
         return BarlandCNNConfig(
             # Common parameters
-            input_size=self.model_hparams.get('input_size', 256),
-            output_size=self.model_hparams.get('output_size', 1),
+            input_size=self.model_hparams['input_size'],
+            output_size=self.model_hparams['output_size'],
             in_channels=1,  # Always 1 for single-channel models
-            activation=self.model_hparams.get('activation', 'LeakyReLU'),
-            dropout=self.model_hparams.get('dropout', 0.1),
+            activation=self.model_hparams['activation'],
+            dropout=self.model_hparams['dropout'],
             # BarlandCNN specific parameters
-            window_stride=self.model_hparams.get('window_stride', 128),
+            window_stride=self.model_hparams['window_stride'],
         )
 
     def _create_tcn_config_single_channel(self) -> TCNConfig:
         """Create TCNConfig for a single-channel model."""
         return TCNConfig(
             # Common parameters
-            input_size=self.model_hparams.get('input_size', 16384),
-            output_size=self.model_hparams.get('output_size', 16384),
+            input_size=self.model_hparams['input_size'],
+            output_size=self.model_hparams['output_size'],
             in_channels=1,  # Always 1 for single-channel models
-            activation=self.model_hparams.get('activation', 'LeakyReLU'),
-            dropout=self.model_hparams.get('dropout', 0.1),
+            activation=self.model_hparams['activation'],
+            norm=self.model_hparams['norm'],
+            dropout=self.model_hparams['dropout'],
             # TCN specific parameters
-            kernel_size=self.model_hparams.get('kernel_size', 7),
-            num_channels=self.model_hparams.get('num_channels', [16, 32, 64, 64]),
+            kernel_size=self.model_hparams['kernel_size'],
+            num_channels=self.model_hparams['num_channels'],
+            dilation_base=self.model_hparams['dilation_base'],
+            stride=self.model_hparams['stride'],
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -129,7 +140,8 @@ class Ensemble(Standard):
         # Check if number of channels matches number of models
         if num_channels != len(self.models):
             raise ValueError(
-                f'Input has {num_channels} channels but ensemble has {len(self.models)} models'
+                f'Input has {num_channels} channels but ensemble has '
+                f'{len(self.models)} models'
             )
 
         # Initialize list to store predictions from each model
@@ -157,8 +169,8 @@ class Ensemble(Standard):
 
             else:
                 # CNN approach - sliding window implementation
-                window_size = self.model_hparams.get('input_size', 256)
-                window_stride = self.model_hparams.get('window_stride', 128)
+                window_size = self.model_hparams['input_size']
+                window_stride = self.model_hparams['window_stride']
 
                 # Calculate number of windows
                 num_windows = (signal_length + window_stride - 1) // window_stride

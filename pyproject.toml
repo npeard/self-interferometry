@@ -15,7 +15,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "numpy",
+    "numpy==1.26.4",
     "matplotlib",
     "numba",
     "torch",
@@ -24,6 +24,7 @@ dependencies = [
     "tqdm",
     "pyyaml",
     "scipy",
+    "neuraloperator",
 ]
 
 [project.urls]
@@ -40,6 +41,12 @@ python_files = "test_*.py"
 addopts = "--verbose"
 
 [project.optional-dependencies]
+test = [
+    "pytest>=8.0",
+    "pytest-cov>=3.0",
+    "pytest-xdist>=2.5",
+    "pytest-benchmark",
+]
 dev = [
     "pytest>=8.0.0",
     "black",
@@ -49,7 +56,6 @@ dev = [
     "pre-commit",
     "nbstripout",
 ]
-
 
 [tool.flit.module]
 name = "self_interferometry"
@@ -68,19 +74,33 @@ skip-magic-trailing-comma = true
 select = [
     "F", "E", "W", "C90", "I", "D", "UP", "YTT", "ANN", "BLE", "B", "A", "C4", "FA",
     "INP", "NPY201", "PIE", "T20", "PYI", "PT", "RSE", "RET", "SLF", "SIM", "INT",
-    "ARG", "PTH", "PL", "TRY", "FLY", "NPY", "RUF",
+    "ARG", "PTH", "PL", "TRY", "FLY", "NPY", "RUF", "S", "N", "PERF", "FURB",
 ]
 extend-select = ["D204", "D400", "D404", "D406", "D410"]
 ignore = [
+    # Import-related (keep for __init__.py files)
     "F403", "F405",
-    "E203", "E731", "E741",
+    # Style preferences
+    "E741",  # Ambiguous variable names (sometimes necessary in scientific code)
+    # Documentation (reasonable for scientific/research code)
     "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107", "D205", "D405", "D417",
+    # Type annotations (reasonable choices)
     "ANN002", "ANN003", "ANN401",
+    # Argument usage (common in scientific APIs)
     "ARG001",
-    "RET505", "RUF022",
+    # Return style preference
+    "RET505",
+    # Exception handling (reasonable for research code)
     "TRY003",
+    # Complexity (reasonable limits for scientific code)
     "PLR0913", "PLR2004",
+    # Private access (sometimes needed for scientific libraries)
     "SLF001",
+    # Security (may need adjustment based on your needs)
+    "S101",  # Use of assert (common in scientific code)
+    "S311",  # Random generators (often fine for scientific use)
+    # Naming (scientific computing often uses uppercase for matrices/operators)
+    "N806", "N802", # Variable names should be lowercase (conflicts with math notation)
 ]
 
 [tool.ruff.lint.isort]
@@ -97,6 +117,8 @@ allow-dict-calls-with-keyword-arguments = true
 "docs/**.py" = ["INP001", "ARG001", "ANN"]
 "conftest.py" = ["ANN"]
 "tests/**.py" = ["ANN"]
+"*.ipynb" = ["ALL"]
+
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

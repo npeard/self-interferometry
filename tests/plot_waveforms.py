@@ -6,14 +6,18 @@ This script generates random waveforms, applies calibration to get displacement 
 and plots all waveforms and their FFTs.
 """
 
+import logging
+
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import gridspec
 from numpy.fft import fft, fftfreq
 from scipy import stats
 
-from self_interferometry.redpitaya.coil_driver import CoilDriver
-from self_interferometry.redpitaya.waveform import Waveform
+from self_interferometry.acquisition.simulations.coil_driver import CoilDriver
+from self_interferometry.acquisition.simulations.waveform import Waveform
+
+logger = logging.getLogger(__name__)
 
 
 def calculate_fft(
@@ -58,7 +62,7 @@ def plot_waveforms(
 
     # Calculate sample rate from time array
     sample_rate = 1 / (t[1] - t[0])
-    print(f'Sample rate: {sample_rate:.2f} Hz')  # noqa: T201
+    logger.info(f'Sample rate: {sample_rate:.2f} Hz')
 
     # Calculate FFT of the voltage waveform
     freqs_fft, voltage_fft = calculate_fft(voltage, sample_rate)
@@ -323,7 +327,7 @@ def plot_waveform_histograms(
     all_voltages = []
 
     # Generate multiple waveform samples
-    for i in range(num_samples):
+    for _ in range(num_samples):
         # Generate a random waveform with phase randomization only
         # The spectrum amplitudes are kept the same
         t, voltage, voltage_spectrum = waveform.sample(randomize_phase_only=True)

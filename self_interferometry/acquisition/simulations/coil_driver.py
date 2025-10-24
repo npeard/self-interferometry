@@ -10,8 +10,11 @@ import numpy as np
 import torch
 from numpy.fft import fft, fftfreq, ifft
 
-from self_interferometry.redpitaya.calib_params import CalibrationParameters
-from self_interferometry.redpitaya.waveform import Waveform
+from .calib_params import CalibrationParameters
+from .waveform import Waveform
+
+# Create a default RNG instance for the module
+_rng = np.random.default_rng()
 
 
 class CoilDriver:
@@ -114,6 +117,8 @@ class CoilDriver:
         normalized_spectrum[nonzero_mask] = (
             voltage_spectrum[nonzero_mask] / velocity_transfer[nonzero_mask]
         )
+        # Apply random uniform scaling to randomize total waveform power
+        normalized_spectrum *= _rng.uniform(0, 1.0)
 
         # Convert to time domain
         normalized_voltage = np.real(ifft(normalized_spectrum, norm='ortho'))
@@ -222,13 +227,8 @@ class CoilDriver:
         # Multiply by the transfer function
         displacement_spectrum = voltage_spectrum * transfer_function
 
-        # Divide by 2pi to account for change of variables used when fitting the
-        # transfer functions
-        # Need to do this whenever we inverse FFT the spectrum
-        displacement_spectrum /= 2 * np.pi
-        # Multiply by 2 since we changed how spectra are generated (two-sided instead of
-        # one-sided)
-        displacement_spectrum *= 2
+        # Divide by 2 to account for the fact that we are using a two-sided spectrum
+        displacement_spectrum /= 2
 
         return displacement_spectrum, freq
 
@@ -348,86 +348,77 @@ class CoilDriver:
 
     @staticmethod
     def derivative_displacement(
-        displacement_waveform: np.ndarray, sample_rate: float
-    ) -> np.ndarray:
+        displacement_waveform: np.ndarray | torch.Tensor, sample_rate: float
+    ) -> np.ndarray | torch.Tensor:
         """Calculate the time derivative of a displacement waveform to get velocity.
 
         This method uses central differences to compute the derivative.
+        Compatible with both NumPy arrays and PyTorch tensors.
 
         Args:
             displacement_waveform: Displacement waveform (microns)
+                                  Can be a NumPy array or PyTorch tensor
+                                  For PyTorch tensors, supports batch dimensions
+                                  [batch_size, signal_length]
             sample_rate: Sample rate of the displacement waveform (Hz)
 
         Returns:
-            Velocity waveform (microns/s)
+            Velocity waveform (microns/s) in the same format as input
         """
+        # Check if input is a PyTorch tensor
+        is_torch = 'torch' in str(type(displacement_waveform).__module__)
+
         # Time step
         dt = 1.0 / sample_rate
 
-        # Use central differences for better accuracy
-        # For the first point, use forward difference
-        # For the last point, use backward difference
-        # For all other points, use central difference
-        velocity = np.zeros_like(displacement_waveform)
+        if is_torch:
+            # Handle batch dimensions if present
+            if len(displacement_waveform.shape) > 1:
+                batch_size, signal_length = displacement_waveform.shape
+                velocity = torch.zeros_like(displacement_waveform)
 
-        # First point (forward difference)
-        velocity[0] = (displacement_waveform[1] - displacement_waveform[0]) / dt
+                # First point (forward difference)
+                velocity[:, 0] = (
+                    displacement_waveform[:, 1] - displacement_waveform[:, 0]
+                ) / dt
 
-        # Middle points (central difference)
-        velocity[1:-1] = (displacement_waveform[2:] - displacement_waveform[:-2]) / (
-            2 * dt
-        )
+                # Middle points (central difference)
+                velocity[:, 1:-1] = (
+                    displacement_waveform[:, 2:] - displacement_waveform[:, :-2]
+                ) / (2 * dt)
 
-        # Last point (backward difference)
-        velocity[-1] = (displacement_waveform[-1] - displacement_waveform[-2]) / dt
+                # Last point (backward difference)
+                velocity[:, -1] = (
+                    displacement_waveform[:, -1] - displacement_waveform[:, -2]
+                ) / dt
+            else:
+                velocity = torch.zeros_like(displacement_waveform)
+
+                # First point (forward difference)
+                velocity[0] = (displacement_waveform[1] - displacement_waveform[0]) / dt
+
+                # Middle points (central difference)
+                velocity[1:-1] = (
+                    displacement_waveform[2:] - displacement_waveform[:-2]
+                ) / (2 * dt)
+
+                # Last point (backward difference)
+                velocity[-1] = (
+                    displacement_waveform[-1] - displacement_waveform[-2]
+                ) / dt
+        else:
+            # NumPy implementation
+            velocity = np.zeros_like(displacement_waveform)
+
+            # First point (forward difference)
+            velocity[0] = (displacement_waveform[1] - displacement_waveform[0]) / dt
+
+            # Middle points (central difference)
+            velocity[1:-1] = (
+                displacement_waveform[2:] - displacement_waveform[:-2]
+            ) / (2 * dt)
+
+            # Last point (backward difference)
+            velocity[-1] = (displacement_waveform[-1] - displacement_waveform[-2]) / dt
 
         return velocity
-
-    def set_calibration_parameters(self, params: CalibrationParameters):
-        """Update the calibration parameters.
-
-        Args:
-            params: New calibration parameters
-        """
-        self.params = params
-
-    def get_calibration_parameters(self) -> CalibrationParameters:
-        """Get the current calibration parameters.
-
-        Returns:
-            Current calibration parameters
-        """
-        return self.params
-
-    def save_calibration_to_dict(self) -> dict:
-        """Save the calibration parameters to a dictionary.
-
-        Returns:
-            Dictionary containing the calibration parameters
-        """
-        return {
-            'f0': self.params.f0,
-            'Q': self.params.Q,
-            'k': self.params.k,
-            'c': self.params.c,
-            'speaker_part_number': self.params.speaker_part_number,
-        }
-
-    @classmethod
-    def from_dict(cls, params_dict: dict) -> 'CoilDriver':
-        """Create a CoilDriver from a dictionary of parameters.
-
-        Args:
-            params_dict: Dictionary containing the calibration parameters
-
-        Returns:
-            New CoilDriver instance with the specified parameters
-        """
-        params = CalibrationParameters(
-            f0=params_dict.get('f0', 257.20857316296724),
-            Q=params_dict.get('Q', 15.804110908084784),
-            k=params_dict.get('k', 33.42493417407945),
-            c=params_dict.get('c', -3.208233068626455),
-            speaker_part_number=params_dict.get('speaker_part_number'),
-        )
-        return cls(params)

@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import logging
 from pathlib import Path
 
 import h5py
@@ -7,16 +8,19 @@ import matplotlib.pyplot as plt
 import numpy as np
 from torch.utils.data import DataLoader
 
-from self_interferometry.redpitaya.redpitaya_config import RedPitayaConfig
-from self_interferometry.signal_analysis.datasets import StandardVelocityDataset
+from self_interferometry.acquisition.redpitaya.redpitaya_config import RedPitayaConfig
+from self_interferometry.analysis.datasets import VelocityDataset
+
+logger = logging.getLogger(__name__)
 
 
 def visualize_dataset(
     dataset_path: str | Path, max_samples: int = 10, batch_size: int = 1
 ):
-    """Visualize samples from a dataset using StandardVelocityDataset.
+    """Visualize samples from a dataset using VelocityDataset.
 
-    Creates plots similar to the training.py visualization but without model predictions.
+    Creates plots similar to the training.py visualization but without model
+    predictions.
     Each plot includes:
     1. Velocity and displacement on dual y-axes
     2-4. Input signals from photodiode channels
@@ -31,19 +35,19 @@ def visualize_dataset(
     with h5py.File(dataset_path, 'r') as f:
         if 'sample_rate' in f.attrs:
             sample_rate = float(f.attrs['sample_rate'])
-            print(f'Using sample rate from HDF5 file: {sample_rate:.2f} Hz')  # noqa: T201
+            logger.info(f'Using sample rate from HDF5 file: {sample_rate:.2f} Hz')
         else:
             # Default sample rate for Red Pitaya with decimation of 256
             sample_rate = RedPitayaConfig.SAMPLE_RATE_DEC1 / 256
-            print(f'Warning: Using default sample rate of {sample_rate:.2f} Hz')  # noqa: T201
+            logger.warning(f'Using default sample rate of {sample_rate:.2f} Hz')
 
         # Print dataset information
-        print(f'Dataset: {Path(dataset_path).name}')  # noqa: T201
-        print(f'Number of samples: {len(f[list(f.keys())[0]])}')  # noqa: T201
-        print(f'Available channels: {list(f.keys())}')  # noqa: T201
+        logger.info(f'Dataset: {Path(dataset_path).name}')
+        logger.info(f'Number of samples: {len(f[list(f.keys())[0]])}')
+        logger.info(f'Available channels: {list(f.keys())}')
 
     # Create dataset and dataloader
-    dataset = StandardVelocityDataset(dataset_path)
+    dataset = VelocityDataset(dataset_path)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     # Get samples from dataloader
@@ -61,10 +65,10 @@ def visualize_dataset(
         batch_size, num_channels, signal_length = signals.shape
 
         # Print shapes for debugging
-        print(f'\nBatch {batch_idx + 1}:')  # noqa: T201
-        print(f'Signals shape: {signals.shape}')  # noqa: T201
-        print(f'Velocity shape: {velocity.shape}')  # noqa: T201
-        print(f'Displacement shape: {displacement.shape}')  # noqa: T201
+        logger.debug(f'Batch {batch_idx + 1}:')
+        logger.debug(f'Signals shape: {signals.shape}')
+        logger.debug(f'Velocity shape: {velocity.shape}')
+        logger.debug(f'Displacement shape: {displacement.shape}')
 
         # Plot each sample in the batch
         for i in range(min(batch_size, max_samples - samples_processed)):
@@ -118,7 +122,8 @@ def visualize_dataset(
 def plot_histograms(dataset_path: str | Path):
     """Plot histograms and spectra for each channel in the dataset.
 
-    Creates histograms in the first row and FFT spectra in the second row for each channel.
+    Creates histograms in the first row and FFT spectra in the second row for each
+    channel.
 
     Args:
         dataset_path: Path to the HDF5 dataset file
@@ -131,7 +136,7 @@ def plot_histograms(dataset_path: str | Path):
             # Default sample rate for Red Pitaya with decimation of 256
             sample_rate = RedPitayaConfig.SAMPLE_RATE_DEC1 / 256
 
-        print(f'Using sample rate: {sample_rate:.2f} Hz')  # noqa: T201
+        logger.info(f'Using sample rate: {sample_rate:.2f} Hz')
         # Create figure with subplots (2 rows, 4 columns)
         fig, axes = plt.subplots(2, 4, figsize=(16, 8))
 
@@ -146,7 +151,7 @@ def plot_histograms(dataset_path: str | Path):
         # Calculate FFT frequencies
         first_key = list(f.keys())[0]
         n = len(f[first_key][0, :])
-        print(f'Number of samples: {n}')  # noqa: T201
+        logger.info(f'Number of samples: {n}')
         freqs = np.fft.fftfreq(n, 1 / sample_rate)
         pos_idx = np.where(freqs > 0)
         pos_freqs = freqs[pos_idx]
@@ -228,8 +233,8 @@ def analyze_dataset(dataset_path: str | Path):
         dataset_path: Path to the HDF5 dataset file
     """
     with h5py.File(dataset_path, 'r') as f:
-        print(f'\nDataset Analysis: {Path(dataset_path).name}')  # noqa: T201
-        print(f'Number of samples: {len(f[list(f.keys())[0]])}')  # noqa: T201
+        logger.info(f'Dataset Analysis: {Path(dataset_path).name}')
+        logger.info(f'Number of samples: {len(f[list(f.keys())[0]])}')
 
         # Calculate statistics for each channel
         for key in f.keys():
@@ -253,26 +258,23 @@ def analyze_dataset(dataset_path: str | Path):
             range_val = max_val - min_val
 
             # Print statistics
-            print(f'\n{label} statistics:')  # noqa: T201
-            print(f'  - Mean: {mean:.4f}')  # noqa: T201
-            print(f'  - Std: {std:.4f}')  # noqa: T201
-            print(f'  - Min: {min_val:.4f}')  # noqa: T201
-            print(f'  - Max: {max_val:.4f}')  # noqa: T201
-            print(f'  - Range: {range_val:.4f}')  # noqa: T201
+            logger.info(f'{label} statistics:')
+            logger.info(f'  - Mean: {mean:.4f}')
+            logger.info(f'  - Std: {std:.4f}')
+            logger.info(f'  - Min: {min_val:.4f}')
+            logger.info(f'  - Max: {max_val:.4f}')
+            logger.info(f'  - Range: {range_val:.4f}')
 
     # Plot histograms for the dataset
     plot_histograms(dataset_path)
 
 
-# frequency_analysis function has been removed as it's now redundant with plot_histograms
-
-
 if __name__ == '__main__':
     # Example usage
-    dataset_path = './signal_analysis/data/train-trgdel-20x.h5'
+    dataset_path = Path(__file__).parent / 'data/train5000.h5'
 
     # Visualize samples from the dataset
-    # visualize_dataset(dataset_path, max_samples=5)
+    visualize_dataset(dataset_path, max_samples=5)
 
     # Analyze dataset statistics and plot histograms
-    analyze_dataset(dataset_path)
+    # analyze_dataset(dataset_path)

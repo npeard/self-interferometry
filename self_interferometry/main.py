@@ -1,15 +1,32 @@
 import argparse
+import logging
 import random
+import sys
 import time
 from pathlib import Path
 
 import numpy as np
-import yaml
-from signal_analysis.generate_data import (
-    generate_pretraining_data,
-    generate_training_data_from_rp,
-)
-from signal_analysis.training import ModelTrainer, TrainingConfig
+from acquisition.redpitaya.manager import RedPitayaManager
+from analysis.generate_data import generate_dataset_from_rp
+from analysis.training_interface import TrainingConfig, TrainingInterface
+
+
+def setup_logging(verbosity: str) -> None:
+    """Setup logging configuration based on verbosity level."""
+    level_map = {
+        'DEBUG': logging.DEBUG,
+        'INFO': logging.INFO,
+        'WARNING': logging.WARNING,
+        'ERROR': logging.ERROR,
+    }
+
+    level = level_map.get(verbosity.upper(), logging.INFO)
+
+    logging.basicConfig(
+        level=level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -19,24 +36,41 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--config',
         type=str,
-        default='./signal_analysis/configs/cnn-tcn-config.yaml',
+        default='./analysis/configs/tcn-config.yaml',
         help='Path to YAML config file. Required for training, optional for testing.',
     )
     parser.add_argument(
         '--checkpoint',
         type=str,
-        help='Path to checkpoint for testing. If provided, will run in test mode.',
+        help='Path to checkpoint file for evaluation. Requires --dataset argument.',
     )
     parser.add_argument(
-        '--generate_pretraining',
-        action='store_true',
-        help='Generate simulated pretraining datasets using interferometer models',
+        '--dataset',
+        type=str,
+        help='Path to dataset file for checkpoint evaluation. Required when using --checkpoint.',
     )
     parser.add_argument(
         '--acquire_dataset',
         action='store_true',
         help='Acquire real data from Red Pitaya for training, validation, and test '
         'datasets',
+    )
+    parser.add_argument(
+        '--num_samples',
+        type=int,
+        help='Number of samples to acquire from Red Pitaya. Required when using --acquire_dataset.',
+    )
+    parser.add_argument(
+        '--dataset_name',
+        type=str,
+        help='Filename for the acquired dataset (e.g., "my-data.h5"). Required when using --acquire_dataset.',
+    )
+    parser.add_argument(
+        '--verbosity',
+        type=str,
+        default='INFO',
+        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+        help='Set the logging verbosity level (default: INFO)',
     )
     # IP address is now handled by RedPitayaManager defaults
     return parser.parse_args()
@@ -64,108 +98,95 @@ def setup_random_seed(seed: int | None = None) -> int:
     return seed
 
 
-def main():
-    args = parse_args()
+def acquire_dataset(
+    num_samples: int, dataset_name: str, logger: logging.Logger
+) -> None:
+    """Acquire real data from Red Pitaya hardware.
 
-    # For testing mode (checkpoint provided), config is not necessary
-    if args.checkpoint:
-        print('Loading from checkpoint for quick plotting...')  # noqa: T201
-        print(args.checkpoint)  # noqa: T201
-        model_trainer = ModelTrainer(
-            TrainingConfig({}, {}, {}, {}), experiment_name='checkpoint_eval'
+    Args:
+        num_samples: Number of samples to acquire
+        dataset_name: Filename for the dataset (e.g., "my-data.h5")
+        logger: Logger instance for output
+    """
+    # Ensure dataset_name has .h5 extension
+    if not dataset_name.endswith('.h5'):
+        dataset_name += '.h5'
+
+    # Set data directory using pathlib
+    data_dir = Path(__file__).parent / 'analysis' / 'data'
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    logger.info('Acquiring dataset from Red Pitaya using default connection')
+    logger.info(f'Number of samples: {num_samples}')
+    logger.info(f'Dataset filename: {dataset_name}')
+
+    # Create Red Pitaya Manager with default connection settings
+    rp_manager = RedPitayaManager(
+        ['rp-f0c04a.local', 'rp-f0c026.local'],
+        blink_on_connect=True,
+        data_save_path=str(data_dir),
+    )
+
+    try:
+        # Configure the Red Pitaya for acquisition
+        logger.info('Configuring Red Pitaya for data acquisition...')
+        rp_manager.reset_all()
+
+        # Create dataset
+        generate_dataset_from_rp(
+            rp_manager=rp_manager,
+            output_dir=str(data_dir),
+            num_samples=num_samples,
+            dataset_filename=dataset_name,
         )
-        model_trainer.plot_predictions_from_checkpoint(checkpoint_path=args.checkpoint)
-        return
+        logger.info('Dataset acquisition complete!')
+    finally:
+        # Ensure we close the connection to the Red Pitaya
+        rp_manager.close_all()
 
-    # For training mode, load config
-    if not args.config:
-        raise ValueError('Config file is required for training mode')
 
-    config = TrainingConfig.from_yaml(args.config)
+def evaluate_checkpoint(
+    checkpoint_path: str, dataset_path: str, logger: logging.Logger
+) -> None:
+    """Evaluate a model from a checkpoint file.
+
+    Args:
+        checkpoint_path: Path to the checkpoint file
+        dataset_path: Path to the dataset file
+        logger: Logger instance for output
+    """
+    logger.info('Loading from checkpoint for evaluation...')
+    logger.info(f'Checkpoint path: {checkpoint_path}')
+    logger.info(f'Dataset path: {dataset_path}')
+
+    # Create trainer with no config for checkpoint evaluation
+    trainer = TrainingInterface(config=None)
+    trainer.plot_predictions_from_checkpoint(
+        checkpoint_path=checkpoint_path, dataset_path=dataset_path
+    )
+
+
+def train_model(config_path: str, logger: logging.Logger) -> None:
+    """Train a model using the specified configuration.
+
+    Args:
+        config_path: Path to the YAML config file
+        logger: Logger instance for output
+    """
+    config = TrainingConfig.from_yaml(config_path)
 
     # Set random seed from time
     seed = setup_random_seed(int(time.time()))
+    logger.info(f'Using random seed: {seed}')
 
     # Convert single config to list for unified processing
     configs = config if isinstance(config, list) else [config]
-    base_config = configs[0]  # Use first config for dataset generation
-
-    # Load data config from YAML file if not using training config
-    data_config = (
-        base_config.data_config if hasattr(base_config, 'data_config') else None
-    )
-
-    if not data_config and (args.generate_pretraining or args.acquire_dataset):
-        # Load data config directly from YAML file
-        with Path(args.config).open() as f:
-            config_data = yaml.safe_load(f)
-            if 'data' in config_data:
-                data_config = config_data['data']
-            else:
-                raise ValueError(f'Could not find data configuration in {args.config}')
-
-    # Generate pretraining datasets if requested
-    if args.generate_pretraining:
-        print(f'\nGenerating pretraining datasets with random seed: {seed}')  # noqa: T201
-        # Extract dataset parameters
-        dataset_params = data_config['dataset_params']
-        train_samples = dataset_params['train_samples']
-        val_samples = dataset_params['val_samples']
-        test_samples = dataset_params['test_samples']
-
-        # Generate pretraining datasets
-        train_path, val_path, test_path = generate_pretraining_data(
-            output_dir=data_config['data_dir'],
-            train_samples=train_samples,
-            val_samples=val_samples,
-            test_samples=test_samples,
-            start_freq=1,
-            end_freq=1000,
-        )
-        print('Pretraining dataset generation complete!\n')  # noqa: T201
-
-    # Acquire real data from Red Pitaya if requested
-    if args.acquire_dataset:
-        from redpitaya.manager import RedPitayaManager
-
-        print('\nAcquiring datasets from Red Pitaya using default connection')  # noqa: T201
-        # Create Red Pitaya Manager with default connection settings
-        rp_manager = RedPitayaManager(
-            ['rp-f0c04a.local', 'rp-f0c026.local'],
-            blink_on_connect=True,
-            data_save_path=data_config['data_dir'],
-        )
-
-        # Configure the Red Pitaya for acquisition
-        try:
-            # Configure the Red Pitaya for acquisition
-            print('Configuring Red Pitaya for data acquisition...')  # noqa: T201
-            rp_manager.reset_all()
-
-            # Extract dataset parameters
-            dataset_params = data_config['dataset_params']
-            train_samples = dataset_params['train_samples']
-            val_samples = dataset_params['val_samples']
-            test_samples = dataset_params['test_samples']
-
-            # Create datasets using the new function that accepts a RedPitayaManager
-            generate_training_data_from_rp(
-                rp_manager=rp_manager,
-                output_dir=data_config['data_dir'],
-                train_samples=train_samples,
-                val_samples=val_samples,
-                test_samples=test_samples,
-            )
-            print('Dataset acquisition complete!\n')  # noqa: T201
-        finally:
-            # Ensure we close the connection to the Red Pitaya
-            rp_manager.close_all()
 
     # Train with each configuration
     for idx, train_config in enumerate(configs):
-        print(f'\nStarting training run {idx + 1}/{len(configs)}')  # noqa: T201
+        logger.info(f'Starting training run {idx + 1}/{len(configs)}')
         # Create trainer
-        trainer = ModelTrainer(
+        trainer = TrainingInterface(
             config=train_config,
             experiment_name=train_config.training_config['experiment_name'],
             checkpoint_dir=train_config.training_config['checkpoint_dir'],
@@ -179,17 +200,55 @@ def main():
             trainer.trainer.loggers[0].experiment.finish()
 
 
+def main():
+    args = parse_args()
+
+    # Setup logging based on verbosity argument
+    setup_logging(args.verbosity)
+    logger = logging.getLogger(__name__)
+
+    # Mode 1: Dataset Acquisition (no TrainingConfig needed)
+    if args.acquire_dataset:
+        if not args.num_samples:
+            raise ValueError(
+                '--num_samples argument is required when using --acquire_dataset. '
+                'Please specify the number of samples to acquire.'
+            )
+        if not args.dataset_name:
+            raise ValueError(
+                '--dataset_name argument is required when using --acquire_dataset. '
+                'Please specify the filename for the dataset.'
+            )
+
+        acquire_dataset(args.num_samples, args.dataset_name, logger)
+        sys.exit()
+
+    # Mode 2: Checkpoint Evaluation (no TrainingConfig needed)
+    if args.checkpoint:
+        if not args.dataset:
+            raise ValueError(
+                '--dataset argument is required when using --checkpoint. '
+                'Please specify the path to the dataset file.'
+            )
+
+        evaluate_checkpoint(args.checkpoint, args.dataset, logger)
+        return
+
+    # Mode 3: Training (requires TrainingConfig)
+    if not args.config:
+        raise ValueError('Config file is required for training mode')
+
+    train_model(args.config, logger)
+
+
 if __name__ == '__main__':
     # Training new model:
     # python main.py --config path/to/config.yaml
 
-    # Testing from checkpoint:
-    # python main.py --checkpoint path/to/checkpoint.ckpt
+    # Evaluating from checkpoint:
+    # python main.py --checkpoint path/to/checkpoint.ckpt --dataset path/to/dataset.h5
 
-    # Fine-tuning from checkpoint:
-    # python main.py --config path/to/config.yaml --checkpoint path/to/checkpoint.ckpt
-
-    # Generating pretraining datasets:
-    # python main.py --config path/to/config.yaml --generate_pretraining
+    # Acquiring real data from Red Pitaya:
+    # python main.py --acquire_dataset --num_samples 5000 --dataset_name my-data.h5
 
     main()

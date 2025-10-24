@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import contextlib
+import logging
 import random
 from dataclasses import dataclass
 from itertools import product
@@ -14,10 +15,11 @@ import yaml
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 
-from self_interferometry.signal_analysis.datasets import get_data_loaders
-from self_interferometry.signal_analysis.lightning_ensemble import Ensemble
-from self_interferometry.signal_analysis.lightning_standard import Standard
-from self_interferometry.signal_analysis.lightning_teacher import Teacher
+from self_interferometry.analysis.datasets import get_data_loaders
+from self_interferometry.analysis.lightning_ensemble import Ensemble
+from self_interferometry.analysis.lightning_fusion import Fusion
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -30,30 +32,6 @@ class TrainingConfig:
     loss_config: dict[str, Any]
     is_hyperparameter_search: bool = False
     search_space: dict[str, list[Any]] | None = None
-
-    def __post_init__(self):
-        """Set default values for running checkpoints. Check points do not
-        need all config variables.
-        """
-        if self.model_config == {}:
-            print('TrainingConfig in checkpoint mode...')  # noqa: T201
-            self._set_checkpoint_defaults()
-        else:
-            print('TrainingConfig in training mode...')  # noqa: T201
-
-    def _set_checkpoint_defaults(self):
-        """Set default values for running checkpoints. Check points do not
-        need all config variables.
-        """
-        # Training defaults
-        self.training_config.setdefault('batch_size', 64)
-
-        # Data defaults
-        self.data_config.setdefault('data_dir', './signal_analysis/data')
-        self.data_config.setdefault('train_file', 'train.h5')
-        self.data_config.setdefault('val_file', 'val.h5')
-        self.data_config.setdefault('test_file', 'test.h5')
-        self.data_config.setdefault('num_workers', 4)
 
     @classmethod
     def from_yaml(
@@ -165,28 +143,30 @@ class TrainingConfig:
         return configs
 
 
-class ModelTrainer:
+class TrainingInterface:
     """Main trainer class for managing model training."""
 
     def __init__(
         self,
-        config: TrainingConfig,
+        config: TrainingConfig | None = None,
         experiment_name: str | None = None,
         checkpoint_dir: str | None = None,
     ):
         """Args:
-        config: Training configuration
+        config: Training configuration (None for checkpoint evaluation mode)
         experiment_name: Name for logging and checkpointing
         checkpoint_dir: Directory for saving checkpoints.
         """
         self.config = config
-        self.experiment_name = experiment_name or config.model_config['type']
-        self.checkpoint_dir = checkpoint_dir or './checkpoints'
 
-        # Create checkpoint directory
-        Path(self.checkpoint_dir).mkdir(parents=True, exist_ok=True)
+        # Only setup training components if config is provided
+        if config is not None:
+            self.experiment_name = experiment_name or config.model_config['type']
+            self.checkpoint_dir = checkpoint_dir or './checkpoints'
 
-        if experiment_name != 'checkpoint_eval':
+            # Create checkpoint directory
+            Path(self.checkpoint_dir).mkdir(parents=True, exist_ok=True)
+
             # Setup data
             self.setup_data()
 
@@ -197,20 +177,39 @@ class ModelTrainer:
             self.trainer = self.setup_trainer()
 
         # Check what version of PyTorch is installed
-        print(torch.__version__)  # noqa: T201
+        logger.info(f'PyTorch version: {torch.__version__}')
 
         # Check the current CUDA version being used
-        print('CUDA Version: ', torch.version.cuda)  # noqa: T201
+        logger.info(f'CUDA version: {torch.version.cuda}')
 
         if torch.version.cuda is not None:
             # Check if CUDA is available and if so, print the device name
-            print('Device name:', torch.cuda.get_device_properties('cuda').name)  # noqa: T201
+            logger.info(f'Device name: {torch.cuda.get_device_properties("cuda").name}')
 
             # Check if FlashAttention is available
-            print('FlashAttention available:', torch.backends.cuda.flash_sdp_enabled())  # noqa: T201
+            logger.info(
+                f'FlashAttention available: {torch.backends.cuda.flash_sdp_enabled()}'
+            )
 
-    def setup_data(self):
-        """Setup data loaders."""
+    def setup_data(
+        self,
+        dataset_path: str | None = None,
+        batch_size: int | None = None,
+        split_ratios: tuple[int, int, int] | None = None,
+        num_workers: int | None = None,
+        seed: int | None = None,
+        channel_dropout: float | None = None,
+    ):
+        """Setup data loaders.
+
+        Args:
+            dataset_path: Path to dataset file (if None, uses config)
+            batch_size: Batch size (if None, uses config)
+            split_ratios: Train/val/test split ratios (if None, uses config)
+            num_workers: Number of data loader workers (if None, uses config)
+            seed: Random seed for splitting (if None, uses config)
+            channel_dropout: Channel dropout rate (if None, uses config)
+        """
         # Convert data_dir to absolute path
         base_dir = Path(__file__).parent.parent  # Go up two levels from training.py
 
@@ -228,90 +227,74 @@ class ModelTrainer:
             # If filename is provided, join it with the directory
             return str(abs_dir / filename) if filename else str(abs_dir)
 
-        # Get absolute data directory
-        data_dir = self.config.data_config['data_dir']
-
-        # Resolve paths for data files
-        # Use real data inputs for the student and standard model
-        # Student model uses targets from teacher
-        if self.config.model_config.get('role') in ['standard', 'student', 'ensemble']:
-            train_path = resolve_path(
-                data_dir, self.config.data_config.get('train_file')
-            )
-            val_path = resolve_path(data_dir, self.config.data_config.get('val_file'))
-            test_path = resolve_path(data_dir, self.config.data_config.get('test_file'))
-        # Use simulated data inputs and targets for the teacher model
-        elif self.config.model_config.get('role') == 'teacher':
-            train_path = resolve_path(
-                data_dir, self.config.data_config.get('pretrain_file')
-            )
-            # Use real data inputs for validation and testing
-            # We need to understand how well the teacher will predict
-            # targets given real inputs
-            val_path = resolve_path(data_dir, self.config.data_config.get('val_file'))
-            test_path = resolve_path(data_dir, self.config.data_config.get('test_file'))
-        else:
-            raise ValueError(
-                f'Unknown model role: {self.config.model_config.get("role")}'
+        # Use provided arguments or fall back to config
+        if dataset_path is None:
+            data_dir = self.config.data_config['data_dir']
+            dataset_path = resolve_path(
+                data_dir, self.config.data_config['dataset_file']
             )
 
-        # Get channel_dropout parameter from config
-        if self.config.model_config.get('role') == 'ensemble':
-            channel_dropout = 0.0
-        else:
-            channel_dropout = self.config.data_config.get('channel_dropout', 0.1)
+        if split_ratios is None:
+            split_ratios = self.config.data_config['split_ratios']
+
+        if seed is None:
+            seed = self.config.data_config['split_seed']
+
+        if batch_size is None:
+            batch_size = self.config.training_config['batch_size']
+
+        if num_workers is None:
+            num_workers = self.config.data_config['num_workers']
+
+        if channel_dropout is None:
+            # Get channel_dropout parameter from config
+            if self.config.model_config['role'] == 'ensemble':
+                channel_dropout = 0.0
+            else:
+                channel_dropout = self.config.data_config['channel_dropout']
 
         self.train_loader, self.val_loader, self.test_loader = get_data_loaders(
-            train_path=train_path,
-            val_path=val_path,
-            test_path=test_path,
-            batch_size=self.config.training_config['batch_size'],
-            num_workers=self.config.data_config['num_workers'],
-            channel_dropout=channel_dropout,  # Only pass the channel_dropout parameter
+            dataset_path=dataset_path,
+            split_ratios=split_ratios,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            seed=seed,
+            channel_dropout=channel_dropout,
         )
 
-    def create_lightning_module(self):
+    def create_lightning_module(self) -> Fusion | Ensemble:
         """Create lightning module based on model type."""
-        model_role = self.config.model_config.get('role', 'standard')
+        model_role = self.config.model_config['role']
 
         # Common optimizer hyperparameters
         optimizer_hparams = {
-            'name': self.config.training_config.get('optimizer', 'Adam'),
+            'name': self.config.training_config['optimizer'],
             # TODO: why is lr a string?
-            'lr': eval(self.config.training_config.get('learning_rate', 1e-3)),
-            'momentum': self.config.training_config.get('momentum', 0.9),
+            'lr': eval(self.config.training_config['learning_rate']),
+            'momentum': self.config.training_config['momentum'],
         }
 
         # Common scheduler hyperparameters
-        max_epochs = self.config.training_config.get('max_epochs', 500)
-        warmup_epochs = int(0.1 * max_epochs)
+        max_epochs = self.config.training_config['max_epochs']
+        warmup_epochs = self.config.training_config['warmup_epochs']
         cosine_epochs = max_epochs - warmup_epochs
-        target_lr = eval(self.config.training_config.get('learning_rate', 1e-3))
+        target_lr = eval(self.config.training_config['learning_rate'])
 
         scheduler_hparams = {
             'warmup_epochs': warmup_epochs,
             'cosine_epochs': cosine_epochs,
             'target_lr': target_lr,
             'T_max': cosine_epochs,  # For CosineAnnealingLR
-            'eta_min': self.config.training_config.get('eta_min', 0),
+            'eta_min': self.config.training_config['eta_min'],
         }
 
         if model_role == 'standard':
-            return Standard(
+            return Fusion(
                 model_hparams=self.config.model_config,
                 optimizer_hparams=optimizer_hparams,
                 scheduler_hparams=scheduler_hparams,
                 loss_hparams=self.config.loss_config,
-            )
-        elif model_role == 'teacher':
-            return Teacher(
-                model_hparams=self.config.model_config,
-                optimizer_hparams=optimizer_hparams,
-                scheduler_hparams=scheduler_hparams,
-                loss_hparams=self.config.loss_config,
-                interferometer_config=self.config.data_config.get(
-                    'interferometer_config'
-                ),
+                training_hparams=self.config.training_config,
             )
         elif model_role == 'ensemble':
             return Ensemble(
@@ -319,20 +302,22 @@ class ModelTrainer:
                 optimizer_hparams=optimizer_hparams,
                 scheduler_hparams=scheduler_hparams,
                 loss_hparams=self.config.loss_config,
+                training_hparams=self.config.training_config,
             )
         else:
-            raise ValueError(f'Unknown model role: {model_role}')
+            raise ValueError(
+                f'Unknown model role: {model_role}. '
+                f'Supported roles: "standard", "ensemble"'
+            )
 
     def setup_trainer(self) -> L.Trainer:
         """Setup Lightning trainer with callbacks and loggers."""
         callbacks = []
         # Add WandB logger if configured
-        if self.config.training_config.get('use_logging', False):
+        if self.config.training_config['use_logging']:
             loggers = [
                 WandbLogger(
-                    project=self.config.training_config.get(
-                        'wandb_project', 'ml-template'
-                    ),
+                    project=self.config.training_config['wandb_project'],
                     name=self.experiment_name,
                     save_dir=self.checkpoint_dir,
                 )
@@ -342,8 +327,8 @@ class ModelTrainer:
                 ModelCheckpoint(
                     dirpath=Path(self.checkpoint_dir) / self.experiment_name,
                     filename=str(loggers[0].experiment.id)
-                    + '_{epoch}-{val_total_loss:.4f}',
-                    monitor='val_total_loss',
+                    + '_{epoch}-{val_total_unweighted_loss:.4f}',
+                    monitor=None,  #'val/total_unweighted_loss',
                     mode='min',
                     save_top_k=1,
                 )
@@ -352,8 +337,8 @@ class ModelTrainer:
             loggers = []
 
         # Get accelerator and device settings from config
-        accelerator = self.config.training_config.get('accelerator', 'auto')
-        devices = self.config.training_config.get('devices', 1)
+        accelerator = self.config.training_config['accelerator']
+        devices = self.config.training_config['devices']
 
         # Convert devices to proper type if it's a string
         if isinstance(devices, str):
@@ -385,7 +370,15 @@ class ModelTrainer:
         if hasattr(self, 'test_loader'):
             self.trainer.test(self.lightning_module, dataloaders=self.test_loader)
 
-    def plot_predictions_from_checkpoint(self, checkpoint_path: str):
+    def plot_predictions_from_checkpoint(
+        self,
+        checkpoint_path: str,
+        dataset_path: str,
+        batch_size: int = 64,
+        split_ratios: tuple[int, int, int] = (80, 10, 10),
+        num_workers: int = 4,
+        seed: int = 42,
+    ):
         """Plot predictions from a checkpoint.
 
         Creates a plot with up to 4 rows:
@@ -394,24 +387,37 @@ class ModelTrainer:
 
         Args:
             checkpoint_path: Path to the checkpoint file
+            dataset_path: Path to the dataset file
+            batch_size: Batch size for data loader
+            split_ratios: Train/val/test split ratios
+            num_workers: Number of data loader workers
+            seed: Random seed for data splitting
         """
         # Load the model from checkpoint
-        model = Standard.load_from_checkpoint(checkpoint_path)
+        model = Fusion.load_from_checkpoint(checkpoint_path, strict=False)
         trainer = L.Trainer(accelerator='cpu', logger=[])
 
         # Figure out which role the model was trained in so we setup the correct data
-        model_role = model.model_hparams.get('role')
+        model_role = model.model_hparams['role']
         if model_role == 'standard':
-            self.config.model_config['role'] = 'standard'
-        elif model_role == 'teacher':
-            self.config.model_config['role'] = 'teacher'
-        elif model_role == 'mean_single_channel':
-            self.config.model_config['role'] = 'mean_single_channel'
+            channel_dropout = 0.0  # Standard models use all channels
+        elif model_role == 'ensemble':
+            channel_dropout = 0.0  # Ensemble models don't use dropout for evaluation
         else:
-            raise ValueError(f'Unknown model role: {model_role}')
+            raise ValueError(
+                f'Unknown model role: {model_role}. '
+                f'Supported roles: "standard", "ensemble"'
+            )
 
-        # Setup data loaders
-        self.setup_data()
+        # Setup data loaders with explicit parameters
+        self.setup_data(
+            dataset_path=dataset_path,
+            batch_size=batch_size,
+            split_ratios=split_ratios,
+            num_workers=num_workers,
+            seed=seed,
+            channel_dropout=channel_dropout,
+        )
 
         # Get predictions
         predictions = trainer.predict(model, self.test_loader)
@@ -430,11 +436,11 @@ class ModelTrainer:
         )  # Target displacement
         signals = predictions[batch_idx][4].cpu().numpy()  # Input signals
 
-        print(f'Signals shape: {signals.shape}')
-        print(f'Velocity hat shape: {velocity_hat.shape}')
-        print(f'Velocity target shape: {velocity_target.shape}')
-        print(f'Displacement hat shape: {displacement_hat.shape}')
-        print(f'Displacement target shape: {displacement_target.shape}')
+        logger.debug(f'Signals shape: {signals.shape}')
+        logger.debug(f'Velocity hat shape: {velocity_hat.shape}')
+        logger.debug(f'Velocity target shape: {velocity_target.shape}')
+        logger.debug(f'Displacement hat shape: {displacement_hat.shape}')
+        logger.debug(f'Displacement target shape: {displacement_target.shape}')
 
         # Get the number of samples in the batch and number of PD channels
         batch_size, num_channels, signal_length = signals.shape
@@ -471,7 +477,8 @@ class ModelTrainer:
                 velocity_hat[i], label='Predicted Velocity', color='red', linestyle='--'
             )
             axs[0].set_title(
-                f'Velocity (MSE: {sample_velocity_mse:.2e}) and Displacement (MSE: {sample_displacement_mse:.2e})'
+                f'Velocity (MSE: {sample_velocity_mse:.2e}) and '
+                f'Displacement (MSE: {sample_displacement_mse:.2e})'
             )
             axs[0].set_ylabel('Velocity (μm/s)', color='blue')
             axs[0].tick_params(axis='y', labelcolor='blue')
@@ -511,7 +518,9 @@ class ModelTrainer:
 
             # Add overall title with batch MSE values
             plt.suptitle(
-                f'Sample {i + 1} from Batch {batch_idx + 1}\nBatch MSE: Velocity={batch_velocity_mse:.2e}, Displacement={batch_displacement_mse:.2e}'
+                f'Sample {i + 1} from Batch {batch_idx + 1}\n'
+                f'Batch MSE: Velocity={batch_velocity_mse:.2e}, '
+                f'Displacement={batch_displacement_mse:.2e}'
             )
             plt.tight_layout()
             plt.show()

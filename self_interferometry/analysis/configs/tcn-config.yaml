@@ -1,0 +1,45 @@
+model:
+  # Common parameters for all model types
+  role: "standard" # "standard" or "ensemble"
+  type: "TCN"
+  input_size: 16384
+  output_size: 16384
+  activation: "GELU"
+  norm: "layer" # layer norm usually better than batch norm
+  in_channels: 3
+  dropout: 0.1
+  # TCN specific parameters
+  kernel_size: 7
+  num_channels: [[16, 16, 32, 32, 64, 64]]
+  dilation_base: 2 # dilation factor should be less than kernel size, usually 2
+  stride: 1
+
+training:
+  max_epochs: 500
+  warmup_epochs: 10
+  batch_size: 128
+  optimizer: "Muon"  # Options: "Adam", "SGD", "Muon"
+  weight_decay: 1e-6 # Unused if optimizer is not Adam, 1e-5 usually better than 1e-4?
+  momentum: 0.9 # Unused if optimizer is not SGD
+  learning_rate: 1e-2
+  eta_min: 1e-6
+  accelerator: "gpu"
+  devices: 1
+  use_logging: true
+  wandb_project: "self-interferometry"
+  experiment_name: "tcn_baseline"
+  checkpoint_dir: "./analysis/checkpoints"
+  target: "velocity"  # "velocity" or "displacement" - what the model predicts
+
+loss:
+  dynamic: false # enable dynamic loss weighting, overrides weights below, usually not better than fixed weights
+  velocity_loss_weight: 1.0
+  displacement_loss_weight: 0.1
+
+data:
+  data_dir: "./analysis/data"
+  dataset_file: "train5000.h5"
+  split_ratios: [80, 10, 10]  # train, val, test percentages
+  split_seed: 42
+  num_workers: 7
+  channel_dropout: 0.5  # chance of dropping a channel during training

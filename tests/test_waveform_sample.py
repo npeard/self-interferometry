@@ -5,11 +5,15 @@ This test compares the spectrum values returned by the Waveform.sample() method
 with those calculated manually using the calculate_fft function.
 """
 
+import logging
+
 import numpy as np
 import pytest
 from plot_waveforms import calculate_fft
 
-from self_interferometry.redpitaya.waveform import Waveform
+from self_interferometry.acquisition.simulations.waveform import Waveform
+
+logger = logging.getLogger(__name__)
 
 
 def test_waveform_sample_spectrum_consistency():
@@ -53,7 +57,7 @@ def test_waveform_sample_spectrum_consistency():
             f'Test {i + 1}: Spectrum magnitude mismatch'
         )
 
-        print(f'Completed test iteration {i + 1}/{num_tests}')  # noqa: T201
+        logger.info(f'Completed test iteration {i + 1}/{num_tests}')
 
 
 def test_waveform_sample_reproducibility():
