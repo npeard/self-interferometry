@@ -1829,7 +1829,7 @@ if __name__ == '__main__':
 
     # Run multiple acquisitions
     rp_manager.run_multiple_shots(
-        num_shots=1,
+        num_shots=7,
         delay_between_shots=1.0,
         plot_data=True,
         keep_final_plot=True,  # Keep the final plot open

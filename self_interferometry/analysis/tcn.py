@@ -4,7 +4,12 @@ from dataclasses import dataclass
 
 from torch import Tensor, nn
 
-act_fn_by_name = {'LeakyReLU': nn.LeakyReLU(), 'Tanh': nn.Tanh(), 'ReLU': nn.ReLU(), 'GELU': nn.GELU()}
+act_fn_by_name = {
+    'LeakyReLU': nn.LeakyReLU(),
+    'Tanh': nn.Tanh(),
+    'ReLU': nn.ReLU(),
+    'GELU': nn.GELU(),
+}
 
 
 @dataclass

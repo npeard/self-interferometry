@@ -10,6 +10,7 @@ from torch import nn, optim
 # Conditional import for Muon optimizer
 try:
     from muon import Muon, MuonWithAuxAdam, SingleDeviceMuonWithAuxAdam
+
     MUON_AVAILABLE = True
 except ImportError:
     MUON_AVAILABLE = False
@@ -391,7 +392,9 @@ class Fusion(L.LightningModule):
             other_params = [p for p in self.model.parameters() if p.ndim < 2]
 
             # Get hyperparameters
-            lr = optimizer_hparams.pop('lr', optimizer_hparams.pop('learning_rate', 1e-3))
+            lr = optimizer_hparams.pop(
+                'lr', optimizer_hparams.pop('learning_rate', 1e-3)
+            )
             weight_decay = optimizer_hparams.pop('weight_decay', 0.0)
 
             # Configure parameter groups
@@ -417,7 +420,9 @@ class Fusion(L.LightningModule):
             if torch.distributed.is_available() and torch.distributed.is_initialized():
                 optimizer = MuonWithAuxAdam(param_groups, **optimizer_hparams)
             else:
-                optimizer = SingleDeviceMuonWithAuxAdam(param_groups, **optimizer_hparams)
+                optimizer = SingleDeviceMuonWithAuxAdam(
+                    param_groups, **optimizer_hparams
+                )
         else:
             raise ValueError(f'Unknown optimizer: {optimizer_name}')
 
@@ -613,7 +618,8 @@ class Fusion(L.LightningModule):
                 f'val/{loss_name}_loss',
                 loss_value,
                 prog_bar=(loss_name == 'total'),  # Only show total loss in progress bar
-                sync_dist=torch.distributed.is_available() and torch.distributed.is_initialized(),
+                sync_dist=torch.distributed.is_available()
+                and torch.distributed.is_initialized(),
             )
 
     @override
@@ -650,7 +656,12 @@ class Fusion(L.LightningModule):
 
         # Log each loss component with test_ prefix
         for loss_name, loss_value in loss_dict.items():
-            self.log(f'test/{loss_name}_loss', loss_value, sync_dist=torch.distributed.is_available() and torch.distributed.is_initialized())
+            self.log(
+                f'test/{loss_name}_loss',
+                loss_value,
+                sync_dist=torch.distributed.is_available()
+                and torch.distributed.is_initialized(),
+            )
 
     @override
     def predict_step(

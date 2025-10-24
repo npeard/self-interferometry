@@ -13,6 +13,9 @@ from numpy.fft import fft, fftfreq, ifft
 from .calib_params import CalibrationParameters
 from .waveform import Waveform
 
+# Create a default RNG instance for the module
+_rng = np.random.default_rng()
+
 
 class CoilDriver:
     """A class for calibrating and computing displacement and velocity from voltage
@@ -114,6 +117,8 @@ class CoilDriver:
         normalized_spectrum[nonzero_mask] = (
             voltage_spectrum[nonzero_mask] / velocity_transfer[nonzero_mask]
         )
+        # Apply random uniform scaling to randomize total waveform power
+        normalized_spectrum *= _rng.uniform(0, 1.0)
 
         # Convert to time domain
         normalized_voltage = np.real(ifft(normalized_spectrum, norm='ortho'))

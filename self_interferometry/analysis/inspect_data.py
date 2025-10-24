@@ -269,16 +269,12 @@ def analyze_dataset(dataset_path: str | Path):
     plot_histograms(dataset_path)
 
 
-# frequency_analysis function has been removed as it's now redundant with
-# plot_histograms
-
-
 if __name__ == '__main__':
     # Example usage
-    dataset_path = './analysis/data/train-trgdel-20x.h5'
+    dataset_path = Path(__file__).parent / 'data/train5000.h5'
 
     # Visualize samples from the dataset
-    # visualize_dataset(dataset_path, max_samples=5)
+    visualize_dataset(dataset_path, max_samples=5)
 
     # Analyze dataset statistics and plot histograms
-    analyze_dataset(dataset_path)
+    # analyze_dataset(dataset_path)
