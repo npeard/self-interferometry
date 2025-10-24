@@ -1,7 +1,7 @@
 model:
   # Common parameters for all model types
   role: "standard" # "standard" or "ensemble"
-  type: "Barland"
+  type: "Barland" # This is the baseline model from Barland et al. 2021
   input_size: 256
   output_size: 1
   activation: "LeakyReLU"
@@ -14,7 +14,7 @@ training:
   max_epochs: 500
   warmup_epochs: 0
   batch_size: 256
-  optimizer: "Adam"  # Options: "Adam", "SGD", "Muon"
+  optimizer: "Muon"  # Options: "Adam", "SGD", "Muon"
   momentum: 0.9 # Unused if optimizer is not SGD
   learning_rate: 7e-2
   eta_min: 0
@@ -27,7 +27,7 @@ training:
   target: "velocity"  # "velocity" or "displacement" - what the model predicts
 
 loss:
-  dynamic: true # enable dynamic loss weighting, overrides weights below
+  dynamic: false # enable dynamic loss weighting, overrides weights below
   velocity_loss_weight: 1.0
   displacement_loss_weight: 0.1
 
