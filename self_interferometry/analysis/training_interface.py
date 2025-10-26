@@ -295,6 +295,7 @@ class TrainingInterface:
                 scheduler_hparams=scheduler_hparams,
                 loss_hparams=self.config.loss_config,
                 training_hparams=self.config.training_config,
+                data_hparams=self.config.data_config,
             )
         elif model_role == 'ensemble':
             return Ensemble(
@@ -303,6 +304,7 @@ class TrainingInterface:
                 scheduler_hparams=scheduler_hparams,
                 loss_hparams=self.config.loss_config,
                 training_hparams=self.config.training_config,
+                data_hparams=self.config.data_config,
             )
         else:
             raise ValueError(

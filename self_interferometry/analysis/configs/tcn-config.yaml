@@ -32,13 +32,13 @@ training:
   target: "velocity"  # "velocity" or "displacement" - what the model predicts
 
 loss:
-  dynamic: false # enable dynamic loss weighting, overrides weights below, usually not better than fixed weights
+  dynamic: [true, false] # enable dynamic loss weighting, overrides weights below, usually not better than fixed weights
   velocity_loss_weight: 1.0
   displacement_loss_weight: 0.1
 
 data:
   data_dir: "./analysis/data"
-  dataset_file: "train5000.h5"
+  dataset_file: "mmfiber-all-amplitude-10000.h5"
   split_ratios: [80, 10, 10]  # train, val, test percentages
   split_seed: 42
   num_workers: 7

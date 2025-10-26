@@ -54,6 +54,7 @@ class Fusion(L.LightningModule):
         scheduler_hparams: dict | None = None,
         loss_hparams: dict | None = None,
         training_hparams: dict | None = None,
+        data_hparams: dict | None = None,
     ):
         """Args:
         model_hparams: Hyperparameters for the model
@@ -61,6 +62,7 @@ class Fusion(L.LightningModule):
         scheduler_hparams: Hyperparameters for the learning rate scheduler
         loss_hparams: Hyperparameters for the loss function
         training_hparams: Hyperparameters for training configuration (includes target)
+        data_hparams: Hyperparameters for data configuration (for logging only)
         """
         super().__init__()
         self.model_hparams = model_hparams
@@ -68,6 +70,7 @@ class Fusion(L.LightningModule):
         self.scheduler_hparams = scheduler_hparams
         self.loss_hparams = loss_hparams
         self.training_hparams = training_hparams
+        self.data_hparams = data_hparams
         self.save_hyperparameters(ignore=['model'])
         self.model = self.create_model()
 
@@ -390,6 +393,13 @@ class Fusion(L.LightningModule):
             # For models with body/head structure, we need to handle all model parameters
             hidden_weights = [p for p in self.model.parameters() if p.ndim >= 2]
             other_params = [p for p in self.model.parameters() if p.ndim < 2]
+
+            # If dynamic weighting is enabled, add the dynamic weight parameters
+            # These should be optimized with AdamW (not Muon) since they're scalars
+            if self.dynamic_weighting:
+                other_params.extend(
+                    [self.log_weight_velocity, self.log_weight_displacement]
+                )
 
             # Get hyperparameters
             lr = optimizer_hparams.pop(
