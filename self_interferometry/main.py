@@ -131,6 +131,9 @@ def acquire_dataset(
         # Configure the Red Pitaya for acquisition
         logger.info('Configuring Red Pitaya for data acquisition...')
         rp_manager.reset_all()
+        
+        # Configure daisy chain for synchronized triggering
+        rp_manager.configure_daisy_chain()
 
         # Create dataset
         generate_dataset_from_rp(
