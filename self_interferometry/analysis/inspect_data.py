@@ -275,10 +275,11 @@ def analyze_dataset(dataset_path: str | Path):
 
 if __name__ == '__main__':
     # Example usage
-    dataset_path = './analysis/data/train-trgdel-20x.h5'
+    dataset_path = './analysis/data/mmfiber-all-amplitude-10000.h5'
+    #dataset_path = './analysis/data/free-space-6000.h5'
 
     # Visualize samples from the dataset
-    # visualize_dataset(dataset_path, max_samples=5)
+    visualize_dataset(dataset_path, max_samples=10)
 
     # Analyze dataset statistics and plot histograms
     analyze_dataset(dataset_path)

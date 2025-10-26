@@ -38,7 +38,7 @@ loss:
 
 data:
   data_dir: "./analysis/data"
-  dataset_file: "train5000.h5"
+  dataset_file: "mmfiber-all-amplitude-10000.h5"
   split_ratios: [80, 10, 10]  # train, val, test percentages
   split_seed: 42
   num_workers: 7
