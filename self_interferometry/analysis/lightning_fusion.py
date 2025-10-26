@@ -390,6 +390,11 @@ class Fusion(L.LightningModule):
             hidden_weights = [p for p in self.model.parameters() if p.ndim >= 2]
             other_params = [p for p in self.model.parameters() if p.ndim < 2]
 
+            # If dynamic weighting is enabled, add the dynamic weight parameters
+            # These should be optimized with AdamW (not Muon) since they're scalars
+            if self.dynamic_weighting:
+                other_params.extend([self.log_weight_velocity, self.log_weight_displacement])
+
             # Get hyperparameters
             lr = optimizer_hparams.pop('lr', optimizer_hparams.pop('learning_rate', 1e-3))
             weight_decay = optimizer_hparams.pop('weight_decay', 0.0)
