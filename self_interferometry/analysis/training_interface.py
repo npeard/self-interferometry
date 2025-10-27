@@ -10,10 +10,12 @@ from typing import Any, Union
 
 import lightning as L
 import matplotlib.pyplot as plt
+import numpy as np
 import torch
 import yaml
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
+from matplotlib.collections import LineCollection
 
 from self_interferometry.analysis.datasets import get_data_loaders
 from self_interferometry.analysis.lightning_ensemble import Ensemble
@@ -372,6 +374,78 @@ class TrainingInterface:
         if hasattr(self, 'test_loader'):
             self.trainer.test(self.lightning_module, dataloaders=self.test_loader)
 
+    def compute_input_gradients(
+        self,
+        model: torch.nn.Module,
+        signals: torch.Tensor,
+    ) -> np.ndarray:
+        """Compute gradients of model output with respect to input signals.
+
+        For each sample, computes ∂output[t]/∂input for all timesteps t.
+        Returns the sum of absolute gradients across all output timesteps,
+        showing which input points have the strongest overall influence.
+
+        Args:
+            model: The trained model
+            signals: Input signals tensor of shape [batch_size, num_channels, signal_length]
+
+        Returns:
+            Gradients array of shape [batch_size, num_channels, signal_length]
+            containing sum of |∂output[t]/∂input| across all output timesteps t
+        """
+        # CRITICAL FIX: The model's forward pass has torch.set_grad_enabled(self.training)
+        # which disables gradients in eval mode. We need training mode for gradients!
+        #model.train()  # Enable gradient computation in forward pass
+        model.training = True
+
+        # Create a completely fresh tensor that requires gradients
+        # The key insight: we need a leaf tensor with requires_grad=True
+        signals_input = torch.tensor(
+            signals.detach().cpu().numpy(),
+            dtype=torch.float32,
+            requires_grad=True,
+            device='cpu'
+        )
+
+        logger.info(f'signals_input.requires_grad: {signals_input.requires_grad}')
+        logger.info(f'signals_input.is_leaf: {signals_input.is_leaf}')
+
+        # Explicitly enable gradient computation
+        with torch.enable_grad():
+            # Forward pass
+            output = model(signals_input)
+
+            logger.info(f'output.requires_grad: {output.requires_grad}')
+            logger.info(f'output.grad_fn: {output.grad_fn}')
+            logger.info(f'output shape: {output.shape}')
+
+            # output shape: [batch_size, signal_length]
+            # We want: for each output point, compute gradient w.r.t. all inputs
+            # Then sum the absolute gradients across output timesteps
+
+            # Create gradient outputs: ones for all output points
+            # This computes sum of gradients for all outputs at once
+            grad_outputs = torch.ones_like(output)
+
+            logger.info('About to call torch.autograd.grad...')
+
+            # Compute gradients: d(output)/d(signals_input)
+            # This gives us the jacobian summed over output dimension
+            gradients = torch.autograd.grad(
+                outputs=output,
+                inputs=signals_input,
+                grad_outputs=grad_outputs,
+                create_graph=False,
+                retain_graph=False,
+            )[0]
+
+            logger.info('Successfully computed gradients!')
+
+        # Convert to numpy and take absolute value
+        abs_gradients = np.abs(gradients.detach().numpy())
+
+        return abs_gradients
+
     def plot_predictions_from_checkpoint(
         self,
         checkpoint_path: str,
@@ -421,7 +495,7 @@ class TrainingInterface:
             channel_dropout=channel_dropout,
         )
 
-        # Get predictions
+        # Get predictions using trainer.predict for proper encapsulation
         predictions = trainer.predict(model, self.test_loader)
 
         # Process the first batch of predictions
@@ -458,6 +532,30 @@ class TrainingInterface:
             displacement_tensor, displacement_target_tensor
         ).item()
 
+        # Move model to CPU for gradient computation
+        model = model.cpu()
+
+        # For gradient computation, use the same signals from predictions
+        # Create a fresh tensor from the numpy array to enable gradient computation
+        signals_for_grad = torch.tensor(
+            signals, dtype=torch.float32, requires_grad=True, device='cpu'
+        )
+
+        # Compute gradients of output with respect to input signals
+        # This computes sum of |∂output[t]/∂input| showing which inputs have strongest influence
+        abs_gradients = self.compute_input_gradients(model, signals_for_grad)
+
+        # Find global min/max across all channels for consistent colormap
+        vmean = abs_gradients.mean()
+        vstd = abs_gradients.std()
+        vmin = 0
+        vmax = vmean + 2 * vstd
+
+        logger.info(f'Gradient range: [{vmin:.2e}, {vmax:.2e}]')
+
+        # Use batch_idx for consistency with original code
+        batch_idx = 0
+
         # Plot for each sample in the batch
         for i in range(
             min(batch_size, 10)
@@ -471,7 +569,10 @@ class TrainingInterface:
             ).item()
 
             # Create a figure with subplots - one for velocities and up to 3 for signals
-            fig, axs = plt.subplots(1 + num_channels, 1, figsize=(10, 8), sharex=True)
+            # Add extra space for colorbar
+            fig, axs = plt.subplots(
+                1 + num_channels, 1, figsize=(12, 8), sharex=True
+            )
 
             # Plot predicted vs target velocities on the primary y-axis
             axs[0].plot(velocity_target[i], label='Target Velocity', color='blue')
@@ -507,22 +608,66 @@ class TrainingInterface:
             lines2, labels2 = ax_twin.get_legend_handles_labels()
             ax_twin.legend(lines1 + lines2, labels1 + labels2, loc='upper right')
 
-            # Plot each input signal channel
+            # Plot each input signal channel with gradient-based coloring
+            channel_names = ['PD1 (RP1_CH2)', 'PD2 (RP2_CH1)', 'PD3 (RP2_CH2)']
+
             for j in range(num_channels):
-                channel_names = ['PD1 (RP1_CH2)', 'PD2 (RP2_CH1)', 'PD3 (RP2_CH2)']
-                axs[j + 1].plot(signals[i, j, :], label=f'Channel {j + 1}')
-                axs[j + 1].set_title(f'Input Signal - {channel_names[j]}')
+                # Get signal and gradient for this channel
+                signal = signals[i, j, :]
+                gradient_magnitude = abs_gradients[i, j, :]
+
+                # Create points for line segments
+                x = np.arange(signal_length)
+                y = signal
+
+                # Create line segments for coloring
+                points = np.array([x, y]).T.reshape(-1, 1, 2)
+                segments = np.concatenate([points[:-1], points[1:]], axis=1)
+
+                # Use gradient magnitude for coloring
+                colors = gradient_magnitude[:-1]  # Use gradient at start of each segment
+
+                # Create LineCollection with gradient-based colors
+                lc = LineCollection(
+                    segments, cmap='hot', norm=plt.Normalize(vmin=vmin, vmax=vmax)
+                )
+                lc.set_array(colors)
+                lc.set_linewidth(2)
+
+                # Plot the colored line
+                line = axs[j + 1].add_collection(lc)
+
+                # Set axis limits
+                axs[j + 1].set_xlim(0, signal_length - 1)
+                axs[j + 1].set_ylim(signal.min() * 1.1, signal.max() * 1.1)
+
+                axs[j + 1].set_title(
+                    f'Input Signal - {channel_names[j]} '
+                    f'(colored by |∂output/∂input|)'
+                )
                 axs[j + 1].set_ylabel('Amplitude')
-                axs[j + 1].grid(True)
+                axs[j + 1].grid(True, alpha=0.3)
 
             # Set x-axis label for the bottom subplot
             axs[-1].set_xlabel('Sample')
 
             # Add overall title with batch MSE values
-            plt.suptitle(
+            fig.suptitle(
                 f'Sample {i + 1} from Batch {batch_idx + 1}\n'
                 f'Batch MSE: Velocity={batch_velocity_mse:.2e}, '
                 f'Displacement={batch_displacement_mse:.2e}'
             )
-            plt.tight_layout()
+
+            # Adjust layout to make room for colorbar
+            plt.tight_layout(rect=[0, 0, 0.9, 0.96])
+
+            # Add a single colorbar for all channels on the right side
+            # Create an axis for the colorbar
+            cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
+            cbar = fig.colorbar(
+                line,
+                cax=cbar_ax,
+                label='Gradient Magnitude |∂output/∂input|',
+            )
+
             plt.show()
