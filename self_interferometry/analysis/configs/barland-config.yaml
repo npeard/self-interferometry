@@ -37,4 +37,4 @@ data:
   split_ratios: [80, 10, 10]  # train, val, test percentages
   split_seed: 42
   num_workers: 7
-  channel_dropout: 0.5  # chance of dropping a channel during training
+  channel_dropout: 0.0  # chance of dropping a channel during training

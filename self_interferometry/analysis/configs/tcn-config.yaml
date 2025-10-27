@@ -24,7 +24,7 @@ training:
   learning_rate: 1e-2
   eta_min: 1e-6
   accelerator: "gpu"
-  devices: 1
+  devices: [[0]]
   use_logging: true
   wandb_project: "self-interferometry"
   experiment_name: "tcn_baseline"
@@ -32,7 +32,7 @@ training:
   target: "velocity"  # "velocity" or "displacement" - what the model predicts
 
 loss:
-  dynamic: [true, false] # enable dynamic loss weighting, overrides weights below, usually not better than fixed weights
+  dynamic: false # enable dynamic loss weighting, overrides weights below, usually not better than fixed weights
   velocity_loss_weight: 1.0
   displacement_loss_weight: 0.1
 
@@ -42,4 +42,4 @@ data:
   split_ratios: [80, 10, 10]  # train, val, test percentages
   split_seed: 42
   num_workers: 7
-  channel_dropout: 0.5  # chance of dropping a channel during training
+  channel_dropout: 0.0  # chance of dropping a channel during training
