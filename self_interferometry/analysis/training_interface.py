@@ -277,16 +277,14 @@ class TrainingInterface:
         }
 
         # Common scheduler hyperparameters
-        max_epochs = self.config.training_config['max_epochs']
         warmup_epochs = self.config.training_config['warmup_epochs']
-        cosine_epochs = max_epochs - warmup_epochs
-        target_lr = eval(self.config.training_config['learning_rate'])
+        T_0 = self.config.training_config['T_0']
+        T_mult = self.config.training_config['T_mult']
 
         scheduler_hparams = {
             'warmup_epochs': warmup_epochs,
-            'cosine_epochs': cosine_epochs,
-            'target_lr': target_lr,
-            'T_max': cosine_epochs,  # For CosineAnnealingLR
+            'T_0': T_0,  # Initial restart period for CosineAnnealingWarmRestarts
+            'T_mult': T_mult,  # Factor to increase T_i after each restart
             'eta_min': self.config.training_config['eta_min'],
         }
 
@@ -375,9 +373,7 @@ class TrainingInterface:
             self.trainer.test(self.lightning_module, dataloaders=self.test_loader)
 
     def compute_input_gradients(
-        self,
-        model: torch.nn.Module,
-        signals: torch.Tensor,
+        self, model: torch.nn.Module, signals: torch.Tensor
     ) -> np.ndarray:
         """Compute gradients of model output with respect to input signals.
 
@@ -395,7 +391,7 @@ class TrainingInterface:
         """
         # CRITICAL FIX: The model's forward pass has torch.set_grad_enabled(self.training)
         # which disables gradients in eval mode. We need training mode for gradients!
-        #model.train()  # Enable gradient computation in forward pass
+        # model.train()  # Enable gradient computation in forward pass
         model.training = True
 
         # Create a completely fresh tensor that requires gradients
@@ -404,7 +400,7 @@ class TrainingInterface:
             signals.detach().cpu().numpy(),
             dtype=torch.float32,
             requires_grad=True,
-            device='cpu'
+            device='cpu',
         )
 
         logger.info(f'signals_input.requires_grad: {signals_input.requires_grad}')
@@ -570,9 +566,7 @@ class TrainingInterface:
 
             # Create a figure with subplots - one for velocities and up to 3 for signals
             # Add extra space for colorbar
-            fig, axs = plt.subplots(
-                1 + num_channels, 1, figsize=(12, 8), sharex=True
-            )
+            fig, axs = plt.subplots(1 + num_channels, 1, figsize=(12, 8), sharex=True)
 
             # Plot predicted vs target velocities on the primary y-axis
             axs[0].plot(velocity_target[i], label='Target Velocity', color='blue')
@@ -625,7 +619,9 @@ class TrainingInterface:
                 segments = np.concatenate([points[:-1], points[1:]], axis=1)
 
                 # Use gradient magnitude for coloring
-                colors = gradient_magnitude[:-1]  # Use gradient at start of each segment
+                colors = gradient_magnitude[
+                    :-1
+                ]  # Use gradient at start of each segment
 
                 # Create LineCollection with gradient-based colors
                 lc = LineCollection(
@@ -642,8 +638,7 @@ class TrainingInterface:
                 axs[j + 1].set_ylim(signal.min() * 1.1, signal.max() * 1.1)
 
                 axs[j + 1].set_title(
-                    f'Input Signal - {channel_names[j]} '
-                    f'(colored by |∂output/∂input|)'
+                    f'Input Signal - {channel_names[j]} (colored by |∂output/∂input|)'
                 )
                 axs[j + 1].set_ylabel('Amplitude')
                 axs[j + 1].grid(True, alpha=0.3)
@@ -665,9 +660,7 @@ class TrainingInterface:
             # Create an axis for the colorbar
             cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
             cbar = fig.colorbar(
-                line,
-                cax=cbar_ax,
-                label='Gradient Magnitude |∂output/∂input|',
+                line, cax=cbar_ax, label='Gradient Magnitude |∂output/∂input|'
             )
 
             plt.show()

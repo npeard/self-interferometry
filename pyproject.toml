@@ -18,7 +18,7 @@ dependencies = [
     "numpy==1.26.4",
     "matplotlib",
     "numba",
-    "torch",
+    "torch>=2.9.0",
     "lightning",
     "h5py",
     "tqdm",

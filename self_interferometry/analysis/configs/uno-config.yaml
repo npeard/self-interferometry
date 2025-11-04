@@ -52,6 +52,8 @@ model:
 training:
   max_epochs: 500
   warmup_epochs: 10
+  T_0: 50  # Initial restart period (epochs for first cosine cycle)
+  T_mult: 1  # Factor to increase T_i after each restart (1 = constant period, 2 = doubling)
   batch_size: 128
   optimizer: "Adam"  # Options: "Adam", "SGD", "Muon"
   momentum: 0.9 # Unused if optimizer is not SGD

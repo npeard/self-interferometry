@@ -436,10 +436,11 @@ class Fusion(L.LightningModule):
         else:
             raise ValueError(f'Unknown optimizer: {optimizer_name}')
 
-        # Configure multi-stage scheduler: linear warmup then cosine annealing
+        # Configure multi-stage scheduler: linear warmup then cosine annealing with warm restarts
         warmup_epochs = self.scheduler_hparams['warmup_epochs']
         eta_min = self.scheduler_hparams['eta_min']
-        T_max = self.scheduler_hparams['T_max']
+        T_0 = self.scheduler_hparams['T_0']
+        T_mult = self.scheduler_hparams['T_mult']
 
         # LambdaLR for linear warmup
         def warmup_lambda(epoch: int) -> float:
@@ -450,8 +451,8 @@ class Fusion(L.LightningModule):
         warmup_scheduler = optim.lr_scheduler.LambdaLR(
             optimizer, lr_lambda=warmup_lambda
         )
-        cosine_scheduler = optim.lr_scheduler.CosineAnnealingLR(
-            optimizer, T_max=T_max, eta_min=eval(eta_min)
+        cosine_scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
+            optimizer, T_0=T_0, T_mult=T_mult, eta_min=eval(eta_min)
         )
 
         scheduler = optim.lr_scheduler.SequentialLR(
