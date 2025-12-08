@@ -453,9 +453,12 @@ class TrainingInterface:
     ):
         """Plot predictions from a checkpoint.
 
-        Creates a plot with up to 4 rows:
-        1. Predicted velocities vs targets
-        2-4. Input signals (up to 3 photodiode channels)
+        Creates a plot with up to 7 rows:
+        1. Predicted vs target velocity
+        2. Velocity residuals (predicted - target)
+        3. Predicted vs target displacement
+        4. Displacement residuals (predicted - target)
+        5-7. Input signals (up to 3 photodiode channels)
 
         Args:
             checkpoint_path: Path to the checkpoint file
@@ -564,43 +567,54 @@ class TrainingInterface:
                 torch.tensor(displacement_hat[i]), torch.tensor(displacement_target[i])
             ).item()
 
-            # Create a figure with subplots - one for velocities and up to 3 for signals
-            # Add extra space for colorbar
-            fig, axs = plt.subplots(1 + num_channels, 1, figsize=(12, 8), sharex=True)
+            # Calculate residuals
+            displacement_residual = displacement_hat[i] - displacement_target[i]
+            velocity_residual = velocity_hat[i] - velocity_target[i]
 
-            # Plot predicted vs target velocities on the primary y-axis
+            # Create a figure with subplots - two for residuals, two for predictions, and up to 3 for signals
+            # Add extra space for colorbar
+            fig, axs = plt.subplots(4 + num_channels, 1, figsize=(12, 12), sharex=True)
+
+            # Plot predicted vs target velocity
             axs[0].plot(velocity_target[i], label='Target Velocity', color='blue')
             axs[0].plot(
                 velocity_hat[i], label='Predicted Velocity', color='red', linestyle='--'
             )
-            axs[0].set_title(
-                f'Velocity (MSE: {sample_velocity_mse:.2e}) and '
-                f'Displacement (MSE: {sample_displacement_mse:.2e})'
-            )
-            axs[0].set_ylabel('Velocity (μm/s)', color='blue')
-            axs[0].tick_params(axis='y', labelcolor='blue')
-            # axs[0].legend(loc='upper left')
+            axs[0].set_title(f'Velocity (MSE: {sample_velocity_mse:.2e})')
+            axs[0].set_ylabel('Velocity (μm/s)')
             axs[0].grid(True, alpha=0.3)
+            axs[0].legend(loc='upper right')
 
-            # Create a twin axis for displacement
-            ax_twin = axs[0].twinx()
-            ax_twin.plot(
+            # Plot velocity residuals
+            axs[1].plot(velocity_residual, label='Velocity Residual', color='purple')
+            axs[1].axhline(y=0, color='black', linestyle=':', alpha=0.5)
+            axs[1].set_title(f'Velocity Residual (MSE: {sample_velocity_mse:.2e})')
+            axs[1].set_ylabel('Residual (μm/s)')
+            axs[1].grid(True, alpha=0.3)
+            axs[1].legend(loc='upper right')
+
+            # Plot predicted vs target displacement
+            axs[2].plot(
                 displacement_target[i], label='Target Displacement', color='green'
             )
-            ax_twin.plot(
+            axs[2].plot(
                 displacement_hat[i],
                 label='Predicted Displacement',
                 color='orange',
                 linestyle='--',
             )
-            ax_twin.set_ylabel('Displacement (μm)', color='green')
-            ax_twin.tick_params(axis='y', labelcolor='green')
-            ax_twin.legend(loc='upper right')
+            axs[2].set_title(f'Displacement (MSE: {sample_displacement_mse:.2e})')
+            axs[2].set_ylabel('Displacement (μm)')
+            axs[2].grid(True, alpha=0.3)
+            axs[2].legend(loc='upper right')
 
-            # Ensure both legends are visible
-            lines1, labels1 = axs[0].get_legend_handles_labels()
-            lines2, labels2 = ax_twin.get_legend_handles_labels()
-            ax_twin.legend(lines1 + lines2, labels1 + labels2, loc='upper right')
+            # Plot displacement residuals
+            axs[3].plot(displacement_residual, label='Displacement Residual', color='purple')
+            axs[3].axhline(y=0, color='black', linestyle=':', alpha=0.5)
+            axs[3].set_title(f'Displacement Residual (MSE: {sample_displacement_mse:.2e})')
+            axs[3].set_ylabel('Residual (μm)')
+            axs[3].grid(True, alpha=0.3)
+            axs[3].legend(loc='upper right')
 
             # Plot each input signal channel with gradient-based coloring
             channel_names = ['PD1 (RP1_CH2)', 'PD2 (RP2_CH1)', 'PD3 (RP2_CH2)']
@@ -631,17 +645,17 @@ class TrainingInterface:
                 lc.set_linewidth(2)
 
                 # Plot the colored line
-                line = axs[j + 1].add_collection(lc)
+                line = axs[j + 4].add_collection(lc)
 
                 # Set axis limits
-                axs[j + 1].set_xlim(0, signal_length - 1)
-                axs[j + 1].set_ylim(signal.min() * 1.1, signal.max() * 1.1)
+                axs[j + 4].set_xlim(0, signal_length - 1)
+                axs[j + 4].set_ylim(signal.min() * 1.1, signal.max() * 1.1)
 
-                axs[j + 1].set_title(
+                axs[j + 4].set_title(
                     f'Input Signal - {channel_names[j]} (colored by |∂output/∂input|)'
                 )
-                axs[j + 1].set_ylabel('Amplitude')
-                axs[j + 1].grid(True, alpha=0.3)
+                axs[j + 4].set_ylabel('Amplitude')
+                axs[j + 4].grid(True, alpha=0.3)
 
             # Set x-axis label for the bottom subplot
             axs[-1].set_xlabel('Sample')
@@ -656,9 +670,20 @@ class TrainingInterface:
             # Adjust layout to make room for colorbar
             plt.tight_layout(rect=[0, 0, 0.9, 0.96])
 
-            # Add a single colorbar for all channels on the right side
-            # Create an axis for the colorbar
-            cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
+            # Add a colorbar for the signal plots only (last num_channels plots)
+            # Get the positions of the first and last signal plots
+            first_signal_ax = axs[4]  # First signal plot
+            last_signal_ax = axs[-1]  # Last signal plot
+
+            # Get the bounding boxes of these axes in figure coordinates
+            first_bbox = first_signal_ax.get_position()
+            last_bbox = last_signal_ax.get_position()
+
+            # Create colorbar axis spanning only the signal plots
+            # Use the bottom of the last plot and top of the first plot
+            cbar_bottom = last_bbox.y0
+            cbar_height = first_bbox.y1 - last_bbox.y0
+            cbar_ax = fig.add_axes([0.92, cbar_bottom, 0.02, cbar_height])
             cbar = fig.colorbar(
                 line, cax=cbar_ax, label='Gradient Magnitude |∂output/∂input|'
             )
