@@ -15,21 +15,21 @@ model:
   stride: 1
 
 training:
-  max_epochs: 500
-  warmup_epochs: 10
-  T_0: 50  # Initial restart period (epochs for first cosine cycle)
+  max_epochs: 2000
+  warmup_epochs: 0
+  T_0: 500  # Initial restart period (epochs for first cosine cycle)
   T_mult: 1  # Factor to increase T_i after each restart (1 = constant period, 2 = doubling)
   batch_size: 128
   optimizer: "Muon"  # Options: "Adam", "SGD", "Muon"
-  weight_decay: 1e-6 # Unused if optimizer is not Adam, 1e-5 usually better than 1e-4?
+  weight_decay: 1e-6 # Unused if optimizer is not Adam
   momentum: 0.9 # Unused if optimizer is not SGD
-  learning_rate: 1e-2
-  eta_min: 1e-6
+  learning_rate: 1e-3
+  eta_min: 0e-6
   accelerator: "gpu"
-  devices: [[0]]
+  devices: 1
   use_logging: true
   wandb_project: "self-interferometry"
-  experiment_name: "tcn_baseline"
+  experiment_name: "tcn_synchro_free"
   checkpoint_dir: "./analysis/checkpoints"
   target: "velocity"  # "velocity" or "displacement" - what the model predicts
 
@@ -40,8 +40,8 @@ loss:
 
 data:
   data_dir: "./analysis/data"
-  dataset_file: "mmfiber-all-amplitude-10000-green-realigned.h5"
+  dataset_file: "free-space-synchro_10k.h5"
   split_ratios: [80, 10, 10]  # train, val, test percentages
   split_seed: 42
   num_workers: 7
-  channel_dropout: 0.0  # chance of dropping a channel during training
+  channel_dropout: 0.5  # chance of dropping a channel during training

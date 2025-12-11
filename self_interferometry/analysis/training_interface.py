@@ -274,6 +274,7 @@ class TrainingInterface:
             # TODO: why is lr a string?
             'lr': eval(self.config.training_config['learning_rate']),
             'momentum': self.config.training_config['momentum'],
+            'weight_decay': self.config.training_config['weight_decay'], 
         }
 
         # Common scheduler hyperparameters

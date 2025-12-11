@@ -23,6 +23,7 @@ from self_interferometry.acquisition.simulations.coil_driver import CoilDriver
 from self_interferometry.analysis.barland_cnn import BarlandCNN, BarlandCNNConfig
 from self_interferometry.analysis.tcn import TCN, TCNConfig
 from self_interferometry.analysis.utcn import UTCN, UTCNConfig
+from self_interferometry.analysis.stemtcan import StemTCAN, StemTCANConfig
 
 # Conditional import for FNO and UNO - only available with torch >= 2.8
 try:
@@ -153,6 +154,29 @@ class Fusion(L.LightningModule):
             stride=self.model_hparams['stride'],
         )
 
+    def _create_stemtcan_config(self) -> StemTCANConfig:
+        """Create StemTCANConfig from model configuration."""
+        return StemTCANConfig(
+            # Common parameters
+            input_size=self.model_hparams['input_size'],
+            output_size=self.model_hparams['output_size'],
+            in_channels=self.model_hparams['in_channels'],
+            activation=self.model_hparams['activation'],
+            norm=self.model_hparams['norm'],
+            dropout=self.model_hparams['dropout'],
+            # StemTCAN specific parameters
+            kernel_size=self.model_hparams['kernel_size'],
+            n_stem_blocks=self.model_hparams['n_stem_blocks'],
+            n_post_attention_blocks=self.model_hparams['n_post_attention_blocks'],
+            stem_out_channels=self.model_hparams['stem_out_channels'],
+            post_attention_channels=self.model_hparams['post_attention_channels'],
+            atten_len=self.model_hparams['atten_len'],
+            atten_heads=self.model_hparams['atten_heads'],
+            atten_chunk_size=self.model_hparams['atten_chunk_size'],
+            dilation_base=self.model_hparams['dilation_base'],
+            stride=self.model_hparams['stride'],
+        )
+
     def _create_fno_config(self):
         """Create FNOConfig from model configuration."""
         if not NEURALOP_AVAILABLE:
@@ -254,6 +278,10 @@ class Fusion(L.LightningModule):
             logger.debug('Creating UTCN model...')
             self.model_config = self._create_utcn_config()
             return UTCN(self.model_config)
+        elif model_type == 'StemTCAN':
+            logger.debug('Creating StemTCAN model...')
+            self.model_config = self._create_stemtcan_config()
+            return StemTCAN(self.model_config)
         elif model_type == 'FNO':
             if not NEURALOP_AVAILABLE:
                 raise ImportError(
@@ -292,10 +320,10 @@ class Fusion(L.LightningModule):
         """
         batch_size, num_channels, signal_length = x.shape
 
-        # Check if we're using a TCN or FNO model (which can process the entire sequence at
+        # Check if we're using a TCN, UTCN, StemTCAN, or FNO model (which can process the entire sequence at
         # once)
         if hasattr(self.model, '__class__') and (
-            self.model.__class__.__name__ in {'TCN', 'UTCN', 'FNO1d', 'UNO1d'}
+            self.model.__class__.__name__ in {'TCN', 'UTCN', 'StemTCAN', 'FNO1d', 'UNO1d'}
         ):
             # TCN/FNO approach - process the entire sequence at once
             with torch.set_grad_enabled(self.training):
@@ -402,13 +430,15 @@ class Fusion(L.LightningModule):
                 )
 
             # Get hyperparameters
-            lr = optimizer_hparams.pop(
-                'lr', optimizer_hparams.pop('learning_rate', 1e-3)
-            )
-            weight_decay = optimizer_hparams.pop('weight_decay', 0.0)
+            lr = optimizer_hparams.pop('lr')
+            weight_decay = float(optimizer_hparams.pop('weight_decay'))
+            print(type(lr))
+            print(type(weight_decay))
 
             # Configure parameter groups
             # Muon for hidden weights, AdamW for biases/norms
+            if len(hidden_weights) > 0:
+                logger.info("Muon optimizer has found hidden weights")
             param_groups = [
                 dict(
                     params=hidden_weights,
