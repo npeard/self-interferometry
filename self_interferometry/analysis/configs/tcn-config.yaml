@@ -29,19 +29,19 @@ training:
   devices: 1
   use_logging: true
   wandb_project: "self-interferometry"
-  experiment_name: "tcn_synchro_free"
+  experiment_name: "tcn_chdrop_dispweight"
   checkpoint_dir: "./analysis/checkpoints"
   target: "velocity"  # "velocity" or "displacement" - what the model predicts
 
 loss:
   dynamic: false # enable dynamic loss weighting, overrides weights below, usually not better than fixed weights
   velocity_loss_weight: 1.0
-  displacement_loss_weight: 0.1
+  displacement_loss_weight: [0.1, 0.0]
 
 data:
   data_dir: "./analysis/data"
-  dataset_file: "free-space-synchro_10k.h5"
-  split_ratios: [80, 10, 10]  # train, val, test percentages
+  dataset_file: ["free-space-synchro_10k.h5", "mmfiber-synchro_10k.h5"]
+  split_ratios: [[80, 10, 10]]  # train, val, test percentages
   split_seed: 42
   num_workers: 7
-  channel_dropout: 0.5  # chance of dropping a channel during training
+  channel_dropout: [0.5, 0.0]  # chance of dropping a channel during training

@@ -55,6 +55,7 @@ class TrainingConfig:
             any(isinstance(v, list) for v in config_dict['model'].values())
             or any(isinstance(v, list) for v in config_dict['training'].values())
             or any(isinstance(v, list) for v in config_dict['loss'].values())
+            or any(isinstance(v, list) for v in config_dict['data'].values())
         ):
             return cls._create_search_configs(config_dict)
 
@@ -92,6 +93,13 @@ class TrainingConfig:
             k: v for k, v in config_dict['loss'].items() if not isinstance(v, list)
         }
 
+        data_lists = {
+            k: v for k, v in config_dict['data'].items() if isinstance(v, list)
+        }
+        data_fixed = {
+            k: v for k, v in config_dict['data'].items() if not isinstance(v, list)
+        }
+
         # Generate all combinations
         model_keys = list(model_lists.keys())
         model_values = list(model_lists.values())
@@ -102,6 +110,9 @@ class TrainingConfig:
         loss_keys = list(loss_lists.keys())
         loss_values = list(loss_lists.values())
 
+        data_keys = list(data_lists.keys())
+        data_values = list(data_lists.values())
+
         configs = []
 
         # Generate model combinations
@@ -110,6 +121,7 @@ class TrainingConfig:
             list(product(*training_values)) if training_values else [()]
         )
         loss_combinations = list(product(*loss_values)) if loss_values else [()]
+        data_combinations = list(product(*data_values)) if data_values else [()]
 
         for model_combo in model_combinations:
             model_config = model_fixed.copy()
@@ -125,20 +137,27 @@ class TrainingConfig:
                     loss_config = loss_fixed.copy()
                     loss_config.update(dict(zip(loss_keys, loss_combo, strict=False)))
 
-                    configs.append(
-                        cls(
-                            model_config=model_config,
-                            training_config=training_config,
-                            loss_config=loss_config,
-                            data_config=config_dict['data'],
-                            is_hyperparameter_search=True,
-                            search_space={
-                                'model': model_lists,
-                                'training': training_lists,
-                                'loss': loss_lists,
-                            },
+                    for data_combo in data_combinations:
+                        data_config = data_fixed.copy()
+                        data_config.update(
+                            dict(zip(data_keys, data_combo, strict=False))
                         )
-                    )
+
+                        configs.append(
+                            cls(
+                                model_config=model_config,
+                                training_config=training_config,
+                                loss_config=loss_config,
+                                data_config=data_config,
+                                is_hyperparameter_search=True,
+                                search_space={
+                                    'model': model_lists,
+                                    'training': training_lists,
+                                    'loss': loss_lists,
+                                    'data': data_lists,
+                                },
+                            )
+                        )
 
         # Randomly shuffle configurations
         random.shuffle(configs)

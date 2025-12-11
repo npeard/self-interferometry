@@ -432,8 +432,6 @@ class Fusion(L.LightningModule):
             # Get hyperparameters
             lr = optimizer_hparams.pop('lr')
             weight_decay = float(optimizer_hparams.pop('weight_decay'))
-            print(type(lr))
-            print(type(weight_decay))
 
             # Configure parameter groups
             # Muon for hidden weights, AdamW for biases/norms
