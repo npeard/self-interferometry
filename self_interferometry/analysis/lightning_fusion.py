@@ -138,11 +138,11 @@ class Fusion(L.LightningModule):
         """Create UTCNConfig from model configuration."""
         return UTCNConfig(
             # Common parameters
-            input_size=self.model_hparams['input_size'],
+            sequence_length=self.model_hparams['input_size'],
             output_size=self.model_hparams['output_size'],
             in_channels=self.model_hparams['in_channels'],
             activation=self.model_hparams['activation'],
-            norm=self.model_hparams['norm'],
+            layer_norm=self.model_hparams['norm'],
             dropout=self.model_hparams['dropout'],
             # UTCN specific parameters
             kernel_size=self.model_hparams['kernel_size'],
@@ -337,7 +337,7 @@ class Fusion(L.LightningModule):
             # CNN approach - sliding window implementation
             # Define the window size (number of input points that produce one output
             # point)
-            window_size = self.model_config.input_size
+            window_size = self.model_config.sequence_length
             window_stride = self.model_config.window_stride
 
             # Calculate number of windows and create output tensor accordingly

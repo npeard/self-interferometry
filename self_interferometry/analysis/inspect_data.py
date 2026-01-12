@@ -48,13 +48,17 @@ def visualize_dataset(
 
     # Create dataset and dataloader
     dataset = VelocityDataset(dataset_path)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
     # Get samples from dataloader
     samples_processed = 0
     for batch_idx, (signals, velocity, displacement) in enumerate(dataloader):
         if samples_processed >= max_samples:
             break
+
+        # Manually check around particular samples in the dataset
+        if batch_idx <=9990:
+            pass
 
         # Convert tensors to numpy arrays
         signals = signals.numpy()
@@ -271,11 +275,11 @@ def analyze_dataset(dataset_path: str | Path):
 
 if __name__ == '__main__':
     # Example usage
-    dataset_path = './analysis/data/mmfiber-all-amplitude-10000.h5'
-    # dataset_path = './analysis/data/free-space-6000.h5'
+    #dataset_path = './analysis/data/free-space-all-amplitude-10000.h5'
+    dataset_path = './analysis/data/free-space-synchro_10k.h5'
 
     # Visualize samples from the dataset
     visualize_dataset(dataset_path, max_samples=10)
 
     # Analyze dataset statistics and plot histograms
-    # analyze_dataset(dataset_path)
+    #analyze_dataset(dataset_path)

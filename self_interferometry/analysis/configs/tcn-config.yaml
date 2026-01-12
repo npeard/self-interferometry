@@ -2,17 +2,14 @@ model:
   # Common parameters for all model types
   role: "standard" # "standard" or "ensemble"
   type: "TCN"
-  input_size: 16384
-  output_size: 16384
+  sequence_length: 16384
   activation: "GELU"
-  norm: "layer" # layer norm usually better than batch norm
+  layer_norm: true
   in_channels: 3
-  dropout: 0.1
   # TCN specific parameters
   kernel_size: 7
   num_channels: [[16, 16, 32, 32, 64, 64]]
   dilation_base: 2 # dilation factor should be less than kernel size, usually 2
-  stride: 1
 
 training:
   max_epochs: 2000

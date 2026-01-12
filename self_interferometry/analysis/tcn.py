@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 
+import torch
 from torch import Tensor, nn
 
 act_fn_by_name = {
@@ -15,18 +16,29 @@ act_fn_by_name = {
 @dataclass
 class TCNConfig:
     # Common parameters (consistent across all model configs)
-    input_size: int  # Length of input sequence
-    output_size: int  # Length of output sequence (same as input for our case)
+    sequence_length: int  # sequence length, always same for input and output
     in_channels: int  # Number of input channels
     activation: str
-    norm: str  # 'layer' or 'batch'
-    dropout: float
+    layer_norm: bool  # use layer normalization or not, batch norm causes leakage
 
     # TCN specific parameters
     kernel_size: int  # Kernel size for all layers
     num_channels: list[int]  # Number of channels in each layer
     dilation_base: int  # Base for dilation
-    stride: int  # Stride for all layers
+
+
+class Transpose(nn.Module):
+    """Simple transpose module used to swap channel and sequence dimensions
+    in TemporalBlock.
+    """
+
+    def __init__(self, dim0: int, dim1: int):
+        super().__init__()
+        self.dim0 = dim0
+        self.dim1 = dim1
+
+    def forward(self, x: Tensor) -> Tensor:
+        return x.transpose(self.dim0, self.dim1)
 
 
 class TemporalBlock(nn.Module):
@@ -34,51 +46,47 @@ class TemporalBlock(nn.Module):
 
     def __init__(
         self,
-        n_inputs: int,
-        n_outputs: int,
+        in_channels: int,
+        out_channels: int,
         kernel_size: int,
-        stride: int,
         dilation: int,
         padding: int,
-        dropout: float,
         activation: str,
-        norm: str,
-        input_length: int,
+        layer_norm: bool,
     ):
         super().__init__()
         self.conv1 = nn.utils.weight_norm(
             nn.Conv1d(
-                n_inputs,
-                n_outputs,
+                in_channels,
+                out_channels,
                 kernel_size,
-                stride=stride,
                 padding=padding,
                 dilation=dilation,
             )
         )
         self.chomp1 = Chomp1d(padding)  # Remove padding at the end
-        self.dropout1 = nn.Dropout(dropout)
 
         self.conv2 = nn.utils.weight_norm(
             nn.Conv1d(
-                n_outputs,
-                n_outputs,
+                out_channels,
+                out_channels,
                 kernel_size,
-                stride=stride,
                 padding=padding,
                 dilation=dilation,
             )
         )
         self.chomp2 = Chomp1d(padding)  # Remove padding at the end
-        self.dropout2 = nn.Dropout(dropout)
 
         # Select normalization layer
-        if norm == 'batch':
-            self.norm = nn.BatchNorm1d(n_inputs)
-        elif norm == 'layer':
-            self.norm = nn.LayerNorm(input_length)
+        if layer_norm:
+            # LayerNorm across channel dimension requires transpose
+            self.norm = nn.Sequential(
+                Transpose(1, 2),
+                nn.LayerNorm(in_channels),
+                Transpose(1, 2),
+            )
         else:
-            raise ValueError(f'Unknown norm type: {norm}')
+            self.norm = nn.Identity()
 
         # Select activation function
         if activation in act_fn_by_name:
@@ -91,16 +99,14 @@ class TemporalBlock(nn.Module):
             self.conv1,
             self.chomp1,
             self.activation_fn,
-            self.dropout1,
             self.conv2,
             self.chomp2,
             self.activation_fn,
-            self.dropout2,
         )
 
         # 1x1 convolution for residual connection if input and output channels differ
         self.downsample = (
-            nn.Conv1d(n_inputs, n_outputs, 1) if n_inputs != n_outputs else None
+            nn.Conv1d(in_channels, out_channels, 1) if in_channels != out_channels else None
         )
         self.activation = self.activation_fn
 
@@ -130,11 +136,9 @@ class TCN(nn.Module):
 
     def __init__(self, config: TCNConfig):
         super().__init__()
-        self.input_size = config.input_size
-        self.output_size = config.output_size
+        self.sequence_length = config.sequence_length
         self.in_channels = config.in_channels
         self.dilation_base = config.dilation_base
-        self.stride = config.stride
 
         layers = []
         num_levels = len(config.num_channels)
@@ -144,20 +148,17 @@ class TCN(nn.Module):
             out_channels = config.num_channels[i]
 
             # Calculate padding to maintain sequence length
-            padding = (config.kernel_size - self.stride) * dilation_size
+            padding = (config.kernel_size - 1) * dilation_size
 
             layers.append(
                 TemporalBlock(
                     in_channels,
                     out_channels,
                     config.kernel_size,
-                    stride=self.stride,
                     dilation=dilation_size,
                     padding=padding,
-                    dropout=config.dropout,
                     activation=config.activation,
-                    norm=config.norm,
-                    input_length=config.input_size,  # For LayerNorm
+                    layer_norm=config.layer_norm,
                 )
             )
 

@@ -2,23 +2,20 @@ model:
   # Common parameters for all model types
   role: "standard" # "standard" or "ensemble"
   type: "UTCN"
-  input_size: 16384
-  output_size: 16384
+  sequence_length: 16384
   activation: "GELU" # GELU better than LeakyReLU
-  norm: "layer"  # 'layer' or 'batch'
+  layer_norm: true 
   in_channels: 3
-  dropout: 0.1
 
   # UTCN specific parameters
   kernel_size: 7  # Kernel size for all temporal blocks
   n_layers: 7  # Total number of TemporalBlock layers (U-Net structure)
-  stride: 1  # Stride for all layers
 
   # UTCN layer-wise configuration (must all be same length as n_layers)
   # For a 5-layer UTCN: layers 0-1 are encoder, layer 2 is bottleneck, layers 3-4 are decoder
   # Fewer channels in middle layers with larger dilations
   utcn_out_channels: [[64, 32, 16, 8, 16, 32, 64]] # [[64, 32, 16, 32, 64]]  # Output channels for each layer
-  utcn_dilations: [[4,16,64,128,64,16,4]] # [4,16,64,128,64,16,4] best so far, 256 dilation in middle is too much  # Dilation factors per layer (increase then decrease)
+  utcn_dilations: [[1,16,64,128,64,16,1]] # [4,16,64,128,64,16,4] best so far, 256 dilation in middle is too much  # Dilation factors per layer (increase then decrease)
 # So far, best results from largest dilation in middle layer
 
   # Skip connections (default: symmetric U-Net skips)

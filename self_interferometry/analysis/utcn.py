@@ -14,21 +14,18 @@ logger = logging.getLogger(__name__)
 @dataclass
 class UTCNConfig:
     # Common parameters (required by training interface)
-    input_size: int  # Length of input sequence
-    output_size: int  # Length of output sequence (same as input for our case)
+    sequence_length: int  # Length of input sequence
     in_channels: int  # Number of input channels
     activation: str
-    norm: str  # 'layer' or 'batch'
-    dropout: float
+    layer_norm: bool
 
     # UTCN specific parameters
     kernel_size: int  # Kernel size for all layers
     n_layers: int  # Total number of TemporalBlock layers in the U-Net
     utcn_out_channels: list[int]  # Output channels for each layer
-    utcn_dilations: list[int]  # Dilation for each layer
+    utcn_dilations: list[int]  # Dilation for each layer, remember to start with 1!
     horizontal_skips_map: dict[int, int] | None  # Skip connections between layers
     horizontal_skip: str  # Type of horizontal skip connection ('linear', 'identity')
-    stride: int  # Stride for all layers
 
 
 class HorizontalSkip(nn.Module):
@@ -60,11 +57,9 @@ class UTCN(nn.Module):
 
     def __init__(self, config: UTCNConfig):
         super().__init__()
-        self.input_size = config.input_size
-        self.output_size = config.output_size
+        self.sequence_length = config.sequence_length
         self.in_channels = config.in_channels
         self.n_layers = config.n_layers
-        self.stride = config.stride
 
         # Validate layer-wise configurations
         assert len(config.utcn_out_channels) == config.n_layers, (
@@ -74,6 +69,12 @@ class UTCN(nn.Module):
         assert len(config.utcn_dilations) == config.n_layers, (
             f'utcn_dilations length ({len(config.utcn_dilations)}) '
             f'must match n_layers ({config.n_layers})'
+        )
+        assert config.utcn_dilations[0] == 1, (
+            'First dilation should be 1'
+        )
+        assert config.utcn_dilations[-1] == 1, (
+            'Last dilation should be 1'
         )
 
         self.utcn_out_channels = config.utcn_out_channels
@@ -111,20 +112,17 @@ class UTCN(nn.Module):
             dilation = config.utcn_dilations[i]
 
             # Calculate padding to maintain sequence length
-            padding = (config.kernel_size - self.stride) * dilation
+            padding = (config.kernel_size - 1) * dilation
 
             self.temporal_blocks.append(
                 TemporalBlock(
                     in_channels,
                     out_channels,
                     config.kernel_size,
-                    stride=self.stride,
                     dilation=dilation,
                     padding=padding,
-                    dropout=config.dropout,
                     activation=config.activation,
-                    norm=config.norm,
-                    input_length=config.input_size,
+                    layer_norm=config.layer_norm,
                 )
             )
 
