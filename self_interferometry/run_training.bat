@@ -15,7 +15,7 @@ REM Training Jobs
 REM ====================================
 
 echo [Job 1] Training with tcn-config.yaml...
-%PYTHON_CMD% ./analysis/configs/tcn-config.yaml
+%PYTHON_CMD% ./analysis/models/configs/tcn-config.yaml
 if %ERRORLEVEL% NEQ 0 (
     echo ERROR: Job 1 failed with exit code %ERRORLEVEL%
     echo Continue anyway? Press Ctrl+C to stop, or
@@ -25,7 +25,7 @@ echo Job 1 completed.
 echo.
 
 echo [Job 2] Training with stemtcan-config.yaml...
-%PYTHON_CMD% ./analysis/configs/stemtcan-config.yaml
+%PYTHON_CMD% ./analysis/models/configs/stemtcan-config.yaml
 if %ERRORLEVEL% NEQ 0 (
     echo ERROR: Job 2 failed with exit code %ERRORLEVEL%
     echo Continue anyway? Press Ctrl+C to stop, or
@@ -35,7 +35,7 @@ echo Job 2 completed.
 echo.
 
 echo [Job 3] Training with utcn-config.yaml...
-%PYTHON_CMD% ./analysis/configs/utcn-config.yaml
+%PYTHON_CMD% ./analysis/models/configs/utcn-config.yaml
 if %ERRORLEVEL% NEQ 0 (
     echo ERROR: Job 3 failed with exit code %ERRORLEVEL%
     echo Continue anyway? Press Ctrl+C to stop, or

@@ -36,7 +36,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--config',
         type=str,
-        default='./analysis/configs/tcn-config.yaml',
+        default='./analysis/models/configs/tcn-config.yaml',
         help='Path to YAML config file. Required for training, optional for testing.',
     )
     parser.add_argument(
