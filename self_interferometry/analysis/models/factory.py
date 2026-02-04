@@ -54,7 +54,7 @@ def create_model(model_hparams: dict[str, Any]) -> nn.Module | None:
         return BarlandCNN(config)
     elif model_type == 'TCN':
         logger.debug('Creating TCN model...')
-        # Map 'input_size' -> 'sequence_length' and 'norm' -> 'layer_norm'
+        # Map parameter names to match config structure
         tcn_params = params.copy()
         tcn_params['sequence_length'] = tcn_params.pop('input_size')
         tcn_params['layer_norm'] = tcn_params.pop('norm')
@@ -62,7 +62,7 @@ def create_model(model_hparams: dict[str, Any]) -> nn.Module | None:
         return TCN(config)
     elif model_type == 'UTCN':
         logger.debug('Creating UTCN model...')
-        # Map 'input_size' -> 'sequence_length' and 'norm' -> 'layer_norm'
+        # Map parameter names to match config structure
         utcn_params = params.copy()
         utcn_params['sequence_length'] = utcn_params.pop('input_size')
         utcn_params['layer_norm'] = utcn_params.pop('norm')

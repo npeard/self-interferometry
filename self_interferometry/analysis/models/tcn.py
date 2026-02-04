@@ -2,78 +2,64 @@
 
 from dataclasses import dataclass
 
-from torch import Tensor, nn
-
-from .temporal_block import TemporalBlock
+from .utcn import UTCN, UTCNConfig
 
 
 @dataclass
-class TCNConfig:
-    # Common parameters (consistent across all model configs)
-    sequence_length: int  # sequence length, always same for input and output
-    in_channels: int  # Number of input channels
-    activation: str
-    layer_norm: bool  # use layer normalization or not, batch norm causes leakage
+class TCNConfig(UTCNConfig):
+    """Configuration for Temporal Convolutional Network.
 
-    # TCN specific parameters
-    kernel_size: int  # Kernel size for all layers
-    num_channels: list[int]  # Number of channels in each layer
-    dilation_base: int  # Base for dilation
+    TCN is a specialized case of UTCN with no horizontal skip connections and
+    exponentially increasing dilations. It implements a causal temporal convolutional
+    architecture for sequence modeling.
 
+    Args:
+        dilation_base: Base for exponential dilation sequence (default: 2).
+            Dilations will be [1, base, base^2, base^3, ...] for each layer
+        temporal_dilations: Computed automatically based on dilation_base
+        horizontal_skips_map: Always None for TCN (no skip connections)
+        horizontal_skip: Always None for TCN (no skip connections)
 
-class TCN(nn.Module):
-    """Temporal Convolutional Network with dilated convolutions.
-
-    This model efficiently processes the entire sequence at once and maintains
-    the temporal resolution, making it ideal for time series prediction tasks.
+    All other parameters inherited from UTCNConfig:
+        sequence_length, in_channels, activation, layer_norm, kernel_size,
+        temporal_channels
     """
 
-    def __init__(self, config: TCNConfig):
-        super().__init__()
-        self.sequence_length = config.sequence_length
-        self.in_channels = config.in_channels
-        self.dilation_base = config.dilation_base
+    temporal_dilations: list[int] = None
+    horizontal_skips_map: dict[int, int] | None = None
+    horizontal_skip: str | None = None
+    dilation_base: int = 2
 
-        layers = []
-        num_levels = len(config.num_channels)
-        for i in range(num_levels):
-            dilation_size = self.dilation_base**i  # Exponentially increasing dilation
-            in_channels = config.in_channels if i == 0 else config.num_channels[i - 1]
-            out_channels = config.num_channels[i]
+    def __post_init__(self):
+        """Set TCN-specific parameters and validate."""
+        # TCN has no horizontal skip connections
+        self.horizontal_skip = None
+        self.horizontal_skips_map = None
 
-            # Calculate padding to maintain sequence length
-            padding = (config.kernel_size - 1) * dilation_size
+        # Generate exponential dilations based on dilation_base
+        self.temporal_dilations = [
+            self.dilation_base**i for i in range(len(self.temporal_channels))
+        ]
 
-            layers.append(
-                TemporalBlock(
-                    in_channels,
-                    out_channels,
-                    config.kernel_size,
-                    dilation=dilation_size,
-                    padding=padding,
-                    activation=config.activation,
-                    layer_norm=config.layer_norm,
-                )
+        # TCN-specific validation (subset of UTCN validation)
+        self.n_layers = len(self.temporal_channels)
+
+        # Validate layer-wise configurations
+        if len(self.temporal_dilations) != self.n_layers:
+            raise ValueError(
+                f'temporal_dilations length ({len(self.temporal_dilations)}) '
+                f'must match temporal_channels length ({self.n_layers})'
             )
 
-        self.network = nn.Sequential(*layers)
+        # TCN only requires first dilation to be 1 (no last dilation constraint)
+        if self.temporal_dilations[0] != 1:
+            raise ValueError('First dilation should be 1')
 
-        # Final 1x1 convolution to map to output size
-        self.output_layer = nn.Conv1d(config.num_channels[-1], 1, 1)
 
-    def forward(self, x: Tensor) -> Tensor:
-        """Forward pass through the TCN.
+class TCN(UTCN):
+    """Temporal Convolutional Network with dilated convolutions.
 
-        Args:
-            x: Input tensor of shape [batch_size, in_channels, sequence_length]
-
-        Returns:
-            Tensor of shape [batch_size, 1, sequence_length] containing
-            predicted velocity
-        """
-        # Process through the TCN network
-        features = self.network(x)
-
-        # Map to output using 1x1 convolution and return
-        # Return output with shape [batch_size, 1, sequence_length]
-        return self.output_layer(features)
+    TCN is a special case of UTCN with no horizontal skip connections and
+    exponential dilations. Inherits all functionality from UTCN but with
+    TCN-specific configuration.
+    """
