@@ -6,7 +6,8 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor, nn
 
-from self_interferometry.analysis.tcn import TemporalBlock
+from .horizontal_skip import HorizontalSkip
+from .temporal_block import TemporalBlock
 
 logger = logging.getLogger(__name__)
 
@@ -26,24 +27,6 @@ class UTCNConfig:
     utcn_dilations: list[int]  # Dilation for each layer, remember to start with 1!
     horizontal_skips_map: dict[int, int] | None  # Skip connections between layers
     horizontal_skip: str  # Type of horizontal skip connection ('linear', 'identity')
-
-
-class HorizontalSkip(nn.Module):
-    """Horizontal skip connection for U-Net architecture."""
-
-    def __init__(self, n_channels: int, skip_type: str = 'linear'):
-        super().__init__()
-        self.skip_type = skip_type
-
-        if skip_type == 'linear':
-            self.skip = nn.Conv1d(n_channels, n_channels, 1)
-        elif skip_type == 'identity':
-            self.skip = nn.Identity()
-        else:
-            raise ValueError(f'Unknown skip type: {skip_type}')
-
-    def forward(self, x: Tensor) -> Tensor:
-        return self.skip(x)
 
 
 class UTCN(nn.Module):
@@ -70,12 +53,8 @@ class UTCN(nn.Module):
             f'utcn_dilations length ({len(config.utcn_dilations)}) '
             f'must match n_layers ({config.n_layers})'
         )
-        assert config.utcn_dilations[0] == 1, (
-            'First dilation should be 1'
-        )
-        assert config.utcn_dilations[-1] == 1, (
-            'Last dilation should be 1'
-        )
+        assert config.utcn_dilations[0] == 1, 'First dilation should be 1'
+        assert config.utcn_dilations[-1] == 1, 'Last dilation should be 1'
 
         self.utcn_out_channels = config.utcn_out_channels
         self.utcn_dilations = config.utcn_dilations

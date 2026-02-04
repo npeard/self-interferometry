@@ -57,7 +57,7 @@ def visualize_dataset(
             break
 
         # Manually check around particular samples in the dataset
-        if batch_idx <=9990:
+        if batch_idx <= 9990:
             pass
 
         # Convert tensors to numpy arrays
@@ -275,11 +275,11 @@ def analyze_dataset(dataset_path: str | Path):
 
 if __name__ == '__main__':
     # Example usage
-    #dataset_path = './analysis/data/free-space-all-amplitude-10000.h5'
+    # dataset_path = './analysis/data/free-space-all-amplitude-10000.h5'
     dataset_path = './analysis/data/free-space-synchro_10k.h5'
 
     # Visualize samples from the dataset
     visualize_dataset(dataset_path, max_samples=10)
 
     # Analyze dataset statistics and plot histograms
-    #analyze_dataset(dataset_path)
+    # analyze_dataset(dataset_path)

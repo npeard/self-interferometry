@@ -20,21 +20,7 @@ except ImportError:
 
 from self_interferometry.acquisition.redpitaya.redpitaya_config import RedPitayaConfig
 from self_interferometry.acquisition.simulations.coil_driver import CoilDriver
-from self_interferometry.analysis.barland_cnn import BarlandCNN, BarlandCNNConfig
-from self_interferometry.analysis.tcn import TCN, TCNConfig
-from self_interferometry.analysis.utcn import UTCN, UTCNConfig
-from self_interferometry.analysis.stemtcan import StemTCAN, StemTCANConfig
-
-# Conditional import for FNO and UNO - only available with torch >= 2.8
-try:
-    from self_interferometry.analysis.fno import NEURALOP_AVAILABLE, FNO1d, FNOConfig
-    from self_interferometry.analysis.uno import UNO1d, UNOConfig
-except ImportError:
-    NEURALOP_AVAILABLE = False
-    FNO1d = None
-    FNOConfig = None
-    UNO1d = None
-    UNOConfig = None
+from self_interferometry.analysis.models.factory import create_model
 
 logger = logging.getLogger(__name__)
 
@@ -104,204 +90,13 @@ class Fusion(L.LightningModule):
 
         torch.set_float32_matmul_precision('high')
 
-    def _create_barland_config(self) -> BarlandCNNConfig:
-        """Create BarlandCNNConfig from model configuration."""
-        return BarlandCNNConfig(
-            # Common parameters
-            input_size=self.model_hparams['input_size'],
-            output_size=self.model_hparams['output_size'],
-            in_channels=self.model_hparams['in_channels'],
-            activation=self.model_hparams['activation'],
-            dropout=self.model_hparams['dropout'],
-            # BarlandCNN specific parameters
-            window_stride=self.model_hparams['window_stride'],
-        )
-
-    def _create_tcn_config(self) -> TCNConfig:
-        """Create TCNConfig from model configuration."""
-        return TCNConfig(
-            # Common parameters
-            input_size=self.model_hparams['input_size'],
-            output_size=self.model_hparams['output_size'],
-            in_channels=self.model_hparams['in_channels'],
-            activation=self.model_hparams['activation'],
-            norm=self.model_hparams['norm'],
-            dropout=self.model_hparams['dropout'],
-            # TCN specific parameters
-            kernel_size=self.model_hparams['kernel_size'],
-            num_channels=self.model_hparams['num_channels'],
-            dilation_base=self.model_hparams['dilation_base'],
-            stride=self.model_hparams['stride'],
-        )
-
-    def _create_utcn_config(self) -> UTCNConfig:
-        """Create UTCNConfig from model configuration."""
-        return UTCNConfig(
-            # Common parameters
-            sequence_length=self.model_hparams['input_size'],
-            output_size=self.model_hparams['output_size'],
-            in_channels=self.model_hparams['in_channels'],
-            activation=self.model_hparams['activation'],
-            layer_norm=self.model_hparams['norm'],
-            dropout=self.model_hparams['dropout'],
-            # UTCN specific parameters
-            kernel_size=self.model_hparams['kernel_size'],
-            n_layers=self.model_hparams['n_layers'],
-            utcn_out_channels=self.model_hparams['utcn_out_channels'],
-            utcn_dilations=self.model_hparams['utcn_dilations'],
-            horizontal_skips_map=self.model_hparams['horizontal_skips_map'],
-            horizontal_skip=self.model_hparams['horizontal_skip'],
-            stride=self.model_hparams['stride'],
-        )
-
-    def _create_stemtcan_config(self) -> StemTCANConfig:
-        """Create StemTCANConfig from model configuration."""
-        return StemTCANConfig(
-            # Common parameters
-            input_size=self.model_hparams['input_size'],
-            output_size=self.model_hparams['output_size'],
-            in_channels=self.model_hparams['in_channels'],
-            activation=self.model_hparams['activation'],
-            norm=self.model_hparams['norm'],
-            dropout=self.model_hparams['dropout'],
-            # StemTCAN specific parameters
-            kernel_size=self.model_hparams['kernel_size'],
-            n_stem_blocks=self.model_hparams['n_stem_blocks'],
-            n_post_attention_blocks=self.model_hparams['n_post_attention_blocks'],
-            stem_out_channels=self.model_hparams['stem_out_channels'],
-            post_attention_channels=self.model_hparams['post_attention_channels'],
-            atten_len=self.model_hparams['atten_len'],
-            atten_heads=self.model_hparams['atten_heads'],
-            atten_chunk_size=self.model_hparams['atten_chunk_size'],
-            dilation_base=self.model_hparams['dilation_base'],
-            stride=self.model_hparams['stride'],
-        )
-
-    def _create_fno_config(self):
-        """Create FNOConfig from model configuration."""
-        if not NEURALOP_AVAILABLE:
-            raise ImportError(
-                'FNO model requires the neuralop library, which requires PyTorch >= 2.8. '
-                'Please upgrade PyTorch or use a different model (CNN/TCN).'
-            )
-        return FNOConfig(
-            # Common parameters (required by training interface)
-            input_size=self.model_hparams['input_size'],
-            output_size=self.model_hparams['output_size'],
-            in_channels=self.model_hparams['in_channels'],
-            # FNO specific parameters
-            n_modes=(self.model_hparams['n_modes'],),  # Expects tuple of length 1
-            hidden_channels=self.model_hparams['hidden_channels'],
-            n_layers=self.model_hparams['n_layers'],
-            max_n_modes=self.model_hparams['max_n_modes'],
-            fno_block_precision=self.model_hparams['fno_block_precision'],
-            use_channel_mlp=self.model_hparams['use_channel_mlp'],
-            channel_mlp_dropout=self.model_hparams['channel_mlp_dropout'],
-            channel_mlp_expansion=self.model_hparams['channel_mlp_expansion'],
-            non_linearity=self.model_hparams['non_linearity'],
-            stabilizer=self.model_hparams['stabilizer'],
-            norm=self.model_hparams['norm'],
-            preactivation=self.model_hparams['preactivation'],
-            fno_skip=self.model_hparams['fno_skip'],
-            channel_mlp_skip=self.model_hparams['channel_mlp_skip'],
-            separable=self.model_hparams['separable'],
-            factorization=self.model_hparams['factorization'],
-            rank=self.model_hparams['rank'],
-            joint_factorization=self.model_hparams['joint_factorization'],
-            fixed_rank_modes=self.model_hparams['fixed_rank_modes'],
-            implementation=self.model_hparams['implementation'],
-            decomposition_kwargs=self.model_hparams['decomposition_kwargs'],
-        )
-
-    def _create_uno_config(self):
-        """Create UNOConfig from model configuration."""
-        if not NEURALOP_AVAILABLE:
-            raise ImportError(
-                'UNO model requires the neuralop library, which requires PyTorch >= 2.8. '
-                'Please upgrade PyTorch or use a different model (CNN/TCN).'
-            )
-        return UNOConfig(
-            # Common parameters (required by training interface)
-            input_size=self.model_hparams['input_size'],
-            output_size=self.model_hparams['output_size'],
-            in_channels=self.model_hparams['in_channels'],
-            # UNO specific parameters
-            hidden_channels=self.model_hparams['hidden_channels'],
-            lifting_channels=self.model_hparams['lifting_channels'],
-            projection_channels=self.model_hparams['projection_channels'],
-            positional_embedding=self.model_hparams['positional_embedding'],
-            n_layers=self.model_hparams['n_layers'],
-            uno_out_channels=self.model_hparams['uno_out_channels'],
-            uno_n_modes=self.model_hparams['uno_n_modes'],
-            uno_scalings=self.model_hparams['uno_scalings'],
-            horizontal_skips_map=self.model_hparams['horizontal_skips_map'],
-            incremental_n_modes=self.model_hparams['incremental_n_modes'],
-            channel_mlp_dropout=self.model_hparams['channel_mlp_dropout'],
-            channel_mlp_expansion=self.model_hparams['channel_mlp_expansion'],
-            non_linearity=self.model_hparams['non_linearity'],
-            norm=self.model_hparams['norm'],
-            preactivation=self.model_hparams['preactivation'],
-            fno_skip=self.model_hparams['fno_skip'],
-            horizontal_skip=self.model_hparams['horizontal_skip'],
-            channel_mlp_skip=self.model_hparams['channel_mlp_skip'],
-            separable=self.model_hparams['separable'],
-            factorization=self.model_hparams['factorization'],
-            rank=self.model_hparams['rank'],
-            fixed_rank_modes=self.model_hparams['fixed_rank_modes'],
-            implementation=self.model_hparams['implementation'],
-            decomposition_kwargs=self.model_hparams['decomposition_kwargs'],
-            domain_padding=self.model_hparams['domain_padding'],
-            domain_padding_mode=self.model_hparams['domain_padding_mode'],
-        )
-
     def create_model(self) -> nn.Module:
         """Create model instance based on config.
 
         Returns:
-            A PyTorch model (CNN or TCN) based on the configuration
+            A PyTorch model based on the configuration
         """
-        if self.model_hparams == 'ensemble':
-            # This indicates that we are creating an ensemble of models
-            # and no model will be created at this point.
-            # See Ensemble(Fusion) class for more.
-            return None
-        model_type = self.model_hparams['type']
-        if model_type == 'Barland':
-            logger.debug('Creating BarlandCNN model...')
-            self.model_config = self._create_barland_config()
-            return BarlandCNN(self.model_config)
-        elif model_type == 'TCN':
-            logger.debug('Creating TCN model...')
-            self.model_config = self._create_tcn_config()
-            return TCN(self.model_config)
-        elif model_type == 'UTCN':
-            logger.debug('Creating UTCN model...')
-            self.model_config = self._create_utcn_config()
-            return UTCN(self.model_config)
-        elif model_type == 'StemTCAN':
-            logger.debug('Creating StemTCAN model...')
-            self.model_config = self._create_stemtcan_config()
-            return StemTCAN(self.model_config)
-        elif model_type == 'FNO':
-            if not NEURALOP_AVAILABLE:
-                raise ImportError(
-                    'FNO model requires the neuralop library, which requires PyTorch >= 2.8. '
-                    'Please upgrade PyTorch or use a different model (CNN/TCN).'
-                )
-            logger.debug('Creating FNO model...')
-            self.model_config = self._create_fno_config()
-            return FNO1d(self.model_config)
-        elif model_type == 'UNO':
-            if not NEURALOP_AVAILABLE:
-                raise ImportError(
-                    'UNO model requires the neuralop library, which requires PyTorch >= 2.8. '
-                    'Please upgrade PyTorch or use a different model (CNN/TCN).'
-                )
-            logger.debug('Creating UNO model...')
-            self.model_config = self._create_uno_config()
-            return UNO1d(self.model_config)
-        else:
-            raise ValueError(f'Unknown model type: {model_type}')
+        return create_model(self.model_hparams)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through the model.
@@ -323,7 +118,8 @@ class Fusion(L.LightningModule):
         # Check if we're using a TCN, UTCN, StemTCAN, or FNO model (which can process the entire sequence at
         # once)
         if hasattr(self.model, '__class__') and (
-            self.model.__class__.__name__ in {'TCN', 'UTCN', 'StemTCAN', 'FNO1d', 'UNO1d'}
+            self.model.__class__.__name__
+            in {'TCN', 'UTCN', 'StemTCAN', 'FNO1d', 'UNO1d'}
         ):
             # TCN/FNO approach - process the entire sequence at once
             with torch.set_grad_enabled(self.training):
@@ -436,7 +232,7 @@ class Fusion(L.LightningModule):
             # Configure parameter groups
             # Muon for hidden weights, AdamW for biases/norms
             if len(hidden_weights) > 0:
-                logger.info("Muon optimizer has found hidden weights")
+                logger.info('Muon optimizer has found hidden weights')
             param_groups = [
                 dict(
                     params=hidden_weights,

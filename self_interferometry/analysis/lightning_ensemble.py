@@ -5,9 +5,8 @@ import logging
 import torch
 from torch import nn
 
-from self_interferometry.analysis.barland_cnn import BarlandCNN, BarlandCNNConfig
 from self_interferometry.analysis.lightning_fusion import Fusion
-from self_interferometry.analysis.tcn import TCN, TCNConfig
+from self_interferometry.analysis.models.factory import create_model
 
 logger = logging.getLogger(__name__)
 
@@ -76,53 +75,13 @@ class Ensemble(Fusion):
             single_channel_hparams = self.model_hparams.copy()
             single_channel_hparams['in_channels'] = 1
 
-            # Create the appropriate model type
-            model_type = single_channel_hparams['type']
-
-            if model_type == 'Barland':
-                logger.debug('Creating BarlandCNN model...')
-                config = self._create_barland_config_single_channel()
-                models.append(BarlandCNN(config))
-            elif model_type == 'TCN':
-                logger.debug('Creating TCN model...')
-                config = self._create_tcn_config_single_channel()
-                models.append(TCN(config))
-            else:
-                raise ValueError(f'Unknown model type: {model_type}')
+            # Create the model using the factory
+            model = create_model(single_channel_hparams)
+            models.append(model)
 
             logger.debug(f'Created model {len(models)}')
 
         return nn.ModuleList(models)
-
-    def _create_barland_config_single_channel(self) -> BarlandCNNConfig:
-        """Create BarlandCNNConfig for a single-channel model."""
-        return BarlandCNNConfig(
-            # Common parameters
-            input_size=self.model_hparams['input_size'],
-            output_size=self.model_hparams['output_size'],
-            in_channels=1,  # Always 1 for single-channel models
-            activation=self.model_hparams['activation'],
-            dropout=self.model_hparams['dropout'],
-            # BarlandCNN specific parameters
-            window_stride=self.model_hparams['window_stride'],
-        )
-
-    def _create_tcn_config_single_channel(self) -> TCNConfig:
-        """Create TCNConfig for a single-channel model."""
-        return TCNConfig(
-            # Common parameters
-            input_size=self.model_hparams['input_size'],
-            output_size=self.model_hparams['output_size'],
-            in_channels=1,  # Always 1 for single-channel models
-            activation=self.model_hparams['activation'],
-            norm=self.model_hparams['norm'],
-            dropout=self.model_hparams['dropout'],
-            # TCN specific parameters
-            kernel_size=self.model_hparams['kernel_size'],
-            num_channels=self.model_hparams['num_channels'],
-            dilation_base=self.model_hparams['dilation_base'],
-            stride=self.model_hparams['stride'],
-        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through the ensemble of models.

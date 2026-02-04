@@ -293,7 +293,7 @@ class TrainingInterface:
             # TODO: why is lr a string?
             'lr': eval(self.config.training_config['learning_rate']),
             'momentum': self.config.training_config['momentum'],
-            'weight_decay': self.config.training_config['weight_decay'], 
+            'weight_decay': self.config.training_config['weight_decay'],
         }
 
         # Common scheduler hyperparameters
@@ -629,9 +629,13 @@ class TrainingInterface:
             axs[2].legend(loc='upper right')
 
             # Plot displacement residuals
-            axs[3].plot(displacement_residual, label='Displacement Residual', color='purple')
+            axs[3].plot(
+                displacement_residual, label='Displacement Residual', color='purple'
+            )
             axs[3].axhline(y=0, color='black', linestyle=':', alpha=0.5)
-            axs[3].set_title(f'Displacement Residual (MSE: {sample_displacement_mse:.2e})')
+            axs[3].set_title(
+                f'Displacement Residual (MSE: {sample_displacement_mse:.2e})'
+            )
             axs[3].set_ylabel('Residual (μm)')
             axs[3].grid(True, alpha=0.3)
             axs[3].legend(loc='upper right')
