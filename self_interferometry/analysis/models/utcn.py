@@ -22,11 +22,34 @@ class UTCNConfig:
 
     # UTCN specific parameters
     kernel_size: int  # Kernel size for all layers
-    n_layers: int  # Total number of TemporalBlock layers in the U-Net
     utcn_out_channels: list[int]  # Output channels for each layer
     utcn_dilations: list[int]  # Dilation for each layer, remember to start with 1!
     horizontal_skips_map: dict[int, int] | None  # Skip connections between layers
     horizontal_skip: str  # Type of horizontal skip connection ('linear', 'identity')
+
+    def __post_init__(self):
+        """Validate UTCN configuration parameters and infer n_layers."""
+        # Infer n_layers from utcn_out_channels length
+        self.n_layers = len(self.utcn_out_channels)
+
+        # Validate layer-wise configurations
+        if len(self.utcn_dilations) != self.n_layers:
+            raise ValueError(
+                f'utcn_dilations length ({len(self.utcn_dilations)}) '
+                f'must match utcn_out_channels length ({self.n_layers})'
+            )
+
+        # Validate dilation values
+        if self.utcn_dilations[0] != 1:
+            raise ValueError('First dilation should be 1')
+        if self.utcn_dilations[-1] != 1:
+            raise ValueError('Last dilation should be 1')
+
+        # Validate horizontal skip type
+        if self.horizontal_skip not in {'linear', 'identity'}:
+            raise ValueError(
+                f'horizontal_skip must be "linear" or "identity", got "{self.horizontal_skip}"'
+            )
 
 
 class UTCN(nn.Module):
@@ -42,19 +65,9 @@ class UTCN(nn.Module):
         super().__init__()
         self.sequence_length = config.sequence_length
         self.in_channels = config.in_channels
-        self.n_layers = config.n_layers
+        self.n_layers = config.n_layers  # Inferred from utcn_out_channels length
 
-        # Validate layer-wise configurations
-        assert len(config.utcn_out_channels) == config.n_layers, (
-            f'utcn_out_channels length ({len(config.utcn_out_channels)}) '
-            f'must match n_layers ({config.n_layers})'
-        )
-        assert len(config.utcn_dilations) == config.n_layers, (
-            f'utcn_dilations length ({len(config.utcn_dilations)}) '
-            f'must match n_layers ({config.n_layers})'
-        )
-        assert config.utcn_dilations[0] == 1, 'First dilation should be 1'
-        assert config.utcn_dilations[-1] == 1, 'Last dilation should be 1'
+        # Validation is now handled in UTCNConfig.__post_init__
 
         self.utcn_out_channels = config.utcn_out_channels
         self.utcn_dilations = config.utcn_dilations
@@ -83,7 +96,7 @@ class UTCN(nn.Module):
                 in_channels = config.utcn_out_channels[i - 1]
 
             # Add skip connection input channels if this layer receives a skip
-            if i in self.horizontal_skips_map.keys():
+            if i in self.horizontal_skips_map.keys():  # noqa: SIM118
                 skip_source_idx = self.horizontal_skips_map[i]
                 in_channels += config.utcn_out_channels[skip_source_idx]
 
