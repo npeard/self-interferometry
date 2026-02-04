@@ -4,11 +4,12 @@ model:
   type: "TCN"
   sequence_length: 16384
   activation: "GELU"
-  layer_norm: true
+  use_layer_norm: true
+  use_weight_norm: true
   in_channels: 3
   # TCN specific parameters
   kernel_size: 7
-  num_channels: [[16, 16, 32, 32, 64, 64]]
+  temporal_channels: [16, 16, 32, 32, 64, 64]
   dilation_base: 2 # dilation factor should be less than kernel size, usually 2
 
 training:

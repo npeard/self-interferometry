@@ -24,33 +24,21 @@ class TemporalBlock(nn.Module):
         dilation: int,
         padding: int,
         activation: str,
-        layer_norm: bool,
+        use_layer_norm: bool,
     ):
         super().__init__()
-        self.conv1 = nn.utils.weight_norm(
-            nn.Conv1d(
-                in_channels,
-                out_channels,
-                kernel_size,
-                padding=padding,
-                dilation=dilation,
-            )
+        self.conv1 = nn.Conv1d(
+            in_channels, out_channels, kernel_size, padding=padding, dilation=dilation
         )
         self.chomp1 = Chomp1d(padding)  # Remove padding at the end
 
-        self.conv2 = nn.utils.weight_norm(
-            nn.Conv1d(
-                out_channels,
-                out_channels,
-                kernel_size,
-                padding=padding,
-                dilation=dilation,
-            )
+        self.conv2 = nn.Conv1d(
+            out_channels, out_channels, kernel_size, padding=padding, dilation=dilation
         )
         self.chomp2 = Chomp1d(padding)  # Remove padding at the end
 
         # Select normalization layer
-        if layer_norm:
+        if use_layer_norm:
             # LayerNorm across channel dimension requires transpose
             self.norm = nn.Sequential(
                 Transpose(1, 2), nn.LayerNorm(in_channels), Transpose(1, 2)

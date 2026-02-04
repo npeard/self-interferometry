@@ -24,7 +24,7 @@ class UTCNConfig:
         sequence_length: Length of input sequence (time dimension)
         in_channels: Number of input channels (e.g., 3 for interferometer data)
         activation: Activation function name ('GELU', 'ReLU', etc.)
-        layer_norm: Whether to use layer normalization in temporal blocks
+        use_layer_norm: Whether to use layer normalization in temporal blocks
         kernel_size: Convolution kernel size for all temporal blocks
         temporal_channels: Output channels for each layer in the network
         temporal_dilations: Dilation rates for each layer (must start and end with 1)
@@ -32,12 +32,14 @@ class UTCNConfig:
             None uses default U-Net symmetric skips, {} disables all skips
         horizontal_skip: Skip connection type ('linear', 'identity', or None).
             None disables horizontal skip connections entirely
+        use_weight_norm: Whether to apply weight normalization to convolutional layers
     """
 
     sequence_length: int
     in_channels: int
     activation: str
-    layer_norm: bool
+    use_layer_norm: bool
+    use_weight_norm: bool
     kernel_size: int
     temporal_channels: list[int]
     temporal_dilations: list[int]
@@ -85,6 +87,7 @@ class UTCN(nn.Module):
 
     def __init__(self, config: UTCNConfig):
         super().__init__()
+        self.config = config  # Store config for weight initialization
         self.sequence_length = config.sequence_length
         self.in_channels = config.in_channels
         self.n_layers = config.n_layers  # Inferred from utcn_out_channels length
@@ -141,7 +144,7 @@ class UTCN(nn.Module):
                     dilation=dilation,
                     padding=padding,
                     activation=config.activation,
-                    layer_norm=config.layer_norm,
+                    use_layer_norm=config.use_layer_norm,
                 )
             )
 
@@ -156,6 +159,9 @@ class UTCN(nn.Module):
 
         # Projection layer (output projection)
         self.projection = nn.Conv1d(config.temporal_channels[-1], 1, 1)
+
+        # Initialize weights
+        self._initialize_weights(config)
 
         # Log model info
         total_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
@@ -194,3 +200,28 @@ class UTCN(nn.Module):
 
         # Projection: map to output
         return self.projection(x)
+
+    def _initialize_weights(self, config: UTCNConfig) -> None:
+        """Initialize model weights based on configuration."""
+        for module in self.modules():
+            if isinstance(module, nn.Conv1d):
+                # Initialize weights based on activation function
+                if config.activation in ['ReLU', 'LeakyReLU']:
+                    # He initialization for ReLU-like activations
+                    nn.init.kaiming_normal_(
+                        module.weight, mode='fan_out', nonlinearity='relu'
+                    )
+                elif config.activation == 'Tanh':
+                    # Xavier initialization for Tanh
+                    nn.init.xavier_normal_(module.weight)
+                else:  # GELU and others
+                    # Xavier initialization as default
+                    nn.init.xavier_normal_(module.weight)
+
+                # Initialize bias to zero
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+
+                # Apply weight normalization if requested
+                if config.use_weight_norm:
+                    nn.utils.weight_norm(module)

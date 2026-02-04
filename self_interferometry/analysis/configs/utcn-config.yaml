@@ -4,7 +4,8 @@ model:
   type: "UTCN"
   sequence_length: 16384
   activation: "GELU" # GELU better than LeakyReLU
-  layer_norm: true 
+  use_layer_norm: true 
+  use_weight_norm: true
   in_channels: 3
 
   # UTCN specific parameters
