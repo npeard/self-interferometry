@@ -32,17 +32,12 @@ def create_model(model_hparams: dict[str, Any]) -> nn.Module | None:
                       and model-specific configuration parameters.
 
     Returns:
-        A PyTorch model instance based on the configuration, or None for ensemble.
+        A PyTorch model instance based on the configuration.
 
     Raises:
         ValueError: If unknown model type is specified.
         ImportError: If required dependencies are not available.
     """
-    if model_hparams == 'ensemble':
-        # This indicates that we are creating an ensemble of models
-        # and no model will be created at this point.
-        return None
-
     model_type = model_hparams['type']
     # Remove 'type' from params since it's not part of any dataclass
     params = model_hparams.copy()
@@ -54,19 +49,11 @@ def create_model(model_hparams: dict[str, Any]) -> nn.Module | None:
         return BarlandCNN(config)
     elif model_type == 'TCN':
         logger.debug('Creating TCN model...')
-        # Map parameter names to match config structure
-        tcn_params = params.copy()
-        tcn_params['sequence_length'] = tcn_params.pop('input_size')
-        tcn_params['layer_norm'] = tcn_params.pop('norm')
-        config = TCNConfig(**tcn_params)
+        config = TCNConfig(**params)
         return TCN(config)
     elif model_type == 'UTCN':
         logger.debug('Creating UTCN model...')
-        # Map parameter names to match config structure
-        utcn_params = params.copy()
-        utcn_params['sequence_length'] = utcn_params.pop('input_size')
-        utcn_params['layer_norm'] = utcn_params.pop('norm')
-        config = UTCNConfig(**utcn_params)
+        config = UTCNConfig(**params)
         return UTCN(config)
     elif model_type == 'StemTCAN':
         logger.debug('Creating StemTCAN model...')

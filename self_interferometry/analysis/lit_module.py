@@ -25,13 +25,10 @@ from self_interferometry.analysis.models.factory import create_model
 logger = logging.getLogger(__name__)
 
 
-class Fusion(L.LightningModule):
+class LitModule(L.LightningModule):
     """Lightning Module for fusing multiple sensor channels into velocity predictions.
-
-    This module differs from the Ensemble module by fusing sensor channels at the
-    feature level within a single model (CNN or TCN), rather than combining separate
-    models. It supports both static and dynamic loss weighting between velocity and
-    displacement loss terms for improved training stability.
+    It supports both static and dynamic loss weighting between velocity and displacement
+    loss terms for improved training stability.
     """
 
     def __init__(
@@ -59,7 +56,7 @@ class Fusion(L.LightningModule):
         self.training_hparams = training_hparams
         self.data_hparams = data_hparams
         self.save_hyperparameters(ignore=['model'])
-        self.model = self.create_model()
+        self.model = create_model(model_hparams)
 
         # Determine what the model should target
         if training_hparams and 'target' in training_hparams:
@@ -89,14 +86,6 @@ class Fusion(L.LightningModule):
             )  # log(1.0) = 0.0
 
         torch.set_float32_matmul_precision('high')
-
-    def create_model(self) -> nn.Module:
-        """Create model instance based on config.
-
-        Returns:
-            A PyTorch model based on the configuration
-        """
-        return create_model(self.model_hparams)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through the model.

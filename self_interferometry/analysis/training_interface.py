@@ -18,8 +18,7 @@ from lightning.pytorch.loggers import WandbLogger
 from matplotlib.collections import LineCollection
 
 from self_interferometry.analysis.datasets import get_data_loaders
-from self_interferometry.analysis.lightning_ensemble import Ensemble
-from self_interferometry.analysis.lightning_fusion import Fusion
+from self_interferometry.analysis.lit_module import LitModule
 
 logger = logging.getLogger(__name__)
 
@@ -268,11 +267,7 @@ class TrainingInterface:
             num_workers = self.config.data_config['num_workers']
 
         if channel_dropout is None:
-            # Get channel_dropout parameter from config
-            if self.config.model_config['role'] == 'ensemble':
-                channel_dropout = 0.0
-            else:
-                channel_dropout = self.config.data_config['channel_dropout']
+            channel_dropout = self.config.data_config['channel_dropout']
 
         self.train_loader, self.val_loader, self.test_loader = get_data_loaders(
             dataset_path=dataset_path,
@@ -283,9 +278,8 @@ class TrainingInterface:
             channel_dropout=channel_dropout,
         )
 
-    def create_lightning_module(self) -> Fusion | Ensemble:
+    def create_lightning_module(self) -> LitModule:
         """Create lightning module based on model type."""
-        model_role = self.config.model_config['role']
 
         # Common optimizer hyperparameters
         optimizer_hparams = {
@@ -308,29 +302,14 @@ class TrainingInterface:
             'eta_min': self.config.training_config['eta_min'],
         }
 
-        if model_role == 'standard':
-            return Fusion(
-                model_hparams=self.config.model_config,
-                optimizer_hparams=optimizer_hparams,
-                scheduler_hparams=scheduler_hparams,
-                loss_hparams=self.config.loss_config,
-                training_hparams=self.config.training_config,
-                data_hparams=self.config.data_config,
-            )
-        elif model_role == 'ensemble':
-            return Ensemble(
-                model_hparams=self.config.model_config,
-                optimizer_hparams=optimizer_hparams,
-                scheduler_hparams=scheduler_hparams,
-                loss_hparams=self.config.loss_config,
-                training_hparams=self.config.training_config,
-                data_hparams=self.config.data_config,
-            )
-        else:
-            raise ValueError(
-                f'Unknown model role: {model_role}. '
-                f'Supported roles: "standard", "ensemble"'
-            )
+        return LitModule(
+            model_hparams=self.config.model_config,
+            optimizer_hparams=optimizer_hparams,
+            scheduler_hparams=scheduler_hparams,
+            loss_hparams=self.config.loss_config,
+            training_hparams=self.config.training_config,
+            data_hparams=self.config.data_config,
+        )
 
     def setup_trainer(self) -> L.Trainer:
         """Setup Lightning trainer with callbacks and loggers."""
@@ -489,20 +468,8 @@ class TrainingInterface:
             seed: Random seed for data splitting
         """
         # Load the model from checkpoint
-        model = Fusion.load_from_checkpoint(checkpoint_path, strict=False)
+        model = LitModule.load_from_checkpoint(checkpoint_path, strict=False)
         trainer = L.Trainer(accelerator='cpu', logger=[])
-
-        # Figure out which role the model was trained in so we setup the correct data
-        model_role = model.model_hparams['role']
-        if model_role == 'standard':
-            channel_dropout = 0.0  # Standard models use all channels
-        elif model_role == 'ensemble':
-            channel_dropout = 0.0  # Ensemble models don't use dropout for evaluation
-        else:
-            raise ValueError(
-                f'Unknown model role: {model_role}. '
-                f'Supported roles: "standard", "ensemble"'
-            )
 
         # Setup data loaders with explicit parameters
         self.setup_data(
@@ -511,7 +478,7 @@ class TrainingInterface:
             split_ratios=split_ratios,
             num_workers=num_workers,
             seed=seed,
-            channel_dropout=channel_dropout,
+            channel_dropout=0.0,
         )
 
         # Get predictions using trainer.predict for proper encapsulation

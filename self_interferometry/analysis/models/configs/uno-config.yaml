@@ -1,6 +1,4 @@
 model:
-  # Common parameters for all model types
-  role: "standard" # "standard" or "ensemble"
   type: "UNO"
   input_size: 16384  # Used for validation, UNO processes full sequence
   output_size: 16384  # Used for validation, UNO processes full sequence
