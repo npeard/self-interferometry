@@ -68,7 +68,7 @@ class UTCNConfig:
         if self.horizontal_skip is None:
             # No horizontal skip connections
             self.horizontal_skips_map = {}
-        elif self.horizontal_skip not in {'linear', 'identity'}:
+        elif self.horizontal_skip not in {'linear', 'identity', None}:
             # Validate horizontal skip type
             raise ValueError(
                 f'horizontal_skip must be "linear", "identity", or None, '
@@ -196,7 +196,7 @@ class UTCN(nn.Module):
 
             # Store output for potential skip connection
             if layer_idx in self.horizontal_skips_map.values():
-                skip_outputs[layer_idx] = self.horizontal_skips[str(layer_idx)](x)
+                skip_outputs[layer_idx] = self.horizontal_skips[layer_idx](x)
 
         # Projection: map to output
         return self.projection(x)

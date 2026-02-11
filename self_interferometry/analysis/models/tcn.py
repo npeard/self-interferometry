@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import override
 
 from .utcn import UTCN, UTCNConfig
 
@@ -25,16 +26,20 @@ class TCNConfig(UTCNConfig):
         temporal_channels
     """
 
-    temporal_dilations: list[int] = None
-    horizontal_skips_map: dict[int, int] | None = None
-    horizontal_skip: str | None = None
-    dilation_base: int = 2
+    dilation_base: int
 
+     # Override parent fields to exclude from __init__
+    temporal_dilations: list[int] = field(init=False, default_factory=list)
+    horizontal_skips_map: dict[int, int] | None = field(init=False, default=None)
+    horizontal_skip: str | None = field(init=False, default=None)
+
+    @override
     def __post_init__(self):
         """Set TCN-specific parameters and validate."""
         # TCN has no horizontal skip connections
         self.horizontal_skip = None
-        self.horizontal_skips_map = None
+        self.horizontal_skips_map = {}
+        # empty dict means no horizontal skips, see UTCN.__init__
 
         # Generate exponential dilations based on dilation_base
         self.temporal_dilations = [
