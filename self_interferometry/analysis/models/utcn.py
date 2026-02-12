@@ -163,9 +163,7 @@ class UTCN(nn.Module):
         # Initialize weights
         self._initialize_weights(config)
 
-        # Log model info
-        total_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        logger.info(f'Number of parameters in UTCN: {total_params:,}')
+        logger.info(f'Number of parameters in {self.__class__.__name__}: {self.total_params:,}')
 
     def forward(self, x: Tensor) -> Tensor:
         """Forward pass through the UTCN.
@@ -224,4 +222,15 @@ class UTCN(nn.Module):
 
                 # Apply weight normalization if requested
                 if config.use_weight_norm:
-                    nn.utils.weight_norm(module)
+                    nn.utils.parametrizations.weight_norm(module)
+
+    @property
+    def receptive_field(self) -> int:
+        """Calculate the receptive field of the UTCN."""
+        dilations = torch.tensor(self.config.temporal_dilations)
+        return int(torch.sum((self.config.kernel_size - 1) * dilations).item())
+
+    @property
+    def total_params(self) -> int:
+        """Calculate the total number of parameters in the model."""
+        return sum(p.numel() for p in self.parameters() if p.requires_grad)

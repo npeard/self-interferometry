@@ -11,7 +11,7 @@ model:
   dilation_base: 2 # dilation factor should be less than kernel size, usually 2
 
 training:
-  max_epochs: 200
+  max_epochs: 10
   warmup_epochs: 0
   T_0: 500  # Initial restart period (epochs for first cosine cycle)
   T_mult: 1  # Factor to increase T_i after each restart (1 = constant period, 2 = doubling)
