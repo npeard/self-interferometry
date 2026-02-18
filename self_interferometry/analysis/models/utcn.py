@@ -194,7 +194,7 @@ class UTCN(nn.Module):
 
             # Store output for potential skip connection
             if layer_idx in self.horizontal_skips_map.values():
-                skip_outputs[layer_idx] = self.horizontal_skips[layer_idx](x)
+                skip_outputs[layer_idx] = self.horizontal_skips[str(layer_idx)](x)
 
         # Projection: map to output
         return self.projection(x)

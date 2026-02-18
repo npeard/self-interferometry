@@ -24,17 +24,17 @@ if %ERRORLEVEL% NEQ 0 (
 echo Job 1 completed.
 echo.
 
-echo [Job 2] Training with stemtcan-config.yaml...
-%PYTHON_CMD% ./analysis/models/configs/stemtcan-config.yaml
-if %ERRORLEVEL% NEQ 0 (
-    echo ERROR: Job 2 failed with exit code %ERRORLEVEL%
-    echo Continue anyway? Press Ctrl+C to stop, or
-    pause
-)
-echo Job 2 completed.
-echo.
+@REM echo [Job 2] Training with stemtcan-config.yaml...
+@REM %PYTHON_CMD% ./analysis/models/configs/stemtcan-config.yaml
+@REM if %ERRORLEVEL% NEQ 0 (
+@REM     echo ERROR: Job 2 failed with exit code %ERRORLEVEL%
+@REM     echo Continue anyway? Press Ctrl+C to stop, or
+@REM     pause
+@REM )
+@REM echo Job 2 completed.
+@REM echo.
 
-echo [Job 3] Training with utcn-config.yaml...
+echo [Job 2] Training with utcn-config.yaml...
 %PYTHON_CMD% ./analysis/models/configs/utcn-config.yaml
 if %ERRORLEVEL% NEQ 0 (
     echo ERROR: Job 3 failed with exit code %ERRORLEVEL%

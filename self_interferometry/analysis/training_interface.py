@@ -351,7 +351,7 @@ class TrainingInterface:
             max_epochs=self.config.training_config['max_epochs'],
             callbacks=callbacks,
             logger=loggers,
-            check_val_every_n_epoch=7,
+            check_val_every_n_epoch=5,
             accelerator=accelerator,
             devices=devices,
         )
