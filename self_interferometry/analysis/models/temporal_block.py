@@ -14,7 +14,12 @@ act_fn_by_name = {
 
 
 class TemporalBlock(nn.Module):
-    """Single block of temporal convolutions with dilation."""
+    """Single block of temporal convolutions with dilation.
+
+    When causal=True (default), left-only padding + Chomp1d ensures the model
+    cannot look ahead in time.  When causal=False, symmetric padding is used
+    instead, giving the block a symmetric receptive field.
+    """
 
     def __init__(
         self,
@@ -25,17 +30,31 @@ class TemporalBlock(nn.Module):
         padding: int,
         activation: str,
         use_layer_norm: bool,
+        causal: bool = True,
     ):
         super().__init__()
-        self.conv1 = nn.Conv1d(
-            in_channels, out_channels, kernel_size, padding=padding, dilation=dilation
-        )
-        self.chomp1 = Chomp1d(padding)  # Remove padding at the end
 
-        self.conv2 = nn.Conv1d(
-            out_channels, out_channels, kernel_size, padding=padding, dilation=dilation
-        )
-        self.chomp2 = Chomp1d(padding)  # Remove padding at the end
+        if causal:
+            # Left-only padding: pad the full amount on the left, then chomp right
+            self.conv1 = nn.Conv1d(
+                in_channels, out_channels, kernel_size, padding=padding, dilation=dilation
+            )
+            self.chomp1 = Chomp1d(padding)
+            self.conv2 = nn.Conv1d(
+                out_channels, out_channels, kernel_size, padding=padding, dilation=dilation
+            )
+            self.chomp2 = Chomp1d(padding)
+        else:
+            # Symmetric padding: use half the causal padding on each side
+            sym_padding = padding // 2
+            self.conv1 = nn.Conv1d(
+                in_channels, out_channels, kernel_size, padding=sym_padding, dilation=dilation
+            )
+            self.chomp1 = nn.Identity()
+            self.conv2 = nn.Conv1d(
+                out_channels, out_channels, kernel_size, padding=sym_padding, dilation=dilation
+            )
+            self.chomp2 = nn.Identity()
 
         # Select normalization layer
         if use_layer_norm:

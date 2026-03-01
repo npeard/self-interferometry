@@ -6,6 +6,7 @@ from .barland_cnn import BarlandCNN
 from .chomp1d import Chomp1d
 from .cross_attention_block import CrossAttentionBlock
 from .horizontal_skip import HorizontalSkip
+from .scnn import SCNN
 from .stemtcan import StemTCAN
 from .tcn import TCN
 from .temporal_block import TemporalBlock
@@ -16,6 +17,7 @@ __all__ = [
     # Main models
     'BarlandCNN',
     'TCN',
+    'SCNN',
     'UTCN',
     'StemTCAN',
     # Helper modules

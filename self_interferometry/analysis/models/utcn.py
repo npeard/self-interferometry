@@ -85,6 +85,9 @@ class UTCN(nn.Module):
     connections between corresponding encoder and decoder layers.
     """
 
+    # Subclasses may set this to False to use symmetric (non-causal) padding
+    _causal: bool = True
+
     def __init__(self, config: UTCNConfig):
         super().__init__()
         self.config = config  # Store config for weight initialization
@@ -145,6 +148,7 @@ class UTCN(nn.Module):
                     padding=padding,
                     activation=config.activation,
                     use_layer_norm=config.use_layer_norm,
+                    causal=self._causal,
                 )
             )
 

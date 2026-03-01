@@ -6,6 +6,7 @@ from typing import Any
 from torch import nn
 
 from .barland_cnn import BarlandCNN, BarlandCNNConfig
+from .scnn import SCNN, SCNNConfig
 from .stemtcan import StemTCAN, StemTCANConfig
 from .tcn import TCN, TCNConfig
 from .utcn import UTCN, UTCNConfig
@@ -44,6 +45,10 @@ def create_model(model_hparams: dict[str, Any]) -> nn.Module | None:
         logger.debug('Creating UTCN model...')
         config = UTCNConfig(**params)
         return UTCN(config)
+    elif model_type == 'SCNN':
+        logger.debug('Creating SCNN model...')
+        config = SCNNConfig(**params)
+        return SCNN(config)
     elif model_type == 'StemTCAN':
         logger.debug('Creating StemTCAN model...')
         config = StemTCANConfig(**params)

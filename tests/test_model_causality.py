@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
-"""Tests for temporal causality of TCN and UTCN models.
+"""Tests for temporal causality of TCN and UTCN models, and non-causality of SCNN.
 
 A causal model must not respond to inputs from the future: when a block of
 ones is placed at position ``step_pos`` in an otherwise-zero sequence, the
 model output at every time index *before* ``step_pos`` should be
 indistinguishable from its response to the all-zero sequence.
+
+SCNN is non-causal by design and is tested to confirm it *does* exhibit
+lookahead (i.e. it has causal violations).
 """
 
 import torch
 import pytest
 
+from self_interferometry.analysis.models.scnn import SCNN, SCNNConfig
 from self_interferometry.analysis.models.tcn import TCN, TCNConfig
 from self_interferometry.analysis.models.utcn import UTCN, UTCNConfig
 
@@ -37,6 +41,21 @@ def tcn_model():
         dilation_base=2,
     )
     return TCN(config).eval()
+
+
+@pytest.fixture
+def scnn_model():
+    config = SCNNConfig(
+        sequence_length=SEQUENCE_LENGTH,
+        in_channels=IN_CHANNELS,
+        activation='GELU',
+        use_layer_norm=True,
+        use_weight_norm=False,
+        kernel_size=7,
+        temporal_channels=[16, 32, 64, 32, 16],
+        dilation_base=2,
+    )
+    return SCNN(config).eval()
 
 
 @pytest.fixture
@@ -106,6 +125,22 @@ def _causal_violation_rate(baseline, outputs, step_positions, block_size, thresh
 
     violation_rate = total_violations / total_positions if total_positions > 0 else 0.0
     return violation_rate, total_violations, total_positions
+
+
+class TestSCNNNonCausality:
+    """SCNN uses symmetric padding and must exhibit lookahead (causal violations)."""
+
+    def test_has_causal_violations(self, scnn_model):
+        """SCNN output must change before the step for at least one step position."""
+        baseline, outputs = _get_step_outputs(
+            scnn_model, STEP_POSITIONS, SEQUENCE_LENGTH, IN_CHANNELS, BLOCK_SIZE
+        )
+        violation_rate, n_violations, _ = _causal_violation_rate(
+            baseline, outputs, STEP_POSITIONS, BLOCK_SIZE, VIOLATION_THRESHOLD
+        )
+        assert violation_rate > 0.0, (
+            'SCNN shows no causal violations — symmetric padding may not be working'
+        )
 
 
 class TestTCNCausality:

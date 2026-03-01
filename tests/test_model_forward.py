@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Sanity tests for forward pass of CNN, TCN, and UTCN models."""
+"""Sanity tests for forward pass of CNN, TCN, UTCN, and SCNN models."""
 
 import torch
 import pytest
 
 from self_interferometry.analysis.models.barland_cnn import BarlandCNN, BarlandCNNConfig
+from self_interferometry.analysis.models.scnn import SCNN, SCNNConfig
 from self_interferometry.analysis.models.tcn import TCN, TCNConfig
 from self_interferometry.analysis.models.utcn import UTCN, UTCNConfig
 
@@ -102,6 +103,44 @@ class TestTCNForward:
         x = torch.zeros(BATCH_SIZE, IN_CHANNELS, SEQUENCE_LENGTH)
         with torch.no_grad():
             out = tcn_model(x)
+        assert out.shape == (BATCH_SIZE, 1, SEQUENCE_LENGTH)
+        assert torch.isfinite(out).all()
+
+
+@pytest.fixture
+def scnn_model():
+    config = SCNNConfig(
+        sequence_length=SEQUENCE_LENGTH,
+        in_channels=IN_CHANNELS,
+        activation='GELU',
+        use_layer_norm=True,
+        use_weight_norm=False,
+        kernel_size=7,
+        temporal_channels=[16, 32, 64, 32, 16],
+        dilation_base=2,
+    )
+    return SCNN(config).eval()
+
+
+class TestSCNNForward:
+    def test_output_shape(self, scnn_model):
+        x = torch.randn(BATCH_SIZE, IN_CHANNELS, SEQUENCE_LENGTH)
+        with torch.no_grad():
+            out = scnn_model(x)
+        assert out.shape == (BATCH_SIZE, 1, SEQUENCE_LENGTH), (
+            f'Expected shape ({BATCH_SIZE}, 1, {SEQUENCE_LENGTH}), got {out.shape}'
+        )
+
+    def test_output_is_finite(self, scnn_model):
+        x = torch.randn(BATCH_SIZE, IN_CHANNELS, SEQUENCE_LENGTH)
+        with torch.no_grad():
+            out = scnn_model(x)
+        assert torch.isfinite(out).all(), 'SCNN output contains non-finite values'
+
+    def test_zero_input(self, scnn_model):
+        x = torch.zeros(BATCH_SIZE, IN_CHANNELS, SEQUENCE_LENGTH)
+        with torch.no_grad():
+            out = scnn_model(x)
         assert out.shape == (BATCH_SIZE, 1, SEQUENCE_LENGTH)
         assert torch.isfinite(out).all()
 
