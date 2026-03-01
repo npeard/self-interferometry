@@ -55,7 +55,6 @@ class LitModule(L.LightningModule):
         self.loss_hparams = loss_hparams
         self.training_hparams = training_hparams
         self.data_hparams = data_hparams
-        self.save_hyperparameters(ignore=['model'])
         self.model = create_model(model_hparams)
 
         # Determine what the model should target
@@ -86,6 +85,16 @@ class LitModule(L.LightningModule):
             )  # log(1.0) = 0.0
 
         torch.set_float32_matmul_precision('high')
+
+        # Include model size metrics in logged hyperparameters
+        total_params = getattr(self.model, 'total_params', None)
+        receptive_field = getattr(self.model, 'receptive_field', None)
+        if total_params is not None:
+            model_hparams = {**(model_hparams or {}), 'total_params': int(total_params)}
+        if receptive_field is not None:
+            model_hparams = {**(model_hparams or {}), 'receptive_field': int(receptive_field)}
+        self.model_hparams = model_hparams
+        self.save_hyperparameters(ignore=['model'])
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through the model.

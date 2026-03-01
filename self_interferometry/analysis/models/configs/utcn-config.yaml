@@ -12,7 +12,7 @@ model:
   # UTCN layer-wise configuration (must all be same length as n_layers)
   # For a 5-layer UTCN: layers 0-1 are encoder, layer 2 is bottleneck, layers 3-4 are decoder
   # Fewer channels in middle layers with larger dilations
-  temporal_channels: [[64, 32, 16, 8, 16, 32, 64], [16,16,16,16,16,16,16], [8,16,32,64,32,16,8], [16,32,64,128,64,32,16], [32, 32, 32, 32, 32, 32, 32]] # [[64, 32, 16, 32, 64]]  # Output channels for each layer
+  temporal_channels: [[64, 32, 16, 8, 16, 32, 64], [16,16,16,16,16,16,16], [8,16,32,64,32,16,8], [32, 32, 32, 32, 32, 32, 32]] # [[64, 32, 16, 32, 64]]  # Output channels for each layer
   temporal_dilations: [[1,4,11,31,11,4,1]] # [4,16,64,128,64,16,4] best so far, 256 dilation in middle is too much  # Dilation factors per layer (increase then decrease)
 # So far, best results from largest dilation in middle layer
 

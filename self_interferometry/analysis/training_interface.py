@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import contextlib
-import json
 import logging
 import random
 from dataclasses import dataclass
@@ -365,126 +364,19 @@ class TrainingInterface:
         )
 
     def test(self):
-        """Test the model using best checkpoint and save results to JSON file."""
+        """Test the model using best checkpoint."""
         if hasattr(self, 'test_loader'):
-            # Get checkpoint callback to access best model info
             checkpoint_callback = None
-            best_model_path = None
-            best_model_epoch = None
-
             for callback in self.trainer.callbacks:
                 if isinstance(callback, ModelCheckpoint):
                     checkpoint_callback = callback
-                    best_model_path = callback.best_model_path
-                    # Extract epoch from checkpoint if available
-                    if best_model_path and Path(best_model_path).exists():
-                        # Parse epoch from filename (format: id_epoch=N-metric.ckpt)
-                        try:
-                            filename = Path(best_model_path).stem
-                            epoch_str = filename.split('epoch=')[1].split('-')[0]
-                            best_model_epoch = int(epoch_str)
-                        except (IndexError, ValueError):
-                            logger.warning(
-                                f'Could not parse epoch from checkpoint: {best_model_path}'
-                            )
                     break
 
-            # Run test with best checkpoint
-            # Pass ckpt_path="best" to load best checkpoint automatically
-            test_results = self.trainer.test(
+            self.trainer.test(
                 self.lightning_module,
                 dataloaders=self.test_loader,
                 ckpt_path='best' if checkpoint_callback else None,
             )
-
-            # Extract test losses from the results
-            # test_results is a list with one dict containing all logged metrics
-            if test_results and len(test_results) > 0:
-                test_metrics = test_results[0]
-
-                # Extract velocity and displacement losses
-                velocity_loss = test_metrics.get('test/velocity_loss', None)
-                displacement_loss = test_metrics.get('test/displacement_loss', None)
-
-                # Get model properties if they exist
-                model = self.lightning_module.model
-                receptive_field = getattr(model, 'receptive_field', None)
-                total_params = getattr(model, 'total_params', None)
-
-                # Get wandb experiment ID if logging is enabled
-                experiment_id = None
-                if (
-                    self.config.training_config.get('use_logging', False)
-                    and self.trainer.loggers
-                ):
-                    wandb_logger = self.trainer.loggers[0]
-                    experiment_id = wandb_logger.experiment.id
-
-                # Prepare results entry
-                result_entry = {
-                    'experiment_name': self.experiment_name,
-                    'velocity_loss': (
-                        float(velocity_loss) if velocity_loss is not None else None
-                    ),
-                    'displacement_loss': (
-                        float(displacement_loss)
-                        if displacement_loss is not None
-                        else None
-                    ),
-                    'receptive_field': (
-                        int(receptive_field) if receptive_field is not None else None
-                    ),
-                    'total_params': (
-                        int(total_params) if total_params is not None else None
-                    ),
-                    'model_type': self.config.model_config.get('type', 'unknown'),
-                    'dataset_file': self.config.data_config.get('dataset_file', None),
-                    'checkpoint_path': (
-                        str(best_model_path) if best_model_path else None
-                    ),
-                    'best_epoch': best_model_epoch,
-                }
-
-                # Save to JSON file grouped by experiment ID
-                if experiment_id is not None:
-                    self._save_test_results(experiment_id, result_entry)
-                else:
-                    logger.warning(
-                        'No wandb experiment ID found. Test results not saved to file.'
-                    )
-
-    def _save_test_results(self, experiment_id: str, result_entry: dict):
-        """Save test results to JSON file grouped by wandb experiment ID.
-
-        Args:
-            experiment_id: Wandb experiment ID
-            result_entry: Dictionary containing test results
-        """
-        # Define results file path
-        results_dir = Path(__file__).parent / 'models' / 'results'
-        results_dir.mkdir(parents=True, exist_ok=True)
-        results_file = results_dir / 'test_results.json'
-
-        # Load existing results or create new structure
-        if results_file.exists():
-            with results_file.open() as f:
-                all_results = json.load(f)
-        else:
-            all_results = {}
-
-        # Add or update results for this experiment ID
-        if experiment_id not in all_results:
-            all_results[experiment_id] = []
-
-        all_results[experiment_id].append(result_entry)
-
-        # Save updated results
-        with results_file.open('w') as f:
-            json.dump(all_results, f, indent=2)
-
-        logger.info(
-            f'Test results saved to {results_file} under experiment ID: {experiment_id}'
-        )
 
     def compute_input_gradients(
         self, model: torch.nn.Module, signals: torch.Tensor
