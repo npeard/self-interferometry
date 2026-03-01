@@ -21,6 +21,7 @@ except ImportError:
 from self_interferometry.acquisition.redpitaya.redpitaya_config import RedPitayaConfig
 from self_interferometry.acquisition.simulations.coil_driver import CoilDriver
 from self_interferometry.analysis.models.factory import create_model
+from self_interferometry.analysis.models.vicreg import VicRegLoss
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +86,17 @@ class LitModule(L.LightningModule):
             )  # log(1.0) = 0.0
 
         torch.set_float32_matmul_precision('high')
+
+        # VICReg: only instantiate when weight > 0 and model supports encode()
+        self._vicreg_weight = float(loss_hparams.get('vicreg_weight', 0.0))
+        if self._vicreg_weight > 0 and hasattr(self.model, 'encode'):
+            self.vicreg_loss = VicRegLoss(
+                sim_coeff=float(loss_hparams.get('vicreg_sim_coeff', 25.0)),
+                std_coeff=float(loss_hparams.get('vicreg_std_coeff', 25.0)),
+                cov_coeff=float(loss_hparams.get('vicreg_cov_coeff', 1.0)),
+            )
+        else:
+            self.vicreg_loss = None
 
         # Include model size metrics in logged hyperparameters
         total_params = getattr(self.model, 'total_params', None)
@@ -298,6 +310,31 @@ class LitModule(L.LightningModule):
 
         return loss_dict
 
+    def _compute_vicreg_loss(self, signals: torch.Tensor) -> torch.Tensor | None:
+        """Compute pairwise VICReg loss over siamese encoder outputs.
+
+        Returns None (no-op) when VICReg is disabled or the model has no
+        ``encode`` method, so callers can guard cheaply with ``is not None``.
+
+        Args:
+            signals: [batch, in_channels, seq_len]
+
+        Returns:
+            Scalar VICReg loss, or None.
+        """
+        if self.vicreg_loss is None:
+            return None
+        _, channel_features = self.model.encode(signals)
+        vicreg = torch.tensor(0.0, device=signals.device)
+        n = len(channel_features)
+        for i in range(n):
+            for j in range(i + 1, n):
+                # Pool over time: [batch, embed_dim, seq_len] → [batch, embed_dim]
+                fi = channel_features[i].mean(dim=-1)
+                fj = channel_features[j].mean(dim=-1)
+                vicreg = vicreg + self.vicreg_loss(fi, fj)
+        return vicreg
+
     @override
     def training_step(
         self, batch: tuple[torch.Tensor, torch.Tensor, torch.Tensor], batch_idx: int
@@ -315,6 +352,11 @@ class LitModule(L.LightningModule):
         prediction = self(signals)  # Model prediction (velocity or displacement)
 
         loss_dict = self.loss_function(prediction, velocity_target, displacement_target)
+
+        vicreg = self._compute_vicreg_loss(signals)
+        if vicreg is not None:
+            loss_dict['vicreg'] = vicreg
+            loss_dict['total'] = loss_dict['total'] + self._vicreg_weight * vicreg
 
         # Log each loss component with train_ prefix
         for loss_name, loss_value in loss_dict.items():
@@ -343,6 +385,11 @@ class LitModule(L.LightningModule):
 
         loss_dict = self.loss_function(prediction, velocity_target, displacement_target)
 
+        vicreg = self._compute_vicreg_loss(signals)
+        if vicreg is not None:
+            loss_dict['vicreg'] = vicreg
+            loss_dict['total'] = loss_dict['total'] + self._vicreg_weight * vicreg
+
         # Log each loss component with val_ prefix
         for loss_name, loss_value in loss_dict.items():
             self.log(
@@ -367,6 +414,11 @@ class LitModule(L.LightningModule):
         prediction = self(signals)  # Model prediction (velocity or displacement)
 
         loss_dict = self.loss_function(prediction, velocity_target, displacement_target)
+
+        vicreg = self._compute_vicreg_loss(signals)
+        if vicreg is not None:
+            loss_dict['vicreg'] = vicreg
+            loss_dict['total'] = loss_dict['total'] + self._vicreg_weight * vicreg
 
         # Log each loss component with test_ prefix
         for loss_name, loss_value in loss_dict.items():

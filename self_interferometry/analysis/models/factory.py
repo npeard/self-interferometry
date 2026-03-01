@@ -53,5 +53,6 @@ def create_model(model_hparams: dict[str, Any]) -> nn.Module | None:
         logger.debug('Creating StemTCAN model...')
         config = StemTCANConfig(**params)
         return StemTCAN(config)
+
     else:
         raise ValueError(f'Unknown model type: {model_type}')

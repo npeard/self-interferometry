@@ -1,58 +1,58 @@
 model:
   type: "StemTCAN"
-  input_size: 16384
-  output_size: 16384
-  activation: "GELU"  # GELU better than LeakyReLU
-  norm: "layer"  # 'layer' or 'batch'
+  sequence_length: 16384
   in_channels: 3
-  dropout: 0.1
+  activation: "GELU"
+  use_layer_norm: true
+  use_weight_norm: true
 
-  # StemTCAN specific parameters
-  kernel_size: 7  # Kernel size for all temporal blocks
-  stride: 1  # Stride for all layers
-  dilation_base: 2  # Base for exponential dilation in stem and post-attention blocks
+  # Siamese encoder: shared-weight TCN applied independently to each input channel
+  siamese_kernel_size: 7
+  siamese_channels: [16, 16, 32, 32]
+  siamese_dilation_base: 2
 
-  # Stem configuration (local feature extraction before attention)
-  n_stem_blocks: 2  # Number of TemporalBlocks in stem
-  stem_out_channels: 16  # Output channels for stem blocks
+  # Cross-attention: banded attention for channel fusion
+  atten_len: 64       # temporal band length (samples)
+  atten_heads: 4      # must divide siamese_channels[-1]
+  atten_chunk_size: 1024
 
-  # Cross attention configuration (channel fusion)
-  atten_len: 64  # Band length for cross attention (samples along time dimension)
-  atten_heads: 1  # Number of attention heads (must divide stem_out_channels)
-  atten_chunk_size: 1024  # Chunk size for memory-efficient attention (reduces O(L²) to O(chunk_size²))
-
-  # Post-attention configuration (final processing)
-  n_post_attention_blocks: 4  # Number of TemporalBlocks after attention
-  post_attention_channels: [[32, 32, 32, 32]]  # Output channels for each post-attention block
+  # Decoder: single TCN from all attended channel features to 1 output
+  decoder_kernel_size: 7
+  decoder_channels: [64, 64, 32, 32]
+  decoder_dilation_base: 2
 
 training:
   max_epochs: 2000
   warmup_epochs: 0
-  T_0: 500  # Initial restart period (epochs for first cosine cycle)
-  T_mult: 1  # Factor to increase T_i after each restart (1 = constant period, 2 = doubling)
+  T_0: 500
+  T_mult: 1
   batch_size: 64
-  optimizer: "Muon"  # Options: "Adam", "SGD", "Muon"; Muon performs best so far
-  momentum: 0.9 # Unused if optimizer is not SGD
-  weight_decay: 1e-6 # free-space: 1e-6, fiber: ?
-  learning_rate: 1e-3 # 1e-2 too large, 1e-3 is good
-  eta_min: 0e-6
+  optimizer: "Muon"
+  weight_decay: 1e-6
+  momentum: 0.9
+  learning_rate: 1e-3
+  eta_min: 0
   accelerator: "gpu"
   devices: 1
   use_logging: true
   wandb_project: "self-interferometry"
-  experiment_name: "stemtcan_chdrop_dispweight"
+  experiment_name: "stemtcan_vicreg"
   checkpoint_dir: "./analysis/checkpoints"
-  target: "velocity"  # "velocity" or "displacement" - what the model predicts
+  target: "velocity"
 
 loss:
-  dynamic: false # enable dynamic loss weighting, overrides weights below
+  dynamic: false
   velocity_loss_weight: 1.0
-  displacement_loss_weight: [0.1, 0.0]
+  displacement_loss_weight: 0.1
+  vicreg_weight: 0.0   # set > 0 to enable VICReg on siamese encoder outputs
+  vicreg_sim_coeff: 25.0
+  vicreg_std_coeff: 25.0
+  vicreg_cov_coeff: 1.0
 
 data:
   data_dir: "./analysis/data"
   dataset_file: ["free-space-synchro_10k.h5", "mmfiber-synchro_10k.h5"]
-  split_ratios: [[80, 10, 10]]  # train, val, test percentages
+  split_ratios: [[80, 10, 10]]
   split_seed: 42
   num_workers: 7
-  channel_dropout: [0.5, 0.0]  # chance of dropping a channel during training
+  channel_dropout: 0.5

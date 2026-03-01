@@ -3,173 +3,183 @@
 import logging
 from dataclasses import dataclass
 
+import torch
 from torch import Tensor, nn
 
-# Conditional import for newer PyTorch versions
-try:
-    from torch.nn.attention import SDPBackend, sdpa_kernel
-
-    ATTENTION_BACKEND_AVAILABLE = True
-except ImportError:
-    ATTENTION_BACKEND_AVAILABLE = False
-    SDPBackend = None
-    sdpa_kernel = None
-
 from .cross_attention_block import CrossAttentionBlock
-from .temporal_block import TemporalBlock
+from .tcn import TCN, TCNConfig
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class StemTCANConfig:
-    # Common parameters (required by training interface)
-    input_size: int  # Length of input sequence
-    output_size: int  # Length of output sequence (same as input for our case)
-    in_channels: int  # Number of input channels
-    activation: str
-    norm: str  # 'layer' or 'batch'
-    dropout: float
+    """Configuration for Stem-fusion Temporal Convolutional Attention Network.
 
-    # StemTCAN specific parameters
-    kernel_size: int  # Kernel size for all temporal blocks
-    n_stem_blocks: int  # Number of TemporalBlocks in the stem (default: 2)
-    n_post_attention_blocks: int  # Number of TemporalBlocks after attention
-    stem_out_channels: int  # Output channels for stem blocks
-    post_attention_channels: list[int]  # Output channels for post-attention blocks
-    atten_len: int  # Band length for cross attention (samples along time dimension)
-    atten_heads: int  # Number of attention heads
-    atten_chunk_size: int  # Chunk size for memory-efficient attention (default: 2048)
-    dilation_base: int  # Base for dilation in stem blocks
-    stride: int  # Stride for all layers
+    Args:
+        sequence_length: Length of input/output sequence
+        in_channels: Number of input channels (e.g. 3 for interferometer data)
+        activation: Activation function name ('GELU', 'ReLU', etc.)
+        use_layer_norm: Whether to use layer normalization in temporal blocks
+        use_weight_norm: Whether to apply weight normalization to conv layers
+
+        siamese_kernel_size: Kernel size for the siamese encoder TCN
+        siamese_channels: Output channel widths per layer of the siamese encoder TCN
+        siamese_dilation_base: Dilation base for the siamese encoder TCN
+
+        atten_len: Band length for banded cross-attention (samples)
+        atten_heads: Number of attention heads (must divide siamese_channels[-1])
+        atten_chunk_size: Chunk size for memory-efficient attention
+
+        decoder_kernel_size: Kernel size for the decoder TCN
+        decoder_channels: Output channel widths per layer of the decoder TCN
+        decoder_dilation_base: Dilation base for the decoder TCN
+    """
+
+    sequence_length: int
+    in_channels: int
+    activation: str
+    use_layer_norm: bool
+    use_weight_norm: bool
+
+    siamese_kernel_size: int
+    siamese_channels: list[int]
+    siamese_dilation_base: int
+
+    atten_len: int
+    atten_heads: int
+    atten_chunk_size: int
+
+    decoder_kernel_size: int
+    decoder_channels: list[int]
+    decoder_dilation_base: int
+
+    def __post_init__(self):
+        embed_dim = self.siamese_channels[-1]
+        if embed_dim % self.atten_heads != 0:
+            raise ValueError(
+                f'siamese_channels[-1] ({embed_dim}) must be divisible by '
+                f'atten_heads ({self.atten_heads})'
+            )
+
+
+def _make_siamese_tcn(config: StemTCANConfig) -> TCN:
+    """Build a single-input-channel TCN for use as the siamese encoder.
+
+    The output projection (to 1 channel) is replaced with Identity so the
+    network outputs ``siamese_channels[-1]`` feature maps instead.
+    """
+    tcn_config = TCNConfig(
+        sequence_length=config.sequence_length,
+        in_channels=1,
+        activation=config.activation,
+        use_layer_norm=config.use_layer_norm,
+        use_weight_norm=config.use_weight_norm,
+        kernel_size=config.siamese_kernel_size,
+        temporal_channels=config.siamese_channels,
+        dilation_base=config.siamese_dilation_base,
+    )
+    tcn = TCN(tcn_config)
+    tcn.projection = nn.Identity()
+    return tcn
+
+
+def _make_decoder_tcn(config: StemTCANConfig) -> TCN:
+    """Build the decoder TCN that maps all attended channel features to 1 output."""
+    embed_dim = config.siamese_channels[-1]
+    tcn_config = TCNConfig(
+        sequence_length=config.sequence_length,
+        in_channels=config.in_channels * embed_dim,
+        activation=config.activation,
+        use_layer_norm=config.use_layer_norm,
+        use_weight_norm=config.use_weight_norm,
+        kernel_size=config.decoder_kernel_size,
+        temporal_channels=config.decoder_channels,
+        dilation_base=config.decoder_dilation_base,
+    )
+    return TCN(tcn_config)
 
 
 class StemTCAN(nn.Module):
     """Stem-fusion Temporal Convolutional Attention Network.
 
     Architecture:
-    1. Stem: Two TemporalBlocks to learn local features
-    2. Cross Attention: Banded cross attention for channel fusion
-    3. Post-attention: Configurable number of TemporalBlocks
-    4. Output: 1x1 convolution for regression
+    1. Siamese encoder: a shared-weight TCN applied independently to each input
+       channel, producing per-channel feature maps.
+    2. Cross-attention: banded cross-attention fuses information across channels.
+    3. Decoder: a single TCN that takes all attended channel features concatenated
+       along the channel dimension and produces a 1-channel sequence output.
+
+    The per-channel encoder outputs are exposed via ``encode()`` so that VICReg
+    regularisation can be applied from LitModule when ``vicreg_weight > 0``.
     """
 
     def __init__(self, config: StemTCANConfig):
         super().__init__()
-        self.input_size = config.input_size
-        self.output_size = config.output_size
+        self.config = config
         self.in_channels = config.in_channels
-        self.n_stem_blocks = config.n_stem_blocks
-        self.n_post_attention_blocks = config.n_post_attention_blocks
-        self.dilation_base = config.dilation_base
-        self.stride = config.stride
+        embed_dim = config.siamese_channels[-1]
 
-        # Validate configuration
-        assert len(config.post_attention_channels) == config.n_post_attention_blocks, (
-            f'post_attention_channels length ({len(config.post_attention_channels)}) '
-            f'must match n_post_attention_blocks ({config.n_post_attention_blocks})'
-        )
+        # Shared-weight encoder TCN (one instance, reused for every channel)
+        self.siamese_encoder = _make_siamese_tcn(config)
 
-        # Lifting layer (input projection)
-        self.lifting = nn.Conv1d(config.in_channels, config.stem_out_channels, 1)
-
-        # Stem: n_stem_blocks TemporalBlocks for local feature extraction
-        self.stem_blocks = nn.ModuleList([])
-        for i in range(self.n_stem_blocks):
-            dilation_size = self.dilation_base**i
-            in_channels = (
-                config.stem_out_channels
-            )  # All stem blocks have same channel count
-            out_channels = config.stem_out_channels
-
-            # Calculate padding to maintain sequence length
-            padding = (config.kernel_size - self.stride) * dilation_size
-
-            self.stem_blocks.append(
-                TemporalBlock(
-                    in_channels,
-                    out_channels,
-                    config.kernel_size,
-                    stride=self.stride,
-                    dilation=dilation_size,
-                    padding=padding,
-                    dropout=config.dropout,
-                    activation=config.activation,
-                    norm=config.norm,
-                    input_length=config.input_size,
-                )
-            )
-
-        # Cross attention block for channel fusion
+        # Cross-attention (channels are folded into the batch dimension)
         self.cross_attention = CrossAttentionBlock(
             n_channels=config.in_channels,
-            embed_dim=config.stem_out_channels,
+            embed_dim=embed_dim,
             atten_len=config.atten_len,
             num_heads=config.atten_heads,
-            dropout=config.dropout,
+            dropout=0.0,
             chunk_size=config.atten_chunk_size,
         )
 
-        # Post-attention TemporalBlocks
-        self.post_attention_blocks = nn.ModuleList([])
-        for i in range(self.n_post_attention_blocks):
-            dilation_size = self.dilation_base**i
-            in_channels = (
-                config.stem_out_channels
-                if i == 0
-                else config.post_attention_channels[i - 1]
-            )
-            out_channels = config.post_attention_channels[i]
+        # Decoder TCN: in_channels * embed_dim → 1
+        self.decoder = _make_decoder_tcn(config)
 
-            # Calculate padding to maintain sequence length
-            padding = (config.kernel_size - self.stride) * dilation_size
+        logger.info(f'Number of parameters in StemTCAN: {self.total_params:,}')
 
-            self.post_attention_blocks.append(
-                TemporalBlock(
-                    in_channels,
-                    out_channels,
-                    config.kernel_size,
-                    stride=self.stride,
-                    dilation=dilation_size,
-                    padding=padding,
-                    dropout=config.dropout,
-                    activation=config.activation,
-                    norm=config.norm,
-                    input_length=config.input_size,
-                )
-            )
+    @property
+    def total_params(self) -> int:
+        return sum(p.numel() for p in self.parameters() if p.requires_grad)
 
-        # Output layer: 1x1 convolution for regression
-        self.output_layer = nn.Conv1d(config.post_attention_channels[-1], 1, 1)
+    def encode(self, x: Tensor) -> tuple[Tensor, list[Tensor]]:
+        """Run the siamese encoder on each input channel independently.
 
-        # Log model info
-        total_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        logger.info(f'Number of parameters in StemTCAN: {total_params:,}')
+        Args:
+            x: [batch, in_channels, seq_len]
+
+        Returns:
+            features: [batch, in_channels * embed_dim, seq_len] concatenated
+                per-channel encoder outputs, ready for cross-attention.
+            channel_features: list of in_channels tensors each
+                [batch, embed_dim, seq_len] — exposed for VICReg.
+        """
+        channel_features = [
+            self.siamese_encoder(x[:, c:c + 1, :])
+            for c in range(self.in_channels)
+        ]
+        return torch.cat(channel_features, dim=1), channel_features
 
     def forward(self, x: Tensor) -> Tensor:
         """Forward pass through StemTCAN.
 
         Args:
-            x: Input tensor of shape [batch_size, in_channels, sequence_length]
+            x: [batch, in_channels, seq_len]
 
         Returns:
-            Tensor of shape [batch_size, 1, sequence_length] containing predictions
+            [batch, 1, seq_len]
         """
-        # Lifting: project input to stem feature dimension
-        x = self.lifting(x)  # [B, stem_out_channels, seq_len]
+        batch_size, _, seq_len = x.shape
+        embed_dim = self.config.siamese_channels[-1]
 
-        # Stem: process through stem blocks for local feature extraction
-        for stem_block in self.stem_blocks:
-            x = stem_block(x)  # [B, stem_out_channels, seq_len]
+        # Siamese encoder: per-channel feature extraction
+        features, _ = self.encode(x)
+        # [batch, in_channels * embed_dim, seq_len]
 
-        # Cross attention: fuse channel information
-        x = self.cross_attention(x)  # [B, stem_out_channels, seq_len]
+        # Cross-attention: fold channels into batch dim, attend, unfold
+        features = features.view(batch_size * self.in_channels, embed_dim, seq_len)
+        features = self.cross_attention(features)
+        features = features.view(batch_size, self.in_channels * embed_dim, seq_len)
 
-        # Post-attention: process through additional temporal blocks
-        for post_block in self.post_attention_blocks:
-            x = post_block(x)  # [B, post_attention_channels[i], seq_len]
-
-        # Output: 1x1 convolution for regression
-        output = self.output_layer(x)  # [B, 1, seq_len]
-
-        return output
+        # Decoder: all attended channel features → 1-channel output
+        return self.decoder(features)  # [batch, 1, seq_len]
