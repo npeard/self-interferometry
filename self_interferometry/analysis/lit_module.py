@@ -113,15 +113,13 @@ class LitModule(L.LightningModule):
         """
         batch_size, num_channels, signal_length = x.shape
 
-        # Check if we're using a TCN, UTCN, StemTCAN, or FNO model (which can process the entire sequence at
-        # once)
+        # Check if we're using a TCN, UTCN, or StemTCAN model (which can process the entire sequence at once)
         if hasattr(self.model, '__class__') and (
-            self.model.__class__.__name__
-            in {'TCN', 'UTCN', 'StemTCAN', 'FNO1d', 'UNO1d'}
+            self.model.__class__.__name__ in {'TCN', 'UTCN', 'StemTCAN'}
         ):
-            # TCN/FNO approach - process the entire sequence at once
+            # TCN approach - process the entire sequence at once
             with torch.set_grad_enabled(self.training):
-                # TCN/FNO returns shape [batch_size, 1, signal_length]
+                # TCN returns shape [batch_size, 1, signal_length]
                 output = self.model(x)
 
                 # Reshape to [batch_size, signal_length]
