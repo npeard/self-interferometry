@@ -1,7 +1,6 @@
 model:
   type: "Barland" # This is the baseline model from Barland et al. 2021
-  input_size: 256
-  output_size: 1
+  sequence_length: 256
   activation: "LeakyReLU"
   in_channels: 3
   dropout: 0.1

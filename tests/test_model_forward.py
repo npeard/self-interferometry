@@ -1,15 +1,28 @@
 #!/usr/bin/env python3
-"""Sanity tests for forward pass of TCN and UTCN models."""
+"""Sanity tests for forward pass of CNN, TCN, and UTCN models."""
 
 import torch
 import pytest
 
+from self_interferometry.analysis.models.barland_cnn import BarlandCNN, BarlandCNNConfig
 from self_interferometry.analysis.models.tcn import TCN, TCNConfig
 from self_interferometry.analysis.models.utcn import UTCN, UTCNConfig
 
 SEQUENCE_LENGTH = 256
 IN_CHANNELS = 3
 BATCH_SIZE = 2
+
+
+@pytest.fixture
+def barland_model():
+    config = BarlandCNNConfig(
+        sequence_length=SEQUENCE_LENGTH,
+        in_channels=IN_CHANNELS,
+        activation='LeakyReLU',
+        dropout=0.1,
+        window_stride=128,
+    )
+    return BarlandCNN(config).eval()
 
 
 @pytest.fixture
@@ -42,6 +55,32 @@ def utcn_model():
         horizontal_skip='linear',
     )
     return UTCN(config).eval()
+
+
+SIGNAL_LENGTH = 1024  # longer than the 256-sample window to exercise the striding
+
+
+class TestBarlandCNNForward:
+    def test_output_shape(self, barland_model):
+        x = torch.randn(BATCH_SIZE, IN_CHANNELS, SIGNAL_LENGTH)
+        with torch.no_grad():
+            out = barland_model(x)
+        assert out.shape == (BATCH_SIZE, 1, SIGNAL_LENGTH), (
+            f'Expected shape ({BATCH_SIZE}, 1, {SIGNAL_LENGTH}), got {out.shape}'
+        )
+
+    def test_output_is_finite(self, barland_model):
+        x = torch.randn(BATCH_SIZE, IN_CHANNELS, SIGNAL_LENGTH)
+        with torch.no_grad():
+            out = barland_model(x)
+        assert torch.isfinite(out).all(), 'BarlandCNN output contains non-finite values'
+
+    def test_zero_input(self, barland_model):
+        x = torch.zeros(BATCH_SIZE, IN_CHANNELS, SIGNAL_LENGTH)
+        with torch.no_grad():
+            out = barland_model(x)
+        assert out.shape == (BATCH_SIZE, 1, SIGNAL_LENGTH)
+        assert torch.isfinite(out).all()
 
 
 class TestTCNForward:

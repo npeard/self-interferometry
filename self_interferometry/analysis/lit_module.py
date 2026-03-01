@@ -99,10 +99,9 @@ class LitModule(L.LightningModule):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through the model.
 
-        This method handles different model architectures:
-        1. For CNN models: Uses a sliding window approach to process each window
-        separately
-        2. For TCN/FNO model: Processes the entire sequence at once efficiently
+        All models share a unified seq2seq interface: given input of shape
+        [batch_size, num_channels, signal_length] they return
+        [batch_size, signal_length].
 
         Args:
             x: Input tensor of shape [batch_size, num_channels, signal_length]
@@ -111,75 +110,10 @@ class LitModule(L.LightningModule):
             Tensor of shape [batch_size, signal_length] containing model predictions
             (velocity or displacement depending on self.target)
         """
-        batch_size, num_channels, signal_length = x.shape
-
-        # Check if we're using a TCN, UTCN, or StemTCAN model (which can process the entire sequence at once)
-        if hasattr(self.model, '__class__') and (
-            self.model.__class__.__name__ in {'TCN', 'UTCN', 'StemTCAN'}
-        ):
-            # TCN approach - process the entire sequence at once
-            with torch.set_grad_enabled(self.training):
-                # TCN returns shape [batch_size, 1, signal_length]
-                output = self.model(x)
-
-                # Reshape to [batch_size, signal_length]
-            return output.squeeze(1)
-
-        else:
-            # CNN approach - sliding window implementation
-            # Define the window size (number of input points that produce one output
-            # point)
-            window_size = self.model_config.sequence_length
-            window_stride = self.model_config.window_stride
-
-            # Calculate number of windows and create output tensor accordingly
-            num_windows = (signal_length + window_stride - 1) // window_stride
-
-            # Create output tensor to store results - size is now based on number
-            # of windows
-            if window_stride == 1:
-                # If stride is 1, maintain backward compatibility with full signal
-                # length output
-                velocity_hat = torch.zeros((batch_size, signal_length), device=x.device)
-                output_full_signal = True
-            else:
-                # For stride > 1, output size is reduced to number of windows
-                velocity_hat = torch.zeros((batch_size, num_windows), device=x.device)
-                output_full_signal = False
-
-            # Add zero padding to handle the edges
-            padding = window_size // 2
-            padded_x = torch.nn.functional.pad(
-                x, (padding, padding), mode='constant', value=0
-            )
-
-            # Scan through the signal with the appropriate stride
-            for window_idx, i in enumerate(range(0, signal_length, window_stride)):
-                # Extract window centered at position i
-                start_idx = i
-                end_idx = i + window_size
-                window = padded_x[:, :, start_idx:end_idx]
-
-                # Skip if window is not complete (should not happen with padding)
-                if window.shape[2] < window_size:
-                    continue
-
-                # Get model prediction for this window
-                with torch.set_grad_enabled(self.training):
-                    pred = self.model(window)
-
-                # Store the prediction in the output tensor
-                if output_full_signal:
-                    velocity_hat[:, i] = pred.squeeze()
-                else:
-                    velocity_hat[:, window_idx] = pred.squeeze()
-
-            # Store the stride information for use in training/validation/testing
-            self._output_full_signal = output_full_signal
-            self._window_stride = window_stride
-            self._num_windows = num_windows
-
-            return velocity_hat
+        with torch.set_grad_enabled(self.training):
+            # All models return [batch_size, 1, signal_length]
+            output = self.model(x)
+        return output.squeeze(1)
 
     def configure_optimizers(self) -> dict[str, Any]:
         """Configure optimizer and learning rate scheduler."""
@@ -380,23 +314,6 @@ class LitModule(L.LightningModule):
         signals, velocity_target, displacement_target = batch
         prediction = self(signals)  # Model prediction (velocity or displacement)
 
-        # For CNN with stride > 1, extract the corresponding target values
-        if hasattr(self, '_output_full_signal') and not self._output_full_signal:
-            # Downsample both targets to match prediction stride
-            downsampled_velocity = torch.zeros_like(prediction)
-            downsampled_displacement = torch.zeros_like(prediction)
-
-            for window_idx, i in enumerate(
-                range(0, velocity_target.shape[1], self._window_stride)
-            ):
-                if window_idx >= self._num_windows:
-                    break
-                downsampled_velocity[:, window_idx] = velocity_target[:, i]
-                downsampled_displacement[:, window_idx] = displacement_target[:, i]
-
-            velocity_target = downsampled_velocity
-            displacement_target = downsampled_displacement
-
         loss_dict = self.loss_function(prediction, velocity_target, displacement_target)
 
         # Log each loss component with train_ prefix
@@ -424,23 +341,6 @@ class LitModule(L.LightningModule):
         signals, velocity_target, displacement_target = batch
         prediction = self(signals)  # Model prediction (velocity or displacement)
 
-        # For CNN with stride > 1, extract the corresponding target values
-        if hasattr(self, '_output_full_signal') and not self._output_full_signal:
-            # Downsample both targets to match prediction stride
-            downsampled_velocity = torch.zeros_like(prediction)
-            downsampled_displacement = torch.zeros_like(prediction)
-
-            for window_idx, i in enumerate(
-                range(0, velocity_target.shape[1], self._window_stride)
-            ):
-                if window_idx >= self._num_windows:
-                    break
-                downsampled_velocity[:, window_idx] = velocity_target[:, i]
-                downsampled_displacement[:, window_idx] = displacement_target[:, i]
-
-            velocity_target = downsampled_velocity
-            displacement_target = downsampled_displacement
-
         loss_dict = self.loss_function(prediction, velocity_target, displacement_target)
 
         # Log each loss component with val_ prefix
@@ -465,23 +365,6 @@ class LitModule(L.LightningModule):
         """
         signals, velocity_target, displacement_target = batch
         prediction = self(signals)  # Model prediction (velocity or displacement)
-
-        # For CNN with stride > 1, extract the corresponding target values
-        if hasattr(self, '_output_full_signal') and not self._output_full_signal:
-            # Downsample both targets to match prediction stride
-            downsampled_velocity = torch.zeros_like(prediction)
-            downsampled_displacement = torch.zeros_like(prediction)
-
-            for window_idx, i in enumerate(
-                range(0, velocity_target.shape[1], self._window_stride)
-            ):
-                if window_idx >= self._num_windows:
-                    break
-                downsampled_velocity[:, window_idx] = velocity_target[:, i]
-                downsampled_displacement[:, window_idx] = displacement_target[:, i]
-
-            velocity_target = downsampled_velocity
-            displacement_target = downsampled_displacement
 
         loss_dict = self.loss_function(prediction, velocity_target, displacement_target)
 
@@ -514,12 +397,6 @@ class LitModule(L.LightningModule):
                         displacement_target, signals)
         """
         signals, velocity_target, displacement_target = batch
-
-        # During inference, we want to make sure window_stride is set to 1 for CNNs
-        if hasattr(self, 'model_config') and hasattr(
-            self.model_config, 'window_stride'
-        ):
-            self.model_config.window_stride = 1
 
         prediction = self(signals)  # Model prediction (velocity or displacement)
         sample_rate = RedPitayaConfig.SAMPLE_RATE_DEC1 / 256
