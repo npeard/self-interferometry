@@ -104,7 +104,10 @@ class LitModule(L.LightningModule):
         if total_params is not None:
             model_hparams = {**(model_hparams or {}), 'total_params': int(total_params)}
         if receptive_field is not None:
-            model_hparams = {**(model_hparams or {}), 'receptive_field': int(receptive_field)}
+            model_hparams = {
+                **(model_hparams or {}),
+                'receptive_field': int(receptive_field),
+            }
         self.model_hparams = model_hparams
         self.save_hyperparameters(ignore=['model'])
 

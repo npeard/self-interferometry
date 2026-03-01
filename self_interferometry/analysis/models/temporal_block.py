@@ -37,22 +37,38 @@ class TemporalBlock(nn.Module):
         if causal:
             # Left-only padding: pad the full amount on the left, then chomp right
             self.conv1 = nn.Conv1d(
-                in_channels, out_channels, kernel_size, padding=padding, dilation=dilation
+                in_channels,
+                out_channels,
+                kernel_size,
+                padding=padding,
+                dilation=dilation,
             )
             self.chomp1 = Chomp1d(padding)
             self.conv2 = nn.Conv1d(
-                out_channels, out_channels, kernel_size, padding=padding, dilation=dilation
+                out_channels,
+                out_channels,
+                kernel_size,
+                padding=padding,
+                dilation=dilation,
             )
             self.chomp2 = Chomp1d(padding)
         else:
             # Symmetric padding: use half the causal padding on each side
             sym_padding = padding // 2
             self.conv1 = nn.Conv1d(
-                in_channels, out_channels, kernel_size, padding=sym_padding, dilation=dilation
+                in_channels,
+                out_channels,
+                kernel_size,
+                padding=sym_padding,
+                dilation=dilation,
             )
             self.chomp1 = nn.Identity()
             self.conv2 = nn.Conv1d(
-                out_channels, out_channels, kernel_size, padding=sym_padding, dilation=dilation
+                out_channels,
+                out_channels,
+                kernel_size,
+                padding=sym_padding,
+                dilation=dilation,
             )
             self.chomp2 = nn.Identity()
 

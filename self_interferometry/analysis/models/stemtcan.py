@@ -155,8 +155,7 @@ class StemTCAN(nn.Module):
                 [batch, embed_dim, seq_len] — exposed for VICReg.
         """
         channel_features = [
-            self.siamese_encoder(x[:, c:c + 1, :])
-            for c in range(self.in_channels)
+            self.siamese_encoder(x[:, c : c + 1, :]) for c in range(self.in_channels)
         ]
         return torch.cat(channel_features, dim=1), channel_features
 

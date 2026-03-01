@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Sanity tests for forward pass of CNN, TCN, UTCN, and SCNN models."""
 
-import torch
 import pytest
+import torch
 
 from self_interferometry.analysis.models.barland_cnn import BarlandCNN, BarlandCNNConfig
 from self_interferometry.analysis.models.scnn import SCNN, SCNNConfig

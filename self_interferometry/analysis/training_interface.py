@@ -280,7 +280,6 @@ class TrainingInterface:
 
     def create_lightning_module(self) -> LitModule:
         """Create lightning module based on model type."""
-
         # Common optimizer hyperparameters
         optimizer_hparams = {
             'name': self.config.training_config['optimizer'],

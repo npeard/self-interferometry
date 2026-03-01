@@ -28,7 +28,7 @@ class TCNConfig(UTCNConfig):
 
     dilation_base: int
 
-     # Override parent fields to exclude from __init__
+    # Override parent fields to exclude from __init__
     temporal_dilations: list[int] = field(init=False, default_factory=list)
     horizontal_skips_map: dict[int, int] | None = field(init=False, default=None)
     horizontal_skip: str | None = field(init=False, default=None)

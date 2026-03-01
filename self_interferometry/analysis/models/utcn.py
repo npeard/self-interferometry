@@ -167,7 +167,9 @@ class UTCN(nn.Module):
         # Initialize weights
         self._initialize_weights(config)
 
-        logger.info(f'Number of parameters in {self.__class__.__name__}: {self.total_params:,}')
+        logger.info(
+            f'Number of parameters in {self.__class__.__name__}: {self.total_params:,}'
+        )
 
     def forward(self, x: Tensor) -> Tensor:
         """Forward pass through the UTCN.

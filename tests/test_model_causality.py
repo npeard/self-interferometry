@@ -10,8 +10,8 @@ SCNN is non-causal by design and is tested to confirm it *does* exhibit
 lookahead (i.e. it has causal violations).
 """
 
-import torch
 import pytest
+import torch
 
 from self_interferometry.analysis.models.scnn import SCNN, SCNNConfig
 from self_interferometry.analysis.models.tcn import TCN, TCNConfig
@@ -91,7 +91,7 @@ def _get_step_outputs(model, step_positions, sequence_length, in_channels, block
     outputs = []
     for step_pos in step_positions:
         x = torch.zeros(1, in_channels, sequence_length, device=device)
-        x[:, :, step_pos: step_pos + block_size] = 1.0
+        x[:, :, step_pos : step_pos + block_size] = 1.0
         with torch.no_grad():
             out = model(x)[0, 0]  # [sequence_length]
         outputs.append(out)
@@ -164,7 +164,9 @@ class TestTCNCausality:
         for i, step_pos in enumerate(STEP_POSITIONS):
             if step_pos == 0:
                 continue
-            pre_step_diff = (outputs[i, :step_pos] - baseline[:step_pos]).abs().max().item()
+            pre_step_diff = (
+                (outputs[i, :step_pos] - baseline[:step_pos]).abs().max().item()
+            )
             post_step_max = outputs[i, step_pos:].abs().max().item()
             if post_step_max < 1e-6:
                 continue
@@ -196,7 +198,9 @@ class TestUTCNCausality:
         for i, step_pos in enumerate(STEP_POSITIONS):
             if step_pos == 0:
                 continue
-            pre_step_diff = (outputs[i, :step_pos] - baseline[:step_pos]).abs().max().item()
+            pre_step_diff = (
+                (outputs[i, :step_pos] - baseline[:step_pos]).abs().max().item()
+            )
             post_step_max = outputs[i, step_pos:].abs().max().item()
             if post_step_max < 1e-6:
                 continue

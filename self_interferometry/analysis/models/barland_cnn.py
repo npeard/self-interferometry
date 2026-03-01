@@ -70,7 +70,7 @@ class BarlandCNN(nn.Module):
         Returns:
             [n_windows, 1] predictions
         """
-        out = self.conv_layers(x)           # [n_windows, 64, 10]
+        out = self.conv_layers(x)  # [n_windows, 64, 10]
         out = out.view(out.size(0), 1, -1)  # [n_windows, 1, 640]
         return self.fc_layers(out).squeeze(-1)  # [n_windows, 1]
 
@@ -100,9 +100,7 @@ class BarlandCNN(nn.Module):
         # Treat the 1D signal as a 1×L "image" for F.unfold.
         # Result: [batch, in_channels*window_size, num_windows]
         windows = F.unfold(
-            padded.unsqueeze(2),
-            kernel_size=(1, window_size),
-            stride=(1, window_stride),
+            padded.unsqueeze(2), kernel_size=(1, window_size), stride=(1, window_stride)
         )
         num_windows = windows.shape[2]
 
