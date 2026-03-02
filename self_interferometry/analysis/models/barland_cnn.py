@@ -57,6 +57,21 @@ class BarlandCNN(nn.Module):
         )
 
     @property
+    def receptive_field(self) -> int:
+        """Receptive field of the CNN in input samples.
+
+        4 conv layers with kernel_size=7, each followed by MaxPool1d(2).
+        Pooling doubles the effective stride for subsequent layers, so each
+        layer contributes (kernel_size - 1) * 2^i samples of context:
+            layer 0: 6 * 1 =  6
+            layer 1: 6 * 2 = 12
+            layer 2: 6 * 4 = 24
+            layer 3: 6 * 8 = 48
+        Total: 6 + 12 + 24 + 48 + 1 = 91
+        """
+        return 91
+
+    @property
     def total_params(self) -> int:
         """Total number of trainable parameters."""
         return sum(p.numel() for p in self.parameters() if p.requires_grad)

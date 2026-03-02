@@ -133,6 +133,15 @@ class StemTCAN(nn.Module):
         logger.info(f'Number of parameters in StemTCAN: {self.total_params:,}')
 
     @property
+    def receptive_field(self) -> int:
+        """Calculate the receptive field of the StemTCAN.
+
+        The encoder and decoder TCNs are in series, so their receptive fields add.
+        The cross-channel attention has no temporal span (same time step only).
+        """
+        return self.siamese_encoder.receptive_field + self.decoder.receptive_field
+
+    @property
     def total_params(self) -> int:
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
 
