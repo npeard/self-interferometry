@@ -43,10 +43,7 @@ class VelocityDataset(Dataset):
     """
 
     def __init__(
-        self,
-        file_path: str | Path,
-        num_pd_channels: int = 3,
-        cache_size: int = 0,
+        self, file_path: str | Path, num_pd_channels: int = 3, cache_size: int = 0
     ):
         self.file_path = file_path
         self.num_pd_channels = min(max(1, num_pd_channels), 3)  # Ensure between 1 and 3
