@@ -21,9 +21,9 @@ model:
   horizontal_skip: "linear"  # Type of horizontal skip connections ('linear' or 'identity')
 
 training:
-  max_epochs: 500
+  max_epochs: 200
   warmup_epochs: 0
-  T_0: 500  # Initial restart period (epochs for first cosine cycle)
+  T_0: 200  # Initial restart period (epochs for first cosine cycle)
   T_mult: 1  # Factor to increase T_i after each restart (1 = constant period, 2 = doubling)
   batch_size: 128
   optimizer: "Muon"  # Options: "Adam", "SGD", "Muon"; Muon performs best so far
@@ -35,7 +35,7 @@ training:
   devices: 1
   use_logging: true
   wandb_project: "self-interferometry"
-  experiment_name: "utcn_pareto_search"
+  experiment_name: "utcn_pareto_test"
   checkpoint_dir: "./analysis/checkpoints"
   target: "velocity"  # "velocity" or "displacement" - what the model predicts
 

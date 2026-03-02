@@ -7,7 +7,7 @@ model:
   in_channels: 3
   # SCNN specific parameters
   kernel_size: 7
-  temporal_channels: [[16, 16, 32, 32, 64, 64]]
+  temporal_channels: [[16, 16, 32, 32, 64, 64], [8,16,32,64,128,128], [8,16,16,32,64,128],[32,32,32,32,32,32]]
   dilation_base: 2 # same exponential dilation schedule as TCN
 
 training:
@@ -25,7 +25,7 @@ training:
   devices: 1
   use_logging: true
   wandb_project: "self-interferometry"
-  experiment_name: "scnn_setup"
+  experiment_name: "scnn_pareto_test"
   checkpoint_dir: "./analysis/checkpoints"
   target: "velocity"
 

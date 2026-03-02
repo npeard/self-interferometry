@@ -24,17 +24,17 @@ if %ERRORLEVEL% NEQ 0 (
 echo Job 1 completed.
 echo.
 
-@REM echo [Job 2] Training with tcan-config.yaml...
-@REM %PYTHON_CMD% ./analysis/models/configs/tcan-config.yaml
-@REM if %ERRORLEVEL% NEQ 0 (
-@REM     echo ERROR: Job 2 failed with exit code %ERRORLEVEL%
-@REM     echo Continue anyway? Press Ctrl+C to stop, or
-@REM     pause
-@REM )
-@REM echo Job 2 completed.
-@REM echo.
+echo [Job 2] Training with tcan-config.yaml...
+%PYTHON_CMD% ./analysis/models/configs/tcan-config.yaml
+if %ERRORLEVEL% NEQ 0 (
+    echo ERROR: Job 2 failed with exit code %ERRORLEVEL%
+    echo Continue anyway? Press Ctrl+C to stop, or
+    pause
+)
+echo Job 2 completed.
+echo.
 
-echo [Job 2] Training with utcn-config.yaml...
+echo [Job 3] Training with utcn-config.yaml...
 %PYTHON_CMD% ./analysis/models/configs/utcn-config.yaml
 if %ERRORLEVEL% NEQ 0 (
     echo ERROR: Job 3 failed with exit code %ERRORLEVEL%
@@ -42,6 +42,26 @@ if %ERRORLEVEL% NEQ 0 (
     pause
 )
 echo Job 3 completed.
+echo.
+
+echo [Job 4] Training with scnn-config.yaml...
+%PYTHON_CMD% ./analysis/models/configs/scnn-config.yaml
+if %ERRORLEVEL% NEQ 0 (
+    echo ERROR: Job 4 failed with exit code %ERRORLEVEL%
+    echo Continue anyway? Press Ctrl+C to stop, or
+    pause
+)
+echo Job 4 completed.
+echo.
+
+echo [Job 5] Training with barland-config.yaml...
+%PYTHON_CMD% ./analysis/models/configs/barland-config.yaml
+if %ERRORLEVEL% NEQ 0 (
+    echo ERROR: Job 5 failed with exit code %ERRORLEVEL%
+    echo Continue anyway? Press Ctrl+C to stop, or
+    pause
+)
+echo Job 5 completed.
 echo.
 
 REM ====================================
