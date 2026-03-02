@@ -218,7 +218,6 @@ class TrainingInterface:
         split_ratios: tuple[int, int, int] | None = None,
         num_workers: int | None = None,
         seed: int | None = None,
-        channel_dropout: float | None = None,
     ):
         """Setup data loaders.
 
@@ -228,7 +227,6 @@ class TrainingInterface:
             split_ratios: Train/val/test split ratios (if None, uses config)
             num_workers: Number of data loader workers (if None, uses config)
             seed: Random seed for splitting (if None, uses config)
-            channel_dropout: Channel dropout rate (if None, uses config)
         """
         # Convert data_dir to absolute path
         base_dir = Path(__file__).parent.parent  # Go up two levels from training.py
@@ -266,16 +264,12 @@ class TrainingInterface:
         if num_workers is None:
             num_workers = self.config.data_config['num_workers']
 
-        if channel_dropout is None:
-            channel_dropout = self.config.data_config['channel_dropout']
-
         self.train_loader, self.val_loader, self.test_loader = get_data_loaders(
             dataset_path=dataset_path,
             split_ratios=split_ratios,
             batch_size=batch_size,
             num_workers=num_workers,
             seed=seed,
-            channel_dropout=channel_dropout,
         )
 
     def create_lightning_module(self) -> LitModule:
@@ -286,7 +280,7 @@ class TrainingInterface:
             # TODO: why is lr a string?
             'lr': eval(self.config.training_config['learning_rate']),
             'momentum': self.config.training_config['momentum'],
-            'weight_decay': self.config.training_config['weight_decay'],
+            'weight_decay': eval(self.config.training_config['weight_decay']),
         }
 
         # Common scheduler hyperparameters
@@ -484,7 +478,6 @@ class TrainingInterface:
             split_ratios=split_ratios,
             num_workers=num_workers,
             seed=seed,
-            channel_dropout=0.0,
         )
 
         # Get predictions using trainer.predict for proper encapsulation

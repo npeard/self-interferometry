@@ -18,10 +18,11 @@ BATCH_SIZE = 2
 @pytest.fixture
 def barland_model():
     config = BarlandCNNConfig(
-        sequence_length=SEQUENCE_LENGTH,
+        window_size=SEQUENCE_LENGTH,
         in_channels=IN_CHANNELS,
         activation='LeakyReLU',
         dropout=0.1,
+        use_weight_norm=False,
         window_stride=128,
     )
     return BarlandCNN(config).eval()

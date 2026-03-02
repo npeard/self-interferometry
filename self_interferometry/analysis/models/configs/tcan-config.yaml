@@ -8,7 +8,7 @@ model:
 
   # Siamese encoder: shared-weight TCN applied independently to each input channel
   siamese_kernel_size: 7
-  siamese_channels: [16, 16, 32, 32]
+  siamese_channels: [[16, 16, 32, 32]]
   siamese_dilation_base: 2
 
   # Cross-channel attention: attends across channels at each time step
@@ -16,32 +16,32 @@ model:
 
   # Decoder: single TCN from all attended channel features to 1 output
   decoder_kernel_size: 7
-  decoder_channels: [64, 64, 32, 32]
+  decoder_channels: [[64, 64, 32, 32]]
   decoder_dilation_base: 2
 
 training:
-  max_epochs: 2000
+  max_epochs: 200
   warmup_epochs: 0
-  T_0: 500
+  T_0: 200
   T_mult: 1
   batch_size: 64
   optimizer: "Muon"
   weight_decay: 1e-6
   momentum: 0.9
   learning_rate: 1e-3
-  eta_min: 0
+  eta_min: 1e-6
   accelerator: "gpu"
   devices: 1
   use_logging: true
   wandb_project: "self-interferometry"
-  experiment_name: "tcan_vicreg"
+  experiment_name: "tcan_setup"
   checkpoint_dir: "./analysis/checkpoints"
   target: "velocity"
 
 loss:
   dynamic: false
   velocity_loss_weight: 1.0
-  displacement_loss_weight: 0.1
+  displacement_loss_weight: 0.0
   vicreg_weight: 0.0   # set > 0 to enable VICReg on siamese encoder outputs
   vicreg_sim_coeff: 25.0
   vicreg_std_coeff: 25.0
@@ -53,4 +53,3 @@ data:
   split_ratios: [[80, 10, 10]]
   split_seed: 42
   num_workers: 7
-  channel_dropout: 0.5

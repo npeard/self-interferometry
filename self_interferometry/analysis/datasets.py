@@ -40,8 +40,6 @@ class VelocityDataset(Dataset):
         file_path: Path to HDF5 file
         num_pd_channels: Number of photodiode channels to use (1-3)
         cache_size: Number of items to cache in memory (0 for no caching)
-        channel_dropout: Probability of dropping a channel during training
-            (default: 0.0)
     """
 
     def __init__(
@@ -49,12 +47,10 @@ class VelocityDataset(Dataset):
         file_path: str | Path,
         num_pd_channels: int = 3,
         cache_size: int = 0,
-        channel_dropout: float = 0.0,
     ):
         self.file_path = file_path
         self.num_pd_channels = min(max(1, num_pd_channels), 3)  # Ensure between 1 and 3
         self.cache_size = cache_size
-        self.channel_dropout = channel_dropout  # Probability of dropping a channel
         self.sample_rate = None  # Will be set in open_hdf5
 
         # Channel keys for photodiode signals
@@ -211,17 +207,6 @@ class VelocityDataset(Dataset):
 
         # Apply z-score normalization to photodiode signals
         signals = (signals - self.pd_means) / self.pd_stds
-
-        # Apply channel dropout during training if probability > 0 and multiple channels
-        if (
-            self.channel_dropout > 0
-            and self.num_pd_channels > 1
-            and np.random.random() < self.channel_dropout
-        ):
-            # Randomly select a channel to drop
-            channel_to_drop = np.random.randint(0, self.num_pd_channels)
-            # Set the selected channel to zeros
-            signals[channel_to_drop, :] = 0.0
 
         # Convert to PyTorch tensors
         signals_tensor = torch.FloatTensor(signals)

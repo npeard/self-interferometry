@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import math
 from dataclasses import dataclass
 
 import torch
@@ -12,10 +13,12 @@ act_fn_by_name = {'LeakyReLU': nn.LeakyReLU(), 'Tanh': nn.Tanh()}
 @dataclass
 class BarlandCNNConfig:
     # Common parameters (consistent across all model configs)
-    sequence_length: int  # length of each input window (256)
+    window_size: int  # length of each input window (256)
     in_channels: int
     activation: str
     dropout: float
+
+    use_weight_norm: bool
 
     # BarlandCNN specific parameters
     window_stride: int  # controls the sliding window stride in the forward pass
@@ -56,6 +59,27 @@ class BarlandCNN(nn.Module):
             nn.Linear(16, 1),
         )
 
+        self._initialize_weights(config)
+
+    def _initialize_weights(self, config: BarlandCNNConfig) -> None:
+        """Initialize model weights based on configuration."""
+        for module in self.modules():
+            if isinstance(module, nn.Conv1d):
+                if config.activation in ['ReLU', 'LeakyReLU']:
+                    nn.init.kaiming_normal_(
+                        module.weight, mode='fan_out', nonlinearity='relu'
+                    )
+                elif config.activation == 'Tanh':
+                    nn.init.xavier_normal_(module.weight)
+                else:  # GELU and others
+                    nn.init.xavier_normal_(module.weight)
+
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+
+                if config.use_weight_norm:
+                    nn.utils.parametrizations.weight_norm(module)
+
     @property
     def receptive_field(self) -> int:
         """Receptive field of the CNN in input samples.
@@ -93,8 +117,12 @@ class BarlandCNN(nn.Module):
         """Slide a fixed context window over the full input sequence.
 
         All windows are extracted simultaneously via F.unfold and processed in a
-        single batched forward pass. Overlapping window predictions are averaged
-        using the overlap-add pattern (F.fold + count normalisation).
+        single batched forward pass. Each window produces one scalar prediction
+        that is broadcast across all window_size positions it covers. Where
+        windows overlap, predictions are averaged (F.fold + count normalisation).
+
+        Padding is added on the right only so that the last window is complete
+        even when signal_length is not divisible by window_stride.
 
         Args:
             x: [batch, channels, signal_length]
@@ -103,54 +131,54 @@ class BarlandCNN(nn.Module):
             [batch, 1, signal_length]
         """
         batch_size, in_channels, signal_length = x.shape
-        window_size = self.config.sequence_length
+        window_size = self.config.window_size
         window_stride = self.config.window_stride
 
-        # Pad so every time step falls inside at least one centred window
-        padding = window_size // 2
-        padded_length = signal_length + 2 * padding
-        padded = F.pad(x, (padding, padding), mode='constant', value=0)
+        # Right-pad so an integer number of complete windows covers the signal.
+        # num_windows = ceil((signal_length - window_size) / window_stride) + 1
+        num_windows = math.ceil(max(signal_length - window_size, 0) / window_stride) + 1
+        padded_length = (num_windows - 1) * window_stride + window_size
+        pad_right = padded_length - signal_length
+        padded = F.pad(x, (0, pad_right), mode='constant', value=0)
 
-        # Extract all strided windows at once.
-        # Treat the 1D signal as a 1×L "image" for F.unfold.
-        # Result: [batch, in_channels*window_size, num_windows]
+        # Extract all strided windows at once via F.unfold.
+        # Result: [batch, in_channels * window_size, num_windows]
         windows = F.unfold(
             padded.unsqueeze(2), kernel_size=(1, window_size), stride=(1, window_stride)
         )
-        num_windows = windows.shape[2]
 
-        # Reshape to [batch*num_windows, in_channels, window_size]
+        # Reshape to [batch * num_windows, in_channels, window_size]
         windows = windows.permute(0, 2, 1).reshape(
             batch_size * num_windows, in_channels, window_size
         )
 
-        # Single batched forward pass → [batch*num_windows, 1]
+        # Single batched forward pass → [batch * num_windows, 1]
         preds = self._forward_windows(windows)
 
-        # Reshape to [batch, 1, num_windows] for F.fold
-        preds = preds.reshape(batch_size, 1, num_windows)
+        # Broadcast each scalar prediction over its full window span via F.fold
+        # with kernel_size=window_size. F.fold sums contributions where windows
+        # overlap; dividing by the count average them.
+        # preds: [batch * num_windows, 1] → [batch, 1 * window_size, num_windows]
+        preds = preds.reshape(batch_size, 1, num_windows).expand(
+            batch_size, window_size, num_windows
+        )
 
-        # F.fold output_size must satisfy: num_windows == floor((fold_length - 1) / stride) + 1
-        # so fold_length = (num_windows - 1) * stride + 1.
-        # We fold into this length then trim back to signal_length.
-        fold_length = (num_windows - 1) * window_stride + 1
-
-        # F.fold accumulates (sums) each window prediction into its stride position.
         folded = F.fold(
             preds,
-            output_size=(1, fold_length),
-            kernel_size=(1, 1),
+            output_size=(1, padded_length),
+            kernel_size=(1, window_size),
             stride=(1, window_stride),
-        )  # [batch, 1, 1, fold_length]
+        )  # [batch, 1, 1, padded_length]
 
-        # Build a count tensor to average overlapping predictions.
-        ones = torch.ones(batch_size, 1, num_windows, device=x.device, dtype=x.dtype)
+        ones = torch.ones(
+            batch_size, window_size, num_windows, device=x.device, dtype=x.dtype
+        )
         counts = F.fold(
             ones,
-            output_size=(1, fold_length),
-            kernel_size=(1, 1),
+            output_size=(1, padded_length),
+            kernel_size=(1, window_size),
             stride=(1, window_stride),
-        )  # [batch, 1, 1, fold_length]
+        )  # [batch, 1, 1, padded_length]
 
         averaged = folded / counts.clamp(min=1)
 
