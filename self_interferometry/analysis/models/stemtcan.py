@@ -27,9 +27,7 @@ class StemTCANConfig:
         siamese_channels: Output channel widths per layer of the siamese encoder TCN
         siamese_dilation_base: Dilation base for the siamese encoder TCN
 
-        atten_len: Band length for banded cross-attention (samples)
         atten_heads: Number of attention heads (must divide siamese_channels[-1])
-        atten_chunk_size: Chunk size for memory-efficient attention
 
         decoder_kernel_size: Kernel size for the decoder TCN
         decoder_channels: Output channel widths per layer of the decoder TCN
@@ -46,9 +44,7 @@ class StemTCANConfig:
     siamese_channels: list[int]
     siamese_dilation_base: int
 
-    atten_len: int
     atten_heads: int
-    atten_chunk_size: int
 
     decoder_kernel_size: int
     decoder_channels: list[int]
@@ -123,14 +119,12 @@ class StemTCAN(nn.Module):
         # Shared-weight encoder TCN (one instance, reused for every channel)
         self.siamese_encoder = _make_siamese_tcn(config)
 
-        # Cross-attention (channels are folded into the batch dimension)
+        # Cross-channel attention (operates over n_channels tokens at each time step)
         self.cross_attention = CrossAttentionBlock(
             n_channels=config.in_channels,
             embed_dim=embed_dim,
-            atten_len=config.atten_len,
             num_heads=config.atten_heads,
             dropout=0.0,
-            chunk_size=config.atten_chunk_size,
         )
 
         # Decoder TCN: in_channels * embed_dim → 1
@@ -173,12 +167,19 @@ class StemTCAN(nn.Module):
 
         # Siamese encoder: per-channel feature extraction
         features, _ = self.encode(x)
-        # [batch, in_channels * embed_dim, seq_len]
+        # features: [batch, in_channels * embed_dim, seq_len]
 
-        # Cross-attention: fold channels into batch dim, attend, unfold
-        features = features.view(batch_size * self.in_channels, embed_dim, seq_len)
+        # Cross-channel attention at each time step.
+        # Reshape to [batch * seq_len, in_channels, embed_dim] so that
+        # attention tokens are the per-channel feature vectors at each time step.
+        features = features.view(batch_size, self.in_channels, embed_dim, seq_len)
+        features = features.permute(0, 3, 1, 2).reshape(
+            batch_size * seq_len, self.in_channels, embed_dim
+        )
         features = self.cross_attention(features)
-        features = features.view(batch_size, self.in_channels * embed_dim, seq_len)
+        # Reshape back to [batch, in_channels * embed_dim, seq_len]
+        features = features.reshape(batch_size, seq_len, self.in_channels * embed_dim)
+        features = features.permute(0, 2, 1).contiguous()
 
         # Decoder: all attended channel features → 1-channel output
         return self.decoder(features)  # [batch, 1, seq_len]

@@ -14,6 +14,7 @@ import pytest
 import torch
 
 from self_interferometry.analysis.models.scnn import SCNN, SCNNConfig
+from self_interferometry.analysis.models.stemtcan import StemTCAN, StemTCANConfig
 from self_interferometry.analysis.models.tcn import TCN, TCNConfig
 from self_interferometry.analysis.models.utcn import UTCN, UTCNConfig
 
@@ -206,6 +207,59 @@ class TestUTCNCausality:
                 continue
             assert pre_step_diff <= VIOLATION_THRESHOLD * post_step_max, (
                 f'UTCN step_pos={step_pos}: max pre-step deviation '
+                f'{pre_step_diff:.4e} exceeds threshold '
+                f'{VIOLATION_THRESHOLD * post_step_max:.4e}'
+            )
+
+
+@pytest.fixture
+def stemtcan_model():
+    config = StemTCANConfig(
+        sequence_length=SEQUENCE_LENGTH,
+        in_channels=IN_CHANNELS,
+        activation='GELU',
+        use_layer_norm=True,
+        use_weight_norm=False,
+        siamese_kernel_size=7,
+        siamese_channels=[8, 8, 16],
+        siamese_dilation_base=2,
+        atten_heads=4,
+        decoder_kernel_size=7,
+        decoder_channels=[32, 16],
+        decoder_dilation_base=2,
+    )
+    return StemTCAN(config).eval()
+
+
+class TestStemTCANCausality:
+    def test_causal_violation_rate(self, stemtcan_model):
+        baseline, outputs = _get_step_outputs(
+            stemtcan_model, STEP_POSITIONS, SEQUENCE_LENGTH, IN_CHANNELS, BLOCK_SIZE
+        )
+        violation_rate, n_violations, n_positions = _causal_violation_rate(
+            baseline, outputs, STEP_POSITIONS, BLOCK_SIZE, VIOLATION_THRESHOLD
+        )
+        assert violation_rate == 0.0, (
+            f'StemTCAN has {n_violations}/{n_positions} causal violations '
+            f'({violation_rate * 100:.2f}%)'
+        )
+
+    def test_output_unchanged_before_step(self, stemtcan_model):
+        """Output before the step must equal the baseline for every step position."""
+        baseline, outputs = _get_step_outputs(
+            stemtcan_model, STEP_POSITIONS, SEQUENCE_LENGTH, IN_CHANNELS, BLOCK_SIZE
+        )
+        for i, step_pos in enumerate(STEP_POSITIONS):
+            if step_pos == 0:
+                continue
+            pre_step_diff = (
+                (outputs[i, :step_pos] - baseline[:step_pos]).abs().max().item()
+            )
+            post_step_max = outputs[i, step_pos:].abs().max().item()
+            if post_step_max < 1e-6:
+                continue
+            assert pre_step_diff <= VIOLATION_THRESHOLD * post_step_max, (
+                f'StemTCAN step_pos={step_pos}: max pre-step deviation '
                 f'{pre_step_diff:.4e} exceeds threshold '
                 f'{VIOLATION_THRESHOLD * post_step_max:.4e}'
             )

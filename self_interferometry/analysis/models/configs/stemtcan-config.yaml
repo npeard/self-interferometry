@@ -11,10 +11,8 @@ model:
   siamese_channels: [16, 16, 32, 32]
   siamese_dilation_base: 2
 
-  # Cross-attention: banded attention for channel fusion
-  atten_len: 64       # temporal band length (samples)
+  # Cross-channel attention: attends across channels at each time step
   atten_heads: 4      # must divide siamese_channels[-1]
-  atten_chunk_size: 1024
 
   # Decoder: single TCN from all attended channel features to 1 output
   decoder_kernel_size: 7
