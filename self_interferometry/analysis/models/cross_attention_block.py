@@ -14,7 +14,7 @@ class CrossAttentionBlock(nn.Module):
     without any temporal lookahead, preserving causality.
 
     Input / output shape: [batch * seq_len, n_channels, embed_dim]
-    The calling code in StemTCAN reshapes to/from this layout.
+    The calling code in TCAN reshapes to/from this layout.
     """
 
     def __init__(self, n_channels: int, embed_dim: int, num_heads: int, dropout: float):

@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class StemTCANConfig:
-    """Configuration for Stem-fusion Temporal Convolutional Attention Network.
+class TCANConfig:
+    """Configuration for Temporal Convolutional Attention Network.
 
     Args:
         sequence_length: Length of input/output sequence
@@ -59,7 +59,7 @@ class StemTCANConfig:
             )
 
 
-def _make_siamese_tcn(config: StemTCANConfig) -> TCN:
+def _make_siamese_tcn(config: TCANConfig) -> TCN:
     """Build a single-input-channel TCN for use as the siamese encoder.
 
     The output projection (to 1 channel) is replaced with Identity so the
@@ -80,7 +80,7 @@ def _make_siamese_tcn(config: StemTCANConfig) -> TCN:
     return tcn
 
 
-def _make_decoder_tcn(config: StemTCANConfig) -> TCN:
+def _make_decoder_tcn(config: TCANConfig) -> TCN:
     """Build the decoder TCN that maps all attended channel features to 1 output."""
     embed_dim = config.siamese_channels[-1]
     tcn_config = TCNConfig(
@@ -96,13 +96,14 @@ def _make_decoder_tcn(config: StemTCANConfig) -> TCN:
     return TCN(tcn_config)
 
 
-class StemTCAN(nn.Module):
-    """Stem-fusion Temporal Convolutional Attention Network.
+class TCAN(nn.Module):
+    """Temporal Convolutional Attention Network.
 
     Architecture:
     1. Siamese encoder: a shared-weight TCN applied independently to each input
        channel, producing per-channel feature maps.
-    2. Cross-attention: banded cross-attention fuses information across channels.
+    2. Cross-attention: cross-channel attention fuses information across channels
+       at each time step independently (no temporal lookahead).
     3. Decoder: a single TCN that takes all attended channel features concatenated
        along the channel dimension and produces a 1-channel sequence output.
 
@@ -110,7 +111,7 @@ class StemTCAN(nn.Module):
     regularisation can be applied from LitModule when ``vicreg_weight > 0``.
     """
 
-    def __init__(self, config: StemTCANConfig):
+    def __init__(self, config: TCANConfig):
         super().__init__()
         self.config = config
         self.in_channels = config.in_channels
@@ -130,11 +131,11 @@ class StemTCAN(nn.Module):
         # Decoder TCN: in_channels * embed_dim → 1
         self.decoder = _make_decoder_tcn(config)
 
-        logger.info(f'Number of parameters in StemTCAN: {self.total_params:,}')
+        logger.info(f'Number of parameters in TCAN: {self.total_params:,}')
 
     @property
     def receptive_field(self) -> int:
-        """Calculate the receptive field of the StemTCAN.
+        """Calculate the receptive field of the TCAN.
 
         The encoder and decoder TCNs are in series, so their receptive fields add.
         The cross-channel attention has no temporal span (same time step only).
@@ -163,7 +164,7 @@ class StemTCAN(nn.Module):
         return torch.cat(channel_features, dim=1), channel_features
 
     def forward(self, x: Tensor) -> Tensor:
-        """Forward pass through StemTCAN.
+        """Forward pass through TCAN.
 
         Args:
             x: [batch, in_channels, seq_len]

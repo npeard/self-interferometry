@@ -7,7 +7,7 @@ from torch import nn
 
 from .barland_cnn import BarlandCNN, BarlandCNNConfig
 from .scnn import SCNN, SCNNConfig
-from .stemtcan import StemTCAN, StemTCANConfig
+from .tcan import TCAN, TCANConfig
 from .tcn import TCN, TCNConfig
 from .utcn import UTCN, UTCNConfig
 
@@ -49,10 +49,10 @@ def create_model(model_hparams: dict[str, Any]) -> nn.Module | None:
         logger.debug('Creating SCNN model...')
         config = SCNNConfig(**params)
         return SCNN(config)
-    elif model_type == 'StemTCAN':
-        logger.debug('Creating StemTCAN model...')
-        config = StemTCANConfig(**params)
-        return StemTCAN(config)
+    elif model_type == 'TCAN':
+        logger.debug('Creating TCAN model...')
+        config = TCANConfig(**params)
+        return TCAN(config)
 
     else:
         raise ValueError(f'Unknown model type: {model_type}')

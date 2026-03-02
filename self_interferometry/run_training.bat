@@ -24,8 +24,8 @@ if %ERRORLEVEL% NEQ 0 (
 echo Job 1 completed.
 echo.
 
-@REM echo [Job 2] Training with stemtcan-config.yaml...
-@REM %PYTHON_CMD% ./analysis/models/configs/stemtcan-config.yaml
+@REM echo [Job 2] Training with tcan-config.yaml...
+@REM %PYTHON_CMD% ./analysis/models/configs/tcan-config.yaml
 @REM if %ERRORLEVEL% NEQ 0 (
 @REM     echo ERROR: Job 2 failed with exit code %ERRORLEVEL%
 @REM     echo Continue anyway? Press Ctrl+C to stop, or

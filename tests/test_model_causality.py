@@ -14,7 +14,7 @@ import pytest
 import torch
 
 from self_interferometry.analysis.models.scnn import SCNN, SCNNConfig
-from self_interferometry.analysis.models.stemtcan import StemTCAN, StemTCANConfig
+from self_interferometry.analysis.models.tcan import TCAN, TCANConfig
 from self_interferometry.analysis.models.tcn import TCN, TCNConfig
 from self_interferometry.analysis.models.utcn import UTCN, UTCNConfig
 
@@ -214,7 +214,7 @@ class TestUTCNCausality:
 
 @pytest.fixture
 def stemtcan_model():
-    config = StemTCANConfig(
+    config = TCANConfig(
         sequence_length=SEQUENCE_LENGTH,
         in_channels=IN_CHANNELS,
         activation='GELU',
@@ -228,10 +228,10 @@ def stemtcan_model():
         decoder_channels=[32, 16],
         decoder_dilation_base=2,
     )
-    return StemTCAN(config).eval()
+    return TCAN(config).eval()
 
 
-class TestStemTCANCausality:
+class TestTCANCausality:
     def test_causal_violation_rate(self, stemtcan_model):
         baseline, outputs = _get_step_outputs(
             stemtcan_model, STEP_POSITIONS, SEQUENCE_LENGTH, IN_CHANNELS, BLOCK_SIZE
@@ -240,7 +240,7 @@ class TestStemTCANCausality:
             baseline, outputs, STEP_POSITIONS, BLOCK_SIZE, VIOLATION_THRESHOLD
         )
         assert violation_rate == 0.0, (
-            f'StemTCAN has {n_violations}/{n_positions} causal violations '
+            f'TCAN has {n_violations}/{n_positions} causal violations '
             f'({violation_rate * 100:.2f}%)'
         )
 
@@ -259,7 +259,7 @@ class TestStemTCANCausality:
             if post_step_max < 1e-6:
                 continue
             assert pre_step_diff <= VIOLATION_THRESHOLD * post_step_max, (
-                f'StemTCAN step_pos={step_pos}: max pre-step deviation '
+                f'TCAN step_pos={step_pos}: max pre-step deviation '
                 f'{pre_step_diff:.4e} exceeds threshold '
                 f'{VIOLATION_THRESHOLD * post_step_max:.4e}'
             )

@@ -6,7 +6,7 @@ import torch
 
 from self_interferometry.analysis.models.barland_cnn import BarlandCNN, BarlandCNNConfig
 from self_interferometry.analysis.models.scnn import SCNN, SCNNConfig
-from self_interferometry.analysis.models.stemtcan import StemTCAN, StemTCANConfig
+from self_interferometry.analysis.models.tcan import TCAN, TCANConfig
 from self_interferometry.analysis.models.tcn import TCN, TCNConfig
 from self_interferometry.analysis.models.utcn import UTCN, UTCNConfig
 
@@ -64,7 +64,7 @@ SIGNAL_LENGTH = 1024  # longer than the 256-sample window to exercise the stridi
 
 @pytest.fixture
 def stemtcan_model():
-    config = StemTCANConfig(
+    config = TCANConfig(
         sequence_length=SEQUENCE_LENGTH,
         in_channels=IN_CHANNELS,
         activation='GELU',
@@ -78,10 +78,10 @@ def stemtcan_model():
         decoder_channels=[32, 16],
         decoder_dilation_base=2,
     )
-    return StemTCAN(config).eval()
+    return TCAN(config).eval()
 
 
-class TestStemTCANForward:
+class TestTCANForward:
     def test_output_shape(self, stemtcan_model):
         x = torch.randn(BATCH_SIZE, IN_CHANNELS, SEQUENCE_LENGTH)
         with torch.no_grad():
@@ -94,7 +94,7 @@ class TestStemTCANForward:
         x = torch.randn(BATCH_SIZE, IN_CHANNELS, SEQUENCE_LENGTH)
         with torch.no_grad():
             out = stemtcan_model(x)
-        assert torch.isfinite(out).all(), 'StemTCAN output contains non-finite values'
+        assert torch.isfinite(out).all(), 'TCAN output contains non-finite values'
 
     def test_zero_input(self, stemtcan_model):
         x = torch.zeros(BATCH_SIZE, IN_CHANNELS, SEQUENCE_LENGTH)

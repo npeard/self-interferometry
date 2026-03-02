@@ -7,7 +7,7 @@ from .chomp1d import Chomp1d
 from .cross_attention_block import CrossAttentionBlock
 from .horizontal_skip import HorizontalSkip
 from .scnn import SCNN
-from .stemtcan import StemTCAN
+from .tcan import TCAN
 from .tcn import TCN
 from .temporal_block import TemporalBlock
 from .transpose import Transpose
@@ -19,7 +19,7 @@ __all__ = [
     'TCN',
     'SCNN',
     'UTCN',
-    'StemTCAN',
+    'TCAN',
     # Helper modules
     'Chomp1d',
     'Transpose',
