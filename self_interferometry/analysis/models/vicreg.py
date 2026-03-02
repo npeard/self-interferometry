@@ -1,24 +1,32 @@
 import torch
-import torch.nn.functional as F
-from torch import nn
+import torch.nn.functional as F  # noqa: N812
+from torch import Tensor, nn
 
 
 class VicRegLoss(nn.Module):
-    def __init__(self, sim_coeff=25.0, std_coeff=25.0, cov_coeff=1.0):
+    def __init__(
+        self, sim_coeff: float = 25.0, std_coeff: float = 25.0, cov_coeff: float = 1.0
+    ):
         super().__init__()
         self.sim_coeff = sim_coeff
         self.std_coeff = std_coeff
         self.cov_coeff = cov_coeff
 
-    def off_diagonal(self, x):
+    def off_diagonal(self, x: Tensor) -> Tensor:
         # Returns a flattened view of the off-diagonal elements of a square matrix
         n, m = x.shape
         assert n == m
         return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
 
-    def forward(self, x, y):
-        """x: Projector output from Channel 1 (Batch, Dim)
-        y: Projector output from Channel 2 (Batch, Dim)
+    def forward(self, x: Tensor, y: Tensor) -> Tensor:
+        """Compute VICReg loss between two feature tensors.
+
+        Args:
+            x: Projector output from channel 1, shape [batch, dim].
+            y: Projector output from channel 2, shape [batch, dim].
+
+        Returns:
+            Scalar VICReg loss.
         """
         batch_size = x.shape[0]
         num_features = x.shape[1]
@@ -50,10 +58,8 @@ class VicRegLoss(nn.Module):
             + self.off_diagonal(cov_y).pow(2).sum() / num_features
         )
 
-        # Total Loss
-        loss = (
+        return (
             self.sim_coeff * repr_loss
             + self.std_coeff * std_loss
             + self.cov_coeff * cov_loss
         )
-        return loss
