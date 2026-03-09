@@ -6,9 +6,9 @@ model:
   use_weight_norm: true
   in_channels: 3
   # TCN specific parameters
-  kernel_size: 7
-  temporal_channels: [[16, 16, 32, 32, 64, 64], [8,16,32,64,128,128], [8,16,16,32,64,128],[32,32,32,32,32,32]]
-  dilation_base: 2 # dilation factor should be less than kernel size, usually 2
+  kernel_size: [5, 7, 9]
+  temporal_channels: [[16, 16, 32, 32, 64, 64]]
+  dilation_base: [2, 4, 8]
 
 training:
   max_epochs: 200

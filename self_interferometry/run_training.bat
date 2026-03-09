@@ -34,8 +34,8 @@ if %ERRORLEVEL% NEQ 0 (
 echo Job 2 completed.
 echo.
 
-echo [Job 3] Training with utcn-config.yaml...
-%PYTHON_CMD% ./analysis/models/configs/utcn-config.yaml
+echo [Job 3] Training with scnn-config.yaml...
+%PYTHON_CMD% ./analysis/models/configs/scnn-config.yaml
 if %ERRORLEVEL% NEQ 0 (
     echo ERROR: Job 3 failed with exit code %ERRORLEVEL%
     echo Continue anyway? Press Ctrl+C to stop, or
@@ -44,8 +44,8 @@ if %ERRORLEVEL% NEQ 0 (
 echo Job 3 completed.
 echo.
 
-echo [Job 4] Training with scnn-config.yaml...
-%PYTHON_CMD% ./analysis/models/configs/scnn-config.yaml
+echo [Job 4] Training with barland-config.yaml...
+%PYTHON_CMD% ./analysis/models/configs/barland-config.yaml
 if %ERRORLEVEL% NEQ 0 (
     echo ERROR: Job 4 failed with exit code %ERRORLEVEL%
     echo Continue anyway? Press Ctrl+C to stop, or
@@ -54,8 +54,8 @@ if %ERRORLEVEL% NEQ 0 (
 echo Job 4 completed.
 echo.
 
-echo [Job 5] Training with barland-config.yaml...
-%PYTHON_CMD% ./analysis/models/configs/barland-config.yaml
+echo [Job 5] Training with lstm-config.yaml...
+%PYTHON_CMD% ./analysis/models/configs/lstm-config.yaml
 if %ERRORLEVEL% NEQ 0 (
     echo ERROR: Job 5 failed with exit code %ERRORLEVEL%
     echo Continue anyway? Press Ctrl+C to stop, or
