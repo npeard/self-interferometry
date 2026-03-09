@@ -5,6 +5,8 @@ import pytest
 import torch
 
 from self_interferometry.analysis.models.barland_cnn import BarlandCNN, BarlandCNNConfig
+from self_interferometry.analysis.models.lstm import LSTM, LSTMConfig
+from self_interferometry.analysis.models.mamba import Mamba, MambaConfig
 from self_interferometry.analysis.models.scnn import SCNN, SCNNConfig
 from self_interferometry.analysis.models.tcan import TCAN, TCANConfig
 from self_interferometry.analysis.models.tcn import TCN, TCNConfig
@@ -136,6 +138,101 @@ class TestBarlandCNNForward:
         with torch.no_grad():
             out = barland_model(x)
         assert out.shape == (BATCH_SIZE, 1, SIGNAL_LENGTH)
+        assert torch.isfinite(out).all()
+
+
+@pytest.fixture
+def lstm_model():
+    config = LSTMConfig(
+        sequence_length=SEQUENCE_LENGTH,
+        in_channels=IN_CHANNELS,
+        hidden_size=32,
+        num_layers=2,
+        dropout=0.0,
+        bidirectional=False,
+    )
+    return LSTM(config).eval()
+
+
+@pytest.fixture
+def lstm_bidirectional_model():
+    config = LSTMConfig(
+        sequence_length=SEQUENCE_LENGTH,
+        in_channels=IN_CHANNELS,
+        hidden_size=32,
+        num_layers=2,
+        dropout=0.0,
+        bidirectional=True,
+    )
+    return LSTM(config).eval()
+
+
+class TestLSTMForward:
+    def test_output_shape(self, lstm_model):
+        x = torch.randn(BATCH_SIZE, IN_CHANNELS, SEQUENCE_LENGTH)
+        with torch.no_grad():
+            out = lstm_model(x)
+        assert out.shape == (BATCH_SIZE, 1, SEQUENCE_LENGTH), (
+            f'Expected shape ({BATCH_SIZE}, 1, {SEQUENCE_LENGTH}), got {out.shape}'
+        )
+
+    def test_output_is_finite(self, lstm_model):
+        x = torch.randn(BATCH_SIZE, IN_CHANNELS, SEQUENCE_LENGTH)
+        with torch.no_grad():
+            out = lstm_model(x)
+        assert torch.isfinite(out).all(), 'LSTM output contains non-finite values'
+
+    def test_zero_input(self, lstm_model):
+        x = torch.zeros(BATCH_SIZE, IN_CHANNELS, SEQUENCE_LENGTH)
+        with torch.no_grad():
+            out = lstm_model(x)
+        assert out.shape == (BATCH_SIZE, 1, SEQUENCE_LENGTH)
+        assert torch.isfinite(out).all()
+
+    def test_bidirectional_output_shape(self, lstm_bidirectional_model):
+        x = torch.randn(BATCH_SIZE, IN_CHANNELS, SEQUENCE_LENGTH)
+        with torch.no_grad():
+            out = lstm_bidirectional_model(x)
+        assert out.shape == (BATCH_SIZE, 1, SEQUENCE_LENGTH), (
+            f'Expected shape ({BATCH_SIZE}, 1, {SEQUENCE_LENGTH}), got {out.shape}'
+        )
+
+
+@pytest.fixture
+def mamba_model():
+    config = MambaConfig(
+        sequence_length=SEQUENCE_LENGTH,
+        in_channels=IN_CHANNELS,
+        d_model=16,
+        d_state=8,
+        d_conv=4,
+        expand=2,
+        num_layers=2,
+        use_layer_norm=True,
+    )
+    return Mamba(config).eval()
+
+
+class TestMambaForward:
+    def test_output_shape(self, mamba_model):
+        x = torch.randn(BATCH_SIZE, IN_CHANNELS, SEQUENCE_LENGTH)
+        with torch.no_grad():
+            out = mamba_model(x)
+        assert out.shape == (BATCH_SIZE, 1, SEQUENCE_LENGTH), (
+            f'Expected shape ({BATCH_SIZE}, 1, {SEQUENCE_LENGTH}), got {out.shape}'
+        )
+
+    def test_output_is_finite(self, mamba_model):
+        x = torch.randn(BATCH_SIZE, IN_CHANNELS, SEQUENCE_LENGTH)
+        with torch.no_grad():
+            out = mamba_model(x)
+        assert torch.isfinite(out).all(), 'Mamba output contains non-finite values'
+
+    def test_zero_input(self, mamba_model):
+        x = torch.zeros(BATCH_SIZE, IN_CHANNELS, SEQUENCE_LENGTH)
+        with torch.no_grad():
+            out = mamba_model(x)
+        assert out.shape == (BATCH_SIZE, 1, SEQUENCE_LENGTH)
         assert torch.isfinite(out).all()
 
 

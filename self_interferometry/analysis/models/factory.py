@@ -6,6 +6,8 @@ from typing import Any
 from torch import nn
 
 from .barland_cnn import BarlandCNN, BarlandCNNConfig
+from .lstm import LSTM, LSTMConfig
+from .mamba import Mamba, MambaConfig
 from .scnn import SCNN, SCNNConfig
 from .tcan import TCAN, TCANConfig
 from .tcn import TCN, TCNConfig
@@ -53,6 +55,15 @@ def create_model(model_hparams: dict[str, Any]) -> nn.Module | None:
         logger.debug('Creating TCAN model...')
         config = TCANConfig(**params)
         return TCAN(config)
+
+    elif model_type == 'LSTM':
+        logger.debug('Creating LSTM model...')
+        config = LSTMConfig(**params)
+        return LSTM(config)
+    elif model_type == 'Mamba':
+        logger.debug('Creating Mamba model...')
+        config = MambaConfig(**params)
+        return Mamba(config)
 
     else:
         raise ValueError(f'Unknown model type: {model_type}')

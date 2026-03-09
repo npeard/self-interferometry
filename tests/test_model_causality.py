@@ -13,6 +13,8 @@ lookahead (i.e. it has causal violations).
 import pytest
 import torch
 
+from self_interferometry.analysis.models.lstm import LSTM, LSTMConfig
+from self_interferometry.analysis.models.mamba import Mamba, MambaConfig
 from self_interferometry.analysis.models.scnn import SCNN, SCNNConfig
 from self_interferometry.analysis.models.tcan import TCAN, TCANConfig
 from self_interferometry.analysis.models.tcn import TCN, TCNConfig
@@ -126,6 +128,140 @@ def _causal_violation_rate(baseline, outputs, step_positions, block_size, thresh
 
     violation_rate = total_violations / total_positions if total_positions > 0 else 0.0
     return violation_rate, total_violations, total_positions
+
+
+@pytest.fixture
+def lstm_model():
+    config = LSTMConfig(
+        sequence_length=SEQUENCE_LENGTH,
+        in_channels=IN_CHANNELS,
+        hidden_size=32,
+        num_layers=2,
+        dropout=0.0,
+        bidirectional=False,
+    )
+    return LSTM(config).eval()
+
+
+@pytest.fixture
+def lstm_bidirectional_model():
+    config = LSTMConfig(
+        sequence_length=SEQUENCE_LENGTH,
+        in_channels=IN_CHANNELS,
+        hidden_size=32,
+        num_layers=2,
+        dropout=0.0,
+        bidirectional=True,
+    )
+    return LSTM(config).eval()
+
+
+class TestLSTMCausality:
+    """Unidirectional LSTM must be strictly causal."""
+
+    def test_causal_violation_rate(self, lstm_model):
+        baseline, outputs = _get_step_outputs(
+            lstm_model, STEP_POSITIONS, SEQUENCE_LENGTH, IN_CHANNELS, BLOCK_SIZE
+        )
+        violation_rate, n_violations, n_positions = _causal_violation_rate(
+            baseline, outputs, STEP_POSITIONS, BLOCK_SIZE, VIOLATION_THRESHOLD
+        )
+        assert violation_rate == 0.0, (
+            f'LSTM has {n_violations}/{n_positions} causal violations '
+            f'({violation_rate * 100:.2f}%)'
+        )
+
+    def test_output_unchanged_before_step(self, lstm_model):
+        """Output before the step must equal the baseline for every step position."""
+        baseline, outputs = _get_step_outputs(
+            lstm_model, STEP_POSITIONS, SEQUENCE_LENGTH, IN_CHANNELS, BLOCK_SIZE
+        )
+        for i, step_pos in enumerate(STEP_POSITIONS):
+            if step_pos == 0:
+                continue
+            pre_step_diff = (
+                (outputs[i, :step_pos] - baseline[:step_pos]).abs().max().item()
+            )
+            post_step_max = outputs[i, step_pos:].abs().max().item()
+            if post_step_max < 1e-6:
+                continue
+            assert pre_step_diff <= VIOLATION_THRESHOLD * post_step_max, (
+                f'LSTM step_pos={step_pos}: max pre-step deviation '
+                f'{pre_step_diff:.4e} exceeds threshold '
+                f'{VIOLATION_THRESHOLD * post_step_max:.4e}'
+            )
+
+
+@pytest.fixture
+def mamba_model():
+    config = MambaConfig(
+        sequence_length=SEQUENCE_LENGTH,
+        in_channels=IN_CHANNELS,
+        d_model=16,
+        d_state=8,
+        d_conv=4,
+        expand=2,
+        num_layers=2,
+        use_layer_norm=True,
+    )
+    return Mamba(config).eval()
+
+
+class TestMambaCausality:
+    """Mamba uses causal depthwise conv and sequential state updates — must be causal."""
+
+    def test_causal_violation_rate(self, mamba_model):
+        baseline, outputs = _get_step_outputs(
+            mamba_model, STEP_POSITIONS, SEQUENCE_LENGTH, IN_CHANNELS, BLOCK_SIZE
+        )
+        violation_rate, n_violations, n_positions = _causal_violation_rate(
+            baseline, outputs, STEP_POSITIONS, BLOCK_SIZE, VIOLATION_THRESHOLD
+        )
+        assert violation_rate == 0.0, (
+            f'Mamba has {n_violations}/{n_positions} causal violations '
+            f'({violation_rate * 100:.2f}%)'
+        )
+
+    def test_output_unchanged_before_step(self, mamba_model):
+        """Output before the step must equal the baseline for every step position."""
+        baseline, outputs = _get_step_outputs(
+            mamba_model, STEP_POSITIONS, SEQUENCE_LENGTH, IN_CHANNELS, BLOCK_SIZE
+        )
+        for i, step_pos in enumerate(STEP_POSITIONS):
+            if step_pos == 0:
+                continue
+            pre_step_diff = (
+                (outputs[i, :step_pos] - baseline[:step_pos]).abs().max().item()
+            )
+            post_step_max = outputs[i, step_pos:].abs().max().item()
+            if post_step_max < 1e-6:
+                continue
+            assert pre_step_diff <= VIOLATION_THRESHOLD * post_step_max, (
+                f'Mamba step_pos={step_pos}: max pre-step deviation '
+                f'{pre_step_diff:.4e} exceeds threshold '
+                f'{VIOLATION_THRESHOLD * post_step_max:.4e}'
+            )
+
+
+class TestLSTMBidirectionalNonCausality:
+    """Bidirectional LSTM uses future context and must exhibit causal violations."""
+
+    def test_has_causal_violations(self, lstm_bidirectional_model):
+        """Bidirectional LSTM output must change before the step."""
+        baseline, outputs = _get_step_outputs(
+            lstm_bidirectional_model,
+            STEP_POSITIONS,
+            SEQUENCE_LENGTH,
+            IN_CHANNELS,
+            BLOCK_SIZE,
+        )
+        violation_rate, n_violations, _ = _causal_violation_rate(
+            baseline, outputs, STEP_POSITIONS, BLOCK_SIZE, VIOLATION_THRESHOLD
+        )
+        assert violation_rate > 0.0, (
+            'Bidirectional LSTM shows no causal violations — '
+            'backward pass may not be working'
+        )
 
 
 class TestSCNNNonCausality:
