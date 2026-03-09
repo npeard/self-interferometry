@@ -158,10 +158,17 @@ class TCAN(nn.Module):
             channel_features: list of in_channels tensors each
                 [batch, embed_dim, seq_len] — exposed for VICReg.
         """
-        channel_features = [
-            self.siamese_encoder(x[:, c : c + 1, :]) for c in range(self.in_channels)
-        ]
-        return torch.cat(channel_features, dim=1), channel_features
+        batch_size, _, seq_len = x.shape
+        # Fold channels into batch for a single batched forward pass through the shared encoder.
+        # [batch * in_channels, 1, seq_len] → [batch * in_channels, embed_dim, seq_len]
+        x_flat = x.reshape(batch_size * self.in_channels, 1, seq_len)
+        out = self.siamese_encoder(x_flat)
+        embed_dim = out.shape[1]
+        # Unfold: [batch, in_channels, embed_dim, seq_len]
+        out = out.reshape(batch_size, self.in_channels, embed_dim, seq_len)
+        channel_features = [out[:, c] for c in range(self.in_channels)]
+        features = out.reshape(batch_size, self.in_channels * embed_dim, seq_len)
+        return features, channel_features
 
     def forward(self, x: Tensor) -> Tensor:
         """Forward pass through TCAN.
