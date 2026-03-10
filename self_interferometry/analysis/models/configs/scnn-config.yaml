@@ -6,9 +6,9 @@ model:
   use_weight_norm: true
   in_channels: 3
   # SCNN specific parameters
-  kernel_size: [5, 7, 9]
+  kernel_size: [3, 5, 7]
   temporal_channels: [[16, 16, 32, 32, 64, 64]]
-  dilation_base: [2, 4, 8] 
+  dilation_base: [2, 3, 4] 
 
 training:
   max_epochs: 200
@@ -25,7 +25,7 @@ training:
   devices: 1
   use_logging: true
   wandb_project: "self-interferometry"
-  experiment_name: "scnn_pareto_test"
+  experiment_name: "scnn_pareto_recep_scan"
   checkpoint_dir: "./analysis/checkpoints"
   target: "velocity"
 
