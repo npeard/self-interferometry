@@ -4,6 +4,8 @@ from .barland_cnn import BarlandCNN
 
 # Helper modules
 from .chomp1d import Chomp1d
+from .lstm import LSTM
+from .mamba import Mamba
 from .cross_attention_block import CrossAttentionBlock
 from .horizontal_skip import HorizontalSkip
 from .scnn import SCNN
@@ -16,6 +18,8 @@ from .utcn import UTCN
 __all__ = [
     # Main models
     'BarlandCNN',
+    'LSTM',
+    'Mamba',
     'TCN',
     'SCNN',
     'UTCN',

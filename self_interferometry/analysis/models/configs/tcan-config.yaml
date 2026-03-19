@@ -8,7 +8,7 @@ model:
 
   # Siamese encoder: shared-weight TCN applied independently to each input channel
   siamese_kernel_size: 7
-  siamese_channels: [[16, 16, 32, 32], [8,8,16,16]]
+  siamese_channels: [[16, 16, 16, 16], [8,8,16,16]]
   siamese_dilation_base: 3
 
   # Cross-channel attention: attends across channels at each time step
@@ -16,7 +16,7 @@ model:
 
   # Decoder: single TCN from all attended channel features to 1 output
   decoder_kernel_size: 7
-  decoder_channels: [[32,32,16,16]]
+  decoder_channels: [[16,16,8,8],[16,16,8,8]]
   decoder_dilation_base: 2
 
 training:
@@ -24,7 +24,7 @@ training:
   warmup_epochs: 0
   T_0: 200
   T_mult: 1
-  batch_size: 128
+  batch_size: 64
   optimizer: "Muon"
   weight_decay: 1e-6
   momentum: 0.9
