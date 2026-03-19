@@ -58,6 +58,9 @@ class LitModule(L.LightningModule):
         self.data_hparams = data_hparams
         self.model = create_model(model_hparams)
 
+        # Torch compilation (requires recent PyTorch version and C compiler)
+        self.model = torch.compile(self.model)
+
         # Determine what the model should target
         if training_hparams and 'target' in training_hparams:
             self.target = training_hparams['target']
