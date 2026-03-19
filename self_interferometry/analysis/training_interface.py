@@ -469,7 +469,8 @@ class TrainingInterface:
         """
         # Load the model from checkpoint
         model = LitModule.load_from_checkpoint(checkpoint_path, strict=False)
-        trainer = L.Trainer(accelerator='cpu', logger=[])
+        accelerator = 'cpu' if not torch.cuda.is_available() else 'gpu'
+        trainer = L.Trainer(accelerator=accelerator, logger=[])
 
         # Setup data loaders with explicit parameters
         self.setup_data(

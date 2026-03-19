@@ -31,6 +31,7 @@ class TemporalBlock(nn.Module):
         activation: str,
         use_layer_norm: bool,
         causal: bool = True,
+        dropout: float = 0.0,
     ):
         super().__init__()
 
@@ -87,14 +88,18 @@ class TemporalBlock(nn.Module):
         else:
             raise ValueError(f'Unknown activation: {activation}')
 
+        self.dropout = nn.Dropout1d(dropout)
+
         self.net = nn.Sequential(
             self.norm,
             self.conv1,
             self.chomp1,
             self.activation_fn,
+            self.dropout,
             self.conv2,
             self.chomp2,
             self.activation_fn,
+            self.dropout,
         )
 
         # 1x1 convolution for residual connection if input and output channels differ

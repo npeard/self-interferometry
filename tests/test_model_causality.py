@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for temporal causality of TCN and UTCN models, and non-causality of SCNN.
+"""Tests for temporal causality of TCN models, and non-causality of SCNN.
 
 A causal model must not respond to inputs from the future: when a block of
 ones is placed at position ``step_pos`` in an otherwise-zero sequence, the
@@ -18,7 +18,6 @@ from self_interferometry.analysis.models.mamba import Mamba, MambaConfig
 from self_interferometry.analysis.models.scnn import SCNN, SCNNConfig
 from self_interferometry.analysis.models.tcan import TCAN, TCANConfig
 from self_interferometry.analysis.models.tcn import TCN, TCNConfig
-from self_interferometry.analysis.models.utcn import UTCN, UTCNConfig
 
 SEQUENCE_LENGTH = 256
 IN_CHANNELS = 3
@@ -42,6 +41,7 @@ def tcn_model():
         kernel_size=7,
         temporal_channels=[16, 32, 64, 32, 16],
         dilation_base=2,
+        dropout=0.0,
     )
     return TCN(config).eval()
 
@@ -57,25 +57,9 @@ def scnn_model():
         kernel_size=7,
         temporal_channels=[16, 32, 64, 32, 16],
         dilation_base=2,
+        dropout=0.0,
     )
     return SCNN(config).eval()
-
-
-@pytest.fixture
-def utcn_model():
-    config = UTCNConfig(
-        sequence_length=SEQUENCE_LENGTH,
-        in_channels=IN_CHANNELS,
-        activation='GELU',
-        use_layer_norm=True,
-        use_weight_norm=False,
-        kernel_size=7,
-        temporal_channels=[64, 32, 16, 8, 16, 32, 64],
-        temporal_dilations=[1, 2, 4, 8, 4, 2, 1],
-        horizontal_skips_map=None,
-        horizontal_skip='linear',
-    )
-    return UTCN(config).eval()
 
 
 def _get_step_outputs(model, step_positions, sequence_length, in_channels, block_size):
@@ -314,40 +298,6 @@ class TestTCNCausality:
             )
 
 
-class TestUTCNCausality:
-    def test_causal_violation_rate(self, utcn_model):
-        baseline, outputs = _get_step_outputs(
-            utcn_model, STEP_POSITIONS, SEQUENCE_LENGTH, IN_CHANNELS, BLOCK_SIZE
-        )
-        violation_rate, n_violations, n_positions = _causal_violation_rate(
-            baseline, outputs, STEP_POSITIONS, BLOCK_SIZE, VIOLATION_THRESHOLD
-        )
-        assert violation_rate == 0.0, (
-            f'UTCN has {n_violations}/{n_positions} causal violations '
-            f'({violation_rate * 100:.2f}%)'
-        )
-
-    def test_output_unchanged_before_step(self, utcn_model):
-        """Output before the step must equal the baseline for every step position."""
-        baseline, outputs = _get_step_outputs(
-            utcn_model, STEP_POSITIONS, SEQUENCE_LENGTH, IN_CHANNELS, BLOCK_SIZE
-        )
-        for i, step_pos in enumerate(STEP_POSITIONS):
-            if step_pos == 0:
-                continue
-            pre_step_diff = (
-                (outputs[i, :step_pos] - baseline[:step_pos]).abs().max().item()
-            )
-            post_step_max = outputs[i, step_pos:].abs().max().item()
-            if post_step_max < 1e-6:
-                continue
-            assert pre_step_diff <= VIOLATION_THRESHOLD * post_step_max, (
-                f'UTCN step_pos={step_pos}: max pre-step deviation '
-                f'{pre_step_diff:.4e} exceeds threshold '
-                f'{VIOLATION_THRESHOLD * post_step_max:.4e}'
-            )
-
-
 @pytest.fixture
 def stemtcan_model():
     config = TCANConfig(
@@ -363,6 +313,7 @@ def stemtcan_model():
         decoder_kernel_size=7,
         decoder_channels=[32, 16],
         decoder_dilation_base=2,
+        dropout=0.0,
     )
     return TCAN(config).eval()
 

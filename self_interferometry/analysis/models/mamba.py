@@ -27,12 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 def selective_scan(
-    u: Tensor,
-    delta: Tensor,
-    A: Tensor,
-    B: Tensor,
-    C: Tensor,
-    D: Tensor,
+    u: Tensor, delta: Tensor, A: Tensor, B: Tensor, C: Tensor, D: Tensor
 ) -> Tensor:
     """Parallel selective scan (ZOH discretisation).
 
@@ -91,12 +86,7 @@ class MambaBlock(nn.Module):
     """
 
     def __init__(
-        self,
-        d_model: int,
-        d_state: int,
-        d_conv: int,
-        expand: int,
-        use_layer_norm: bool,
+        self, d_model: int, d_state: int, d_conv: int, expand: int, use_layer_norm: bool
     ):
         super().__init__()
         self.d_model = d_model
@@ -130,8 +120,10 @@ class MambaBlock(nn.Module):
         self.dt_proj = nn.Linear(self.d_inner, self.d_inner, bias=True)
 
         # A: log-parameterised diagonal state matrix, initialised as in the paper
-        A = torch.arange(1, d_state + 1, dtype=torch.float32).unsqueeze(0).expand(
-            self.d_inner, -1
+        A = (
+            torch.arange(1, d_state + 1, dtype=torch.float32)
+            .unsqueeze(0)
+            .expand(self.d_inner, -1)
         )
         self.A_log = nn.Parameter(torch.log(A))
 
@@ -175,13 +167,15 @@ class MambaBlock(nn.Module):
         delta = F.softplus(self.dt_proj(delta))  # [batch, seq_len, d_inner]
 
         # Reshape to channels-first for scan
-        B = B.permute(0, 2, 1)       # [batch, d_state, seq_len]
-        C = C.permute(0, 2, 1)       # [batch, d_state, seq_len]
+        B = B.permute(0, 2, 1)  # [batch, d_state, seq_len]
+        C = C.permute(0, 2, 1)  # [batch, d_state, seq_len]
         delta = delta.permute(0, 2, 1)  # [batch, d_inner, seq_len]
 
         A = -torch.exp(self.A_log)  # [d_inner, d_state] — negative for stability
 
-        y = selective_scan(x_branch, delta, A, B, C, self.D)  # [batch, d_inner, seq_len]
+        y = selective_scan(
+            x_branch, delta, A, B, C, self.D
+        )  # [batch, d_inner, seq_len]
 
         # Gate with z branch (SiLU gating)
         z = F.silu(z)  # [batch, seq_len, d_inner]
@@ -250,21 +244,23 @@ class Mamba(nn.Module):
         # Lift input channels to d_model
         self.lifting = nn.Conv1d(config.in_channels, config.d_model, 1)
 
-        self.layers = nn.ModuleList([
-            MambaBlock(
-                d_model=config.d_model,
-                d_state=config.d_state,
-                d_conv=config.d_conv,
-                expand=config.expand,
-                use_layer_norm=config.use_layer_norm,
-            )
-            for _ in range(config.num_layers)
-        ])
+        self.layers = nn.ModuleList(
+            [
+                MambaBlock(
+                    d_model=config.d_model,
+                    d_state=config.d_state,
+                    d_conv=config.d_conv,
+                    expand=config.expand,
+                    use_layer_norm=config.use_layer_norm,
+                )
+                for _ in range(config.num_layers)
+            ]
+        )
 
         # Final norm before projection
         if config.use_layer_norm:
             self.final_norm = nn.Sequential(
-                nn.Conv1d(1, 1, 1),  # placeholder — replaced below
+                nn.Conv1d(1, 1, 1)  # placeholder — replaced below
             )
             # Use a proper channels-last LayerNorm via a small wrapper
             self.final_norm = _ChannelsLastLayerNorm(config.d_model)
@@ -280,11 +276,7 @@ class Mamba(nn.Module):
 
     def _init_weights(self) -> None:
         for module in self.modules():
-            if isinstance(module, nn.Linear):
-                nn.init.xavier_normal_(module.weight)
-                if module.bias is not None:
-                    nn.init.zeros_(module.bias)
-            elif isinstance(module, nn.Conv1d):
+            if isinstance(module, nn.Linear) or isinstance(module, nn.Conv1d):
                 nn.init.xavier_normal_(module.weight)
                 if module.bias is not None:
                     nn.init.zeros_(module.bias)
@@ -292,7 +284,7 @@ class Mamba(nn.Module):
         # dt_proj bias initialised as in paper (log-uniform between dt_min, dt_max)
         dt_min, dt_max = 0.001, 0.1
         for layer in self.layers:
-            dt_init_std = layer.d_model ** -0.5
+            dt_init_std = layer.d_model**-0.5
             nn.init.uniform_(layer.dt_proj.weight, -dt_init_std, dt_init_std)
             dt = torch.exp(
                 torch.rand(layer.d_inner) * (math.log(dt_max) - math.log(dt_min))

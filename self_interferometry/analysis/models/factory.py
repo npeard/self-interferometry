@@ -11,7 +11,6 @@ from .mamba import Mamba, MambaConfig
 from .scnn import SCNN, SCNNConfig
 from .tcan import TCAN, TCANConfig
 from .tcn import TCN, TCNConfig
-from .utcn import UTCN, UTCNConfig
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +33,8 @@ def create_model(model_hparams: dict[str, Any]) -> nn.Module | None:
     # Remove 'type' from params since it's not part of any dataclass
     params = model_hparams.copy()
     params.pop('type', None)
+    params.pop('total_params', None)  # Remove total_params if present
+    params.pop('receptive_field', None)  # Remove receptive_field if present
 
     if model_type == 'Barland':
         logger.debug('Creating BarlandCNN model...')
@@ -43,10 +44,6 @@ def create_model(model_hparams: dict[str, Any]) -> nn.Module | None:
         logger.debug('Creating TCN model...')
         config = TCNConfig(**params)
         return TCN(config)
-    elif model_type == 'UTCN':
-        logger.debug('Creating UTCN model...')
-        config = UTCNConfig(**params)
-        return UTCN(config)
     elif model_type == 'SCNN':
         logger.debug('Creating SCNN model...')
         config = SCNNConfig(**params)

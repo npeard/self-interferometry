@@ -3,7 +3,6 @@
 import logging
 from dataclasses import dataclass
 
-import torch
 from torch import Tensor, nn
 
 logger = logging.getLogger(__name__)

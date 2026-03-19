@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sanity tests for forward pass of CNN, TCN, UTCN, and SCNN models."""
+"""Sanity tests for forward pass of CNN, TCN, SCNN, and other models."""
 
 import pytest
 import torch
@@ -10,7 +10,6 @@ from self_interferometry.analysis.models.mamba import Mamba, MambaConfig
 from self_interferometry.analysis.models.scnn import SCNN, SCNNConfig
 from self_interferometry.analysis.models.tcan import TCAN, TCANConfig
 from self_interferometry.analysis.models.tcn import TCN, TCNConfig
-from self_interferometry.analysis.models.utcn import UTCN, UTCNConfig
 
 SEQUENCE_LENGTH = 256
 IN_CHANNELS = 3
@@ -41,25 +40,9 @@ def tcn_model():
         kernel_size=7,
         temporal_channels=[16, 32, 64, 32, 16],
         dilation_base=2,
+        dropout=0.0,
     )
     return TCN(config).eval()
-
-
-@pytest.fixture
-def utcn_model():
-    config = UTCNConfig(
-        sequence_length=SEQUENCE_LENGTH,
-        in_channels=IN_CHANNELS,
-        activation='GELU',
-        use_layer_norm=True,
-        use_weight_norm=False,
-        kernel_size=7,
-        temporal_channels=[64, 32, 16, 8, 16, 32, 64],
-        temporal_dilations=[1, 2, 4, 8, 4, 2, 1],
-        horizontal_skips_map=None,
-        horizontal_skip='linear',
-    )
-    return UTCN(config).eval()
 
 
 SIGNAL_LENGTH = 1024  # longer than the 256-sample window to exercise the striding
@@ -80,6 +63,7 @@ def stemtcan_model():
         decoder_kernel_size=7,
         decoder_channels=[32, 16],
         decoder_dilation_base=2,
+        dropout=0.0,
     )
     return TCAN(config).eval()
 
@@ -270,6 +254,7 @@ def scnn_model():
         kernel_size=7,
         temporal_channels=[16, 32, 64, 32, 16],
         dilation_base=2,
+        dropout=0.0,
     )
     return SCNN(config).eval()
 
@@ -293,28 +278,5 @@ class TestSCNNForward:
         x = torch.zeros(BATCH_SIZE, IN_CHANNELS, SEQUENCE_LENGTH)
         with torch.no_grad():
             out = scnn_model(x)
-        assert out.shape == (BATCH_SIZE, 1, SEQUENCE_LENGTH)
-        assert torch.isfinite(out).all()
-
-
-class TestUTCNForward:
-    def test_output_shape(self, utcn_model):
-        x = torch.randn(BATCH_SIZE, IN_CHANNELS, SEQUENCE_LENGTH)
-        with torch.no_grad():
-            out = utcn_model(x)
-        assert out.shape == (BATCH_SIZE, 1, SEQUENCE_LENGTH), (
-            f'Expected shape ({BATCH_SIZE}, 1, {SEQUENCE_LENGTH}), got {out.shape}'
-        )
-
-    def test_output_is_finite(self, utcn_model):
-        x = torch.randn(BATCH_SIZE, IN_CHANNELS, SEQUENCE_LENGTH)
-        with torch.no_grad():
-            out = utcn_model(x)
-        assert torch.isfinite(out).all(), 'UTCN output contains non-finite values'
-
-    def test_zero_input(self, utcn_model):
-        x = torch.zeros(BATCH_SIZE, IN_CHANNELS, SEQUENCE_LENGTH)
-        with torch.no_grad():
-            out = utcn_model(x)
         assert out.shape == (BATCH_SIZE, 1, SEQUENCE_LENGTH)
         assert torch.isfinite(out).all()

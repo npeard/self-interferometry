@@ -4,6 +4,7 @@ model:
   activation: "GELU"
   use_layer_norm: true
   use_weight_norm: true
+  dropout: 0.0
   in_channels: 3
   # SCNN specific parameters
   kernel_size: [3, 5, 7]

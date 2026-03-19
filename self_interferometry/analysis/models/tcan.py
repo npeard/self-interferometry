@@ -3,7 +3,6 @@
 import logging
 from dataclasses import dataclass
 
-import torch
 from torch import Tensor, nn
 
 from .cross_attention_block import CrossAttentionBlock
@@ -49,6 +48,7 @@ class TCANConfig:
     decoder_kernel_size: int
     decoder_channels: list[int]
     decoder_dilation_base: int
+    dropout: float
 
     def __post_init__(self):
         embed_dim = self.siamese_channels[-1]
@@ -71,6 +71,7 @@ def _make_siamese_tcn(config: TCANConfig) -> TCN:
         activation=config.activation,
         use_layer_norm=config.use_layer_norm,
         use_weight_norm=config.use_weight_norm,
+        dropout=config.dropout,
         kernel_size=config.siamese_kernel_size,
         temporal_channels=config.siamese_channels,
         dilation_base=config.siamese_dilation_base,
@@ -89,6 +90,7 @@ def _make_decoder_tcn(config: TCANConfig) -> TCN:
         activation=config.activation,
         use_layer_norm=config.use_layer_norm,
         use_weight_norm=config.use_weight_norm,
+        dropout=config.dropout,
         kernel_size=config.decoder_kernel_size,
         temporal_channels=config.decoder_channels,
         dilation_base=config.decoder_dilation_base,
@@ -125,7 +127,7 @@ class TCAN(nn.Module):
             n_channels=config.in_channels,
             embed_dim=embed_dim,
             num_heads=config.atten_heads,
-            dropout=0.0,
+            dropout=config.dropout,
         )
 
         # Decoder TCN: in_channels * embed_dim → 1

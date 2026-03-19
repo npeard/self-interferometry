@@ -5,6 +5,7 @@ model:
   activation: "GELU"
   use_layer_norm: true
   use_weight_norm: true
+  dropout: 0.0
 
   # Siamese encoder: shared-weight TCN applied independently to each input channel
   siamese_kernel_size: 7
