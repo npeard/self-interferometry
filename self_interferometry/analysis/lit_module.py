@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import logging
+import sys
 from typing import Any, override
 
 import lightning as L
@@ -58,8 +59,14 @@ class LitModule(L.LightningModule):
         self.data_hparams = data_hparams
         self.model = create_model(model_hparams)
 
-        # Torch compilation (requires recent PyTorch version and C compiler)
-        self.model = torch.compile(self.model)
+        # Torch compilation (requires PyTorch 2+ and Python < 3.12 for Dynamo)
+        torch_major = int(torch.__version__.split('.')[0])
+        if torch_major >= 2 and sys.version_info < (3, 12):
+            self.model = torch.compile(self.model)
+        else:
+            logger.warning(
+                'torch.compile requires PyTorch 2+ and Python < 3.12, using eager mode'
+            )
 
         # Determine what the model should target
         if training_hparams and 'target' in training_hparams:

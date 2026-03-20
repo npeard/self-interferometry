@@ -16,9 +16,16 @@ import yaml
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 from matplotlib.collections import LineCollection
+from torch.utils.data import DataLoader
 
 from self_interferometry.analysis.datasets import get_data_loaders
+from self_interferometry.analysis.generate_data import generate_synthetic_test_data
 from self_interferometry.analysis.lit_module import LitModule
+from self_interferometry.analysis.synthetic_lit_module import (
+    DEFAULT_WAVELENGTHS_NM,
+    SyntheticIndexDataset,
+    SyntheticLitModule,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +38,7 @@ class TrainingConfig:
     training_config: dict[str, Any]
     data_config: dict[str, Any]
     loss_config: dict[str, Any]
+    synthetic_config: dict[str, Any] | None = None
     is_hyperparameter_search: bool = False
     search_space: dict[str, list[Any]] | None = None
 
@@ -49,13 +57,21 @@ class TrainingConfig:
         with Path(config_path).open() as f:
             config_dict = yaml.safe_load(f)
 
+        synthetic_config = config_dict.get('synthetic')
+
         # Check if this is a hyperparameter search config
-        if (
+        # Also check synthetic section for list-valued params (e.g. wavelengths_nm)
+        has_search_params = (
             any(isinstance(v, list) for v in config_dict['model'].values())
             or any(isinstance(v, list) for v in config_dict['training'].values())
             or any(isinstance(v, list) for v in config_dict['loss'].values())
             or any(isinstance(v, list) for v in config_dict['data'].values())
-        ):
+            or (
+                synthetic_config is not None
+                and any(isinstance(v, list) for v in synthetic_config.values())
+            )
+        )
+        if has_search_params:
             return cls._create_search_configs(config_dict)
 
         return cls(
@@ -63,100 +79,95 @@ class TrainingConfig:
             training_config=config_dict['training'],
             loss_config=config_dict['loss'],
             data_config=config_dict['data'],
+            synthetic_config=synthetic_config,
         )
+
+    @classmethod
+    def _split_list_params(
+        cls, section: dict[str, Any]
+    ) -> tuple[dict[str, list], dict[str, Any]]:
+        """Split a config section into list (search) and fixed parameters."""
+        lists = {k: v for k, v in section.items() if isinstance(v, list)}
+        fixed = {k: v for k, v in section.items() if not isinstance(v, list)}
+        return lists, fixed
 
     @classmethod
     def _create_search_configs(
         cls, config_dict: dict[str, Any]
     ) -> list['TrainingConfig']:
         """Create multiple configurations for hyperparameter search."""
-        # Separate list and non-list parameters
-        model_lists = {
-            k: v for k, v in config_dict['model'].items() if isinstance(v, list)
-        }
-        model_fixed = {
-            k: v for k, v in config_dict['model'].items() if not isinstance(v, list)
-        }
+        # Separate list and non-list parameters for each section
+        model_lists, model_fixed = cls._split_list_params(config_dict['model'])
+        training_lists, training_fixed = cls._split_list_params(config_dict['training'])
+        loss_lists, loss_fixed = cls._split_list_params(config_dict['loss'])
+        data_lists, data_fixed = cls._split_list_params(config_dict['data'])
 
-        training_lists = {
-            k: v for k, v in config_dict['training'].items() if isinstance(v, list)
-        }
-        training_fixed = {
-            k: v for k, v in config_dict['training'].items() if not isinstance(v, list)
-        }
+        # Handle synthetic section (optional)
+        synthetic_raw = config_dict.get('synthetic')
+        if synthetic_raw is not None:
+            synthetic_lists, synthetic_fixed = cls._split_list_params(synthetic_raw)
+        else:
+            synthetic_lists, synthetic_fixed = {}, {}
 
-        loss_lists = {
-            k: v for k, v in config_dict['loss'].items() if isinstance(v, list)
-        }
-        loss_fixed = {
-            k: v for k, v in config_dict['loss'].items() if not isinstance(v, list)
-        }
+        # Gather all sections for combination generation
+        sections = [
+            ('model', model_lists, model_fixed),
+            ('training', training_lists, training_fixed),
+            ('loss', loss_lists, loss_fixed),
+            ('data', data_lists, data_fixed),
+            ('synthetic', synthetic_lists, synthetic_fixed),
+        ]
 
-        data_lists = {
-            k: v for k, v in config_dict['data'].items() if isinstance(v, list)
-        }
-        data_fixed = {
-            k: v for k, v in config_dict['data'].items() if not isinstance(v, list)
-        }
+        # Build keys/values for each section
+        all_keys = []
+        all_values = []
+        section_names = []
+        for name, lists, _ in sections:
+            for k, v in lists.items():
+                all_keys.append((name, k))
+                all_values.append(v)
+                section_names.append(name)
 
-        # Generate all combinations
-        model_keys = list(model_lists.keys())
-        model_values = list(model_lists.values())
-
-        training_keys = list(training_lists.keys())
-        training_values = list(training_lists.values())
-
-        loss_keys = list(loss_lists.keys())
-        loss_values = list(loss_lists.values())
-
-        data_keys = list(data_lists.keys())
-        data_values = list(data_lists.values())
+        # Generate all combinations across all sections
+        all_combinations = list(product(*all_values)) if all_values else [()]
 
         configs = []
+        for combo in all_combinations:
+            # Start with fixed values for each section
+            section_configs = {
+                'model': model_fixed.copy(),
+                'training': training_fixed.copy(),
+                'loss': loss_fixed.copy(),
+                'data': data_fixed.copy(),
+                'synthetic': synthetic_fixed.copy(),
+            }
 
-        # Generate model combinations
-        model_combinations = list(product(*model_values)) if model_values else [()]
-        training_combinations = (
-            list(product(*training_values)) if training_values else [()]
-        )
-        loss_combinations = list(product(*loss_values)) if loss_values else [()]
-        data_combinations = list(product(*data_values)) if data_values else [()]
+            # Apply the search values from this combination
+            for (section_name, key), value in zip(all_keys, combo, strict=False):
+                section_configs[section_name][key] = value
 
-        for model_combo in model_combinations:
-            model_config = model_fixed.copy()
-            model_config.update(dict(zip(model_keys, model_combo, strict=False)))
+            # Build synthetic_config (None if no synthetic section)
+            synthetic_config = (
+                section_configs['synthetic'] if synthetic_raw is not None else None
+            )
 
-            for training_combo in training_combinations:
-                training_config = training_fixed.copy()
-                training_config.update(
-                    dict(zip(training_keys, training_combo, strict=False))
+            configs.append(
+                cls(
+                    model_config=section_configs['model'],
+                    training_config=section_configs['training'],
+                    loss_config=section_configs['loss'],
+                    data_config=section_configs['data'],
+                    synthetic_config=synthetic_config,
+                    is_hyperparameter_search=True,
+                    search_space={
+                        'model': model_lists,
+                        'training': training_lists,
+                        'loss': loss_lists,
+                        'data': data_lists,
+                        'synthetic': synthetic_lists,
+                    },
                 )
-
-                for loss_combo in loss_combinations:
-                    loss_config = loss_fixed.copy()
-                    loss_config.update(dict(zip(loss_keys, loss_combo, strict=False)))
-
-                    for data_combo in data_combinations:
-                        data_config = data_fixed.copy()
-                        data_config.update(
-                            dict(zip(data_keys, data_combo, strict=False))
-                        )
-
-                        configs.append(
-                            cls(
-                                model_config=model_config,
-                                training_config=training_config,
-                                loss_config=loss_config,
-                                data_config=data_config,
-                                is_hyperparameter_search=True,
-                                search_space={
-                                    'model': model_lists,
-                                    'training': training_lists,
-                                    'loss': loss_lists,
-                                    'data': data_lists,
-                                },
-                            )
-                        )
+            )
 
         # Randomly shuffle configurations
         random.shuffle(configs)
@@ -211,41 +222,61 @@ class TrainingInterface:
                 f'FlashAttention available: {torch.backends.cuda.flash_sdp_enabled()}'
             )
 
+    def _is_synthetic(self) -> bool:
+        """Check if synthetic training mode is enabled."""
+        return (
+            self.config.synthetic_config is not None
+            and self.config.synthetic_config.get('use_synthetic_training', False)
+        )
+
     def setup_data(
         self,
         dataset_path: str | None = None,
         batch_size: int | None = None,
         split_ratios: tuple[int, int, int] | None = None,
         num_workers: int | None = None,
-        seed: int | None = None,
     ):
         """Setup data loaders.
+
+        For synthetic training mode, creates dummy dataloaders that provide
+        batch indices (actual data is generated on-device in the LitModule).
+        For real data, loads HDF5 datasets as before.
 
         Args:
             dataset_path: Path to dataset file (if None, uses config)
             batch_size: Batch size (if None, uses config)
             split_ratios: Train/val/test split ratios (if None, uses config)
             num_workers: Number of data loader workers (if None, uses config)
-            seed: Random seed for splitting (if None, uses config)
         """
-        # Convert data_dir to absolute path
-        base_dir = Path(__file__).parent.parent  # Go up two levels from training.py
+        if batch_size is None:
+            batch_size = self.config.training_config['batch_size']
+
+        # Synthetic training: create dummy dataloaders
+        if self._is_synthetic():
+            syn = self.config.synthetic_config
+            steps = syn['steps_per_epoch']
+            val_steps = syn.get('val_steps', steps // 5)
+
+            train_ds = SyntheticIndexDataset(steps * batch_size)
+            val_ds = SyntheticIndexDataset(val_steps * batch_size)
+
+            self.train_loader = DataLoader(
+                train_ds, batch_size=batch_size, shuffle=True
+            )
+            self.val_loader = DataLoader(val_ds, batch_size=batch_size)
+            self.test_loader = self.val_loader
+            return
+
+        # Real data: load HDF5 datasets
+        base_dir = Path(__file__).parent.parent
 
         def resolve_path(data_dir: str, filename: str | None = None) -> str:
-            """Resolve path relative to project root, optionally joining with
-            filename.
-            """
-            # Remove leading './' if present
+            """Resolve path relative to project root."""
             data_dir = str(data_dir).lstrip('./')
             abs_dir = base_dir / data_dir
-
-            # Create directory if it doesn't exist
             Path(abs_dir).mkdir(parents=True, exist_ok=True)
-
-            # If filename is provided, join it with the directory
             return str(abs_dir / filename) if filename else str(abs_dir)
 
-        # Use provided arguments or fall back to config
         if dataset_path is None:
             data_dir = self.config.data_config['data_dir']
             dataset_path = resolve_path(
@@ -255,12 +286,6 @@ class TrainingInterface:
         if split_ratios is None:
             split_ratios = self.config.data_config['split_ratios']
 
-        if seed is None:
-            seed = self.config.data_config['split_seed']
-
-        if batch_size is None:
-            batch_size = self.config.training_config['batch_size']
-
         if num_workers is None:
             num_workers = self.config.data_config['num_workers']
 
@@ -269,11 +294,25 @@ class TrainingInterface:
             split_ratios=split_ratios,
             batch_size=batch_size,
             num_workers=num_workers,
-            seed=seed,
         )
 
     def create_lightning_module(self) -> LitModule:
-        """Create lightning module based on model type."""
+        """Create lightning module based on model type.
+
+        Derives in_channels from data configuration:
+        - Synthetic: len(wavelengths_nm)
+        - Real data: num_pd_channels (default 3)
+        """
+        # Derive in_channels from data, not model config
+        if self._is_synthetic():
+            syn = self.config.synthetic_config
+            wavelengths = syn['wavelengths_nm']
+            self.config.model_config['in_channels'] = len(wavelengths)
+        else:
+            self.config.model_config['in_channels'] = self.config.data_config.get(
+                'num_pd_channels', 3
+            )
+
         # Common optimizer hyperparameters
         optimizer_hparams = {
             'name': self.config.training_config['optimizer'],
@@ -290,12 +329,12 @@ class TrainingInterface:
 
         scheduler_hparams = {
             'warmup_epochs': warmup_epochs,
-            'T_0': T_0,  # Initial restart period for CosineAnnealingWarmRestarts
-            'T_mult': T_mult,  # Factor to increase T_i after each restart
+            'T_0': T_0,
+            'T_mult': T_mult,
             'eta_min': self.config.training_config['eta_min'],
         }
 
-        return LitModule(
+        common_kwargs = dict(
             model_hparams=self.config.model_config,
             optimizer_hparams=optimizer_hparams,
             scheduler_hparams=scheduler_hparams,
@@ -303,6 +342,19 @@ class TrainingInterface:
             training_hparams=self.config.training_config,
             data_hparams=self.config.data_config,
         )
+
+        if self._is_synthetic():
+            syn = self.config.synthetic_config
+            return SyntheticLitModule(
+                **common_kwargs,
+                wavelengths_nm=syn['wavelengths_nm'],
+                start_freq=syn.get('start_freq', 1.0),
+                end_freq=syn.get('end_freq', 1000.0),
+                steps_per_epoch=syn['steps_per_epoch'],
+                max_displacement_um=syn.get('max_displacement_um', 5.0),
+            )
+
+        return LitModule(**common_kwargs)
 
     def setup_trainer(self) -> L.Trainer:
         """Setup Lightning trainer with callbacks and loggers."""
@@ -448,7 +500,6 @@ class TrainingInterface:
         batch_size: int = 64,
         split_ratios: tuple[int, int, int] = (80, 10, 10),
         num_workers: int = 4,
-        seed: int = 42,
     ):
         """Plot predictions from a checkpoint.
 
@@ -457,32 +508,64 @@ class TrainingInterface:
         2. Velocity residuals (predicted - target)
         3. Predicted vs target displacement
         4. Displacement residuals (predicted - target)
-        5-7. Input signals (up to 3 photodiode channels)
+        5-7. Input signals (up to N photodiode channels)
+
+        When dataset_path is "synthetic", generates synthetic test data.
+        Synthetic config is inferred from checkpoint hparams when available,
+        otherwise defaults are used based on the model's in_channels.
 
         Args:
-            checkpoint_path: Path to the checkpoint file
-            dataset_path: Path to the dataset file
+            checkpoint_path: Path to the dataset file, or "synthetic"
+            dataset_path: Path to the dataset file, or "synthetic"
             batch_size: Batch size for data loader
-            split_ratios: Train/val/test split ratios
-            num_workers: Number of data loader workers
-            seed: Random seed for data splitting
+            split_ratios: Train/val/test split ratios (real data only)
+            num_workers: Number of data loader workers (real data only)
         """
         # Load the model from checkpoint
         model = LitModule.load_from_checkpoint(checkpoint_path, strict=False)
         accelerator = 'cpu' if not torch.cuda.is_available() else 'gpu'
         trainer = L.Trainer(accelerator=accelerator, logger=[])
 
-        # Setup data loaders with explicit parameters
-        self.setup_data(
-            dataset_path=dataset_path,
-            batch_size=batch_size,
-            split_ratios=split_ratios,
-            num_workers=num_workers,
-            seed=seed,
-        )
+        if dataset_path == 'synthetic':
+            # Infer synthetic config from checkpoint hparams
+            in_channels = model.hparams['model_hparams']['in_channels']
+            ckpt = torch.load(checkpoint_path, weights_only=False)
+            hp = ckpt.get('hyper_parameters', {})
 
-        # Get predictions using trainer.predict for proper encapsulation
-        predictions = trainer.predict(model, self.test_loader)
+            wavelengths_nm = hp.get(
+                'wavelengths_nm', DEFAULT_WAVELENGTHS_NM[:in_channels]
+            )
+            start_freq = hp.get('start_freq', 1.0)
+            end_freq = hp.get('end_freq', 1000.0)
+            max_displacement_um = hp.get('max_displacement_um', 5.0)
+
+            logger.info(
+                f'Generating synthetic test data: '
+                f'{len(wavelengths_nm)} channels, '
+                f'freq=[{start_freq}, {end_freq}] Hz, '
+                f'max_disp={max_displacement_um} μm'
+            )
+
+            test_loader = generate_synthetic_test_data(
+                num_samples=batch_size * 4,
+                wavelengths_nm=wavelengths_nm,
+                batch_size=batch_size,
+                start_freq=start_freq,
+                end_freq=end_freq,
+                max_displacement_um=max_displacement_um,
+            )
+        else:
+            # Real data: setup data loaders
+            self.setup_data(
+                dataset_path=dataset_path,
+                batch_size=batch_size,
+                split_ratios=split_ratios,
+                num_workers=num_workers,
+            )
+            test_loader = self.test_loader
+
+        # Get predictions using trainer.predict
+        predictions = trainer.predict(model, test_loader)
 
         # Process the first batch of predictions
         # predictions[batch_idx] returns a tuple of (velocity_hat, velocity_target,
@@ -608,7 +691,11 @@ class TrainingInterface:
             axs[3].legend(loc='upper right')
 
             # Plot each input signal channel with gradient-based coloring
-            channel_names = ['PD1 (RP1_CH2)', 'PD2 (RP2_CH1)', 'PD3 (RP2_CH2)']
+            hw_names = ['PD1 (RP1_CH2)', 'PD2 (RP2_CH1)', 'PD3 (RP2_CH2)']
+            channel_names = [
+                hw_names[j] if j < len(hw_names) else f'CH{j + 1}'
+                for j in range(num_channels)
+            ]
 
             for j in range(num_channels):
                 # Get signal and gradient for this channel

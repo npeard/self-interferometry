@@ -1,13 +1,11 @@
 import argparse
 import logging
-import random
 import sys
 import time
 from pathlib import Path
 
-import numpy as np
+import lightning as L
 from acquisition.redpitaya.manager import RedPitayaManager
-
 from analysis.generate_data import generate_dataset_from_rp
 from analysis.training_interface import TrainingConfig, TrainingInterface
 
@@ -77,28 +75,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def setup_random_seed(seed: int | None = None) -> int:
-    """Set random seed for reproducibility using NumPy's default_rng.
-
-    Args:
-        seed: Optional seed value. If None, a random seed will be generated.
-
-    Returns:
-        The seed value used.
-    """
-    if seed is None:
-        # Create a non-seeded RNG to generate a seed
-        temp_rng = np.random.default_rng()
-        # Generate a random seed between 0 and 2^32 - 1
-        seed = temp_rng.integers(0, 2**32)
-
-    # Set seeds for both random and numpy
-    random.seed(seed)
-    np.random.default_rng(seed)
-
-    return seed
-
-
 def acquire_dataset(
     num_samples: int, dataset_name: str, logger: logging.Logger
 ) -> None:
@@ -163,6 +139,9 @@ def evaluate_checkpoint(
     logger.info(f'Checkpoint path: {checkpoint_path}')
     logger.info(f'Dataset path: {dataset_path}')
 
+    # Seed everything for reproducible evaluation
+    L.seed_everything(42)
+
     # Create trainer with no config for checkpoint evaluation
     trainer = TrainingInterface(config=None)
     trainer.plot_predictions_from_checkpoint(
@@ -179,8 +158,9 @@ def train_model(config_path: str, logger: logging.Logger) -> None:
     """
     config = TrainingConfig.from_yaml(config_path)
 
-    # Set random seed from time
-    seed = setup_random_seed(int(time.time()))
+    # Seed everything (Python random, NumPy, PyTorch, CUDA) from time
+    seed = int(time.time())
+    L.seed_everything(seed)
     logger.info(f'Using random seed: {seed}')
 
     # Convert single config to list for unified processing
