@@ -9,7 +9,7 @@ model:
   # SCNN specific parameters
   kernel_size: [3, 5, 7]
   temporal_channels: [[16, 16, 32, 32, 64, 64]]
-  dilation_base: [2, 3, 4] 
+  dilation_base: [2, 3, 4]
 
 training:
   max_epochs: 200
@@ -40,4 +40,3 @@ data:
   dataset_file: ["free-space-synchro_10k.h5", "mmfiber-synchro_10k.h5"]
   split_ratios: [[80, 10, 10]]
   num_workers: 7
-

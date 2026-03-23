@@ -40,4 +40,3 @@ data:
   dataset_file: ["free-space-synchro_10k.h5", "mmfiber-synchro_10k.h5"]
   split_ratios: [[80, 10, 10]]  # train, val, test percentages
   num_workers: 7
-
