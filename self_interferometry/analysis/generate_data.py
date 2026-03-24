@@ -6,10 +6,10 @@ from pathlib import Path
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
-from self_interferometry.acquisition.coil_driver import CoilDriver
-from self_interferometry.acquisition.redpitaya.config import RedPitayaConfig
 from self_interferometry.acquisition.redpitaya.manager import RedPitayaManager
-from self_interferometry.acquisition.waveform import Waveform
+from self_interferometry.acquisition.redpitaya.redpitaya_config import RedPitayaConfig
+from self_interferometry.acquisition.simulations.coil_driver import CoilDriver
+from self_interferometry.acquisition.simulations.waveform import Waveform
 
 logger = logging.getLogger(__name__)
 

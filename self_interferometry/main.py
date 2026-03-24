@@ -30,23 +30,13 @@ def setup_logging(verbosity: str) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description='Train a new model or test from checkpoint'
+        description='Train a model or acquire data from Red Pitaya'
     )
     parser.add_argument(
         '--config',
         type=str,
         default='./analysis/models/configs/tcn-config.yaml',
-        help='Path to YAML config file. Required for training, optional for testing.',
-    )
-    parser.add_argument(
-        '--checkpoint',
-        type=str,
-        help='Path to checkpoint file for evaluation. Requires --dataset argument.',
-    )
-    parser.add_argument(
-        '--dataset',
-        type=str,
-        help='Path to dataset file for checkpoint evaluation. Required when using --checkpoint.',
+        help='Path to YAML config file for training.',
     )
     parser.add_argument(
         '--acquire_dataset',
@@ -125,30 +115,6 @@ def acquire_dataset(
         rp_manager.close_all()
 
 
-def evaluate_checkpoint(
-    checkpoint_path: str, dataset_path: str, logger: logging.Logger
-) -> None:
-    """Evaluate a model from a checkpoint file.
-
-    Args:
-        checkpoint_path: Path to the checkpoint file
-        dataset_path: Path to the dataset file
-        logger: Logger instance for output
-    """
-    logger.info('Loading from checkpoint for evaluation...')
-    logger.info(f'Checkpoint path: {checkpoint_path}')
-    logger.info(f'Dataset path: {dataset_path}')
-
-    # Seed everything for reproducible evaluation
-    L.seed_everything(42)
-
-    # Create trainer with no config for checkpoint evaluation
-    trainer = TrainingInterface(config=None)
-    trainer.plot_predictions_from_checkpoint(
-        checkpoint_path=checkpoint_path, dataset_path=dataset_path
-    )
-
-
 def train_model(config_path: str, logger: logging.Logger) -> None:
     """Train a model using the specified configuration.
 
@@ -161,6 +127,8 @@ def train_model(config_path: str, logger: logging.Logger) -> None:
     # Seed everything (Python random, NumPy, PyTorch, CUDA) from time
     seed = int(time.time())
     L.seed_everything(seed)
+    # Note that get_data_loaders in datasets.py uses a hardcoded seed of 42 for
+    # deterministic splits
     logger.info(f'Using random seed: {seed}')
 
     # Convert single config to list for unified processing
@@ -173,7 +141,6 @@ def train_model(config_path: str, logger: logging.Logger) -> None:
         trainer = TrainingInterface(
             config=train_config,
             experiment_name=train_config.training_config['experiment_name'],
-            checkpoint_dir=train_config.training_config['checkpoint_dir'],
         )
 
         # Start training
@@ -207,18 +174,7 @@ def main():
         acquire_dataset(args.num_samples, args.dataset_name, logger)
         sys.exit()
 
-    # Mode 2: Checkpoint Evaluation (no TrainingConfig needed)
-    if args.checkpoint:
-        if not args.dataset:
-            raise ValueError(
-                '--dataset argument is required when using --checkpoint. '
-                'Please specify the path to the dataset file.'
-            )
-
-        evaluate_checkpoint(args.checkpoint, args.dataset, logger)
-        return
-
-    # Mode 3: Training (requires TrainingConfig)
+    # Mode 2: Training (requires TrainingConfig)
     if not args.config:
         raise ValueError('Config file is required for training mode')
 
@@ -228,9 +184,6 @@ def main():
 if __name__ == '__main__':
     # Training new model:
     # python main.py --config path/to/config.yaml
-
-    # Evaluating from checkpoint:
-    # python main.py --checkpoint path/to/checkpoint.ckpt --dataset path/to/dataset.h5
 
     # Acquiring real data from Red Pitaya:
     # python main.py --acquire_dataset --num_samples 5000 --dataset_name my-data.h5

@@ -36,7 +36,6 @@ training:
   use_logging: true
   wandb_project: "self-interferometry"
   experiment_name: "tcan_pareto_setup"
-  checkpoint_dir: "./analysis/checkpoints"
   target: "velocity"
 
 loss:

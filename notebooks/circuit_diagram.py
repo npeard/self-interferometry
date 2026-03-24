@@ -48,7 +48,7 @@ def _(elm, schemdraw):
         pin2 = d.add(elm.Dot(open=True).label('Pin 2 (+V)', loc='top'))
 
         # --- Right branch: LD + protection diodes ---
-        d.add(elm.Line().at(pin2.center).right().length(2))
+        d.add(elm.Line().at(pin2.center).right().length(1))
         top_node = d.add(elm.Dot())
 
         # LD (leftmost path, going down)
@@ -72,7 +72,7 @@ def _(elm, schemdraw):
         d.add(elm.Line().left().tox(bot_node.center[0]).color(PROT_COLOR))
 
         # --- Left branch: PD + R ---
-        d.add(elm.Line().at(pin2.center).left().length(2))
+        d.add(elm.Line().at(pin2.center).left().length(1))
         d.add(elm.Photodiode().down().reverse().label('PD', loc='top'))
 
         # Junction between PD and resistor (probe point)

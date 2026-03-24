@@ -27,7 +27,6 @@ training:
   use_logging: true
   wandb_project: "self-interferometry"
   experiment_name: "tcn_pareto_recep_scan_2"
-  checkpoint_dir: "./analysis/checkpoints"
   target: "velocity"  # "velocity" or "displacement" - what the model predicts
 
 loss:

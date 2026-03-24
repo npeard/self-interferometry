@@ -59,14 +59,17 @@ class LitModule(L.LightningModule):
         self.data_hparams = data_hparams
         self.model = create_model(model_hparams)
 
-        # Torch compilation (requires PyTorch 2+ and Python < 3.12 for Dynamo)
+        # Torch compilation (requires PyTorch 2+, Python < 3.12, and GPU)
         torch_major = int(torch.__version__.split('.')[0])
-        if torch_major >= 2 and sys.version_info < (3, 12):
+        if (
+            torch_major >= 2
+            and sys.version_info < (3, 12)
+            and torch.cuda.is_available()
+        ):
             self.model = torch.compile(self.model)
-        else:
-            logger.warning(
-                'torch.compile requires PyTorch 2+ and Python < 3.12, using eager mode'
-            )
+            # Note: torch.compile may add prefixes to parameter names, which can cause
+            # issues with state_dict loading. See notebooks/prediction.py for an example
+            # of how to handle this.
 
         # Determine what the model should target
         if training_hparams and 'target' in training_hparams:

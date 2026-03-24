@@ -23,7 +23,6 @@ training:
   use_logging: true
   wandb_project: "self-interferometry"
   experiment_name: "lstm_setup"
-  checkpoint_dir: "./analysis/checkpoints"
   target: "velocity"  # "velocity" or "displacement" - what the model predicts
 
 loss:
