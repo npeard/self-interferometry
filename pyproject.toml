@@ -57,6 +57,7 @@ dev = [
     "marimo",
     "lmfit",
     "uncertainties",
+    "schemdraw",
 ]
 
 [tool.flit.module]
