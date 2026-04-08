@@ -9,15 +9,18 @@ from pathlib import Path
 from typing import Any, Union
 
 import lightning as L
-import matplotlib.pyplot as plt
 import torch
 import yaml
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
+from torch.utils.data import DataLoader
 
 from self_interferometry.analysis.datasets import get_data_loaders
-from self_interferometry.analysis.lightning_ensemble import Ensemble
-from self_interferometry.analysis.lightning_fusion import Fusion
+from self_interferometry.analysis.lit_module import LitModule
+from self_interferometry.analysis.synthetic_lit_module import (
+    SyntheticIndexDataset,
+    SyntheticLitModule,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +33,7 @@ class TrainingConfig:
     training_config: dict[str, Any]
     data_config: dict[str, Any]
     loss_config: dict[str, Any]
+    synthetic_config: dict[str, Any] | None = None
     is_hyperparameter_search: bool = False
     search_space: dict[str, list[Any]] | None = None
 
@@ -48,12 +52,21 @@ class TrainingConfig:
         with Path(config_path).open() as f:
             config_dict = yaml.safe_load(f)
 
+        synthetic_config = config_dict.get('synthetic')
+
         # Check if this is a hyperparameter search config
-        if (
+        # Also check synthetic section for list-valued params (e.g. wavelengths_nm)
+        has_search_params = (
             any(isinstance(v, list) for v in config_dict['model'].values())
             or any(isinstance(v, list) for v in config_dict['training'].values())
             or any(isinstance(v, list) for v in config_dict['loss'].values())
-        ):
+            or any(isinstance(v, list) for v in config_dict['data'].values())
+            or (
+                synthetic_config is not None
+                and any(isinstance(v, list) for v in synthetic_config.values())
+            )
+        )
+        if has_search_params:
             return cls._create_search_configs(config_dict)
 
         return cls(
@@ -61,82 +74,95 @@ class TrainingConfig:
             training_config=config_dict['training'],
             loss_config=config_dict['loss'],
             data_config=config_dict['data'],
+            synthetic_config=synthetic_config,
         )
+
+    @classmethod
+    def _split_list_params(
+        cls, section: dict[str, Any]
+    ) -> tuple[dict[str, list], dict[str, Any]]:
+        """Split a config section into list (search) and fixed parameters."""
+        lists = {k: v for k, v in section.items() if isinstance(v, list)}
+        fixed = {k: v for k, v in section.items() if not isinstance(v, list)}
+        return lists, fixed
 
     @classmethod
     def _create_search_configs(
         cls, config_dict: dict[str, Any]
     ) -> list['TrainingConfig']:
         """Create multiple configurations for hyperparameter search."""
-        # Separate list and non-list parameters
-        model_lists = {
-            k: v for k, v in config_dict['model'].items() if isinstance(v, list)
-        }
-        model_fixed = {
-            k: v for k, v in config_dict['model'].items() if not isinstance(v, list)
-        }
+        # Separate list and non-list parameters for each section
+        model_lists, model_fixed = cls._split_list_params(config_dict['model'])
+        training_lists, training_fixed = cls._split_list_params(config_dict['training'])
+        loss_lists, loss_fixed = cls._split_list_params(config_dict['loss'])
+        data_lists, data_fixed = cls._split_list_params(config_dict['data'])
 
-        training_lists = {
-            k: v for k, v in config_dict['training'].items() if isinstance(v, list)
-        }
-        training_fixed = {
-            k: v for k, v in config_dict['training'].items() if not isinstance(v, list)
-        }
+        # Handle synthetic section (optional)
+        synthetic_raw = config_dict.get('synthetic')
+        if synthetic_raw is not None:
+            synthetic_lists, synthetic_fixed = cls._split_list_params(synthetic_raw)
+        else:
+            synthetic_lists, synthetic_fixed = {}, {}
 
-        loss_lists = {
-            k: v for k, v in config_dict['loss'].items() if isinstance(v, list)
-        }
-        loss_fixed = {
-            k: v for k, v in config_dict['loss'].items() if not isinstance(v, list)
-        }
+        # Gather all sections for combination generation
+        sections = [
+            ('model', model_lists, model_fixed),
+            ('training', training_lists, training_fixed),
+            ('loss', loss_lists, loss_fixed),
+            ('data', data_lists, data_fixed),
+            ('synthetic', synthetic_lists, synthetic_fixed),
+        ]
 
-        # Generate all combinations
-        model_keys = list(model_lists.keys())
-        model_values = list(model_lists.values())
+        # Build keys/values for each section
+        all_keys = []
+        all_values = []
+        section_names = []
+        for name, lists, _ in sections:
+            for k, v in lists.items():
+                all_keys.append((name, k))
+                all_values.append(v)
+                section_names.append(name)
 
-        training_keys = list(training_lists.keys())
-        training_values = list(training_lists.values())
-
-        loss_keys = list(loss_lists.keys())
-        loss_values = list(loss_lists.values())
+        # Generate all combinations across all sections
+        all_combinations = list(product(*all_values)) if all_values else [()]
 
         configs = []
+        for combo in all_combinations:
+            # Start with fixed values for each section
+            section_configs = {
+                'model': model_fixed.copy(),
+                'training': training_fixed.copy(),
+                'loss': loss_fixed.copy(),
+                'data': data_fixed.copy(),
+                'synthetic': synthetic_fixed.copy(),
+            }
 
-        # Generate model combinations
-        model_combinations = list(product(*model_values)) if model_values else [()]
-        training_combinations = (
-            list(product(*training_values)) if training_values else [()]
-        )
-        loss_combinations = list(product(*loss_values)) if loss_values else [()]
+            # Apply the search values from this combination
+            for (section_name, key), value in zip(all_keys, combo, strict=False):
+                section_configs[section_name][key] = value
 
-        for model_combo in model_combinations:
-            model_config = model_fixed.copy()
-            model_config.update(dict(zip(model_keys, model_combo, strict=False)))
+            # Build synthetic_config (None if no synthetic section)
+            synthetic_config = (
+                section_configs['synthetic'] if synthetic_raw is not None else None
+            )
 
-            for training_combo in training_combinations:
-                training_config = training_fixed.copy()
-                training_config.update(
-                    dict(zip(training_keys, training_combo, strict=False))
+            configs.append(
+                cls(
+                    model_config=section_configs['model'],
+                    training_config=section_configs['training'],
+                    loss_config=section_configs['loss'],
+                    data_config=section_configs['data'],
+                    synthetic_config=synthetic_config,
+                    is_hyperparameter_search=True,
+                    search_space={
+                        'model': model_lists,
+                        'training': training_lists,
+                        'loss': loss_lists,
+                        'data': data_lists,
+                        'synthetic': synthetic_lists,
+                    },
                 )
-
-                for loss_combo in loss_combinations:
-                    loss_config = loss_fixed.copy()
-                    loss_config.update(dict(zip(loss_keys, loss_combo, strict=False)))
-
-                    configs.append(
-                        cls(
-                            model_config=model_config,
-                            training_config=training_config,
-                            loss_config=loss_config,
-                            data_config=config_dict['data'],
-                            is_hyperparameter_search=True,
-                            search_space={
-                                'model': model_lists,
-                                'training': training_lists,
-                                'loss': loss_lists,
-                            },
-                        )
-                    )
+            )
 
         # Randomly shuffle configurations
         random.shuffle(configs)
@@ -146,23 +172,23 @@ class TrainingConfig:
 class TrainingInterface:
     """Main trainer class for managing model training."""
 
+    CHECKPOINT_DIR = Path(__file__).parent / 'models' / 'checkpoints'
+
     def __init__(
-        self,
-        config: TrainingConfig | None = None,
-        experiment_name: str | None = None,
-        checkpoint_dir: str | None = None,
+        self, config: TrainingConfig | None = None, experiment_name: str | None = None
     ):
-        """Args:
-        config: Training configuration (None for checkpoint evaluation mode)
-        experiment_name: Name for logging and checkpointing
-        checkpoint_dir: Directory for saving checkpoints.
+        """Initialize the training interface.
+
+        Args:
+            config: Training configuration (None for checkpoint evaluation mode)
+            experiment_name: Name for logging and checkpointing
         """
         self.config = config
+        self.checkpoint_dir = str(self.CHECKPOINT_DIR)
 
         # Only setup training components if config is provided
         if config is not None:
             self.experiment_name = experiment_name or config.model_config['type']
-            self.checkpoint_dir = checkpoint_dir or './checkpoints'
 
             # Create checkpoint directory
             Path(self.checkpoint_dir).mkdir(parents=True, exist_ok=True)
@@ -191,43 +217,61 @@ class TrainingInterface:
                 f'FlashAttention available: {torch.backends.cuda.flash_sdp_enabled()}'
             )
 
+    def _is_synthetic(self) -> bool:
+        """Check if synthetic training mode is enabled."""
+        return (
+            self.config.synthetic_config is not None
+            and self.config.synthetic_config.get('use_synthetic_training', False)
+        )
+
     def setup_data(
         self,
         dataset_path: str | None = None,
         batch_size: int | None = None,
         split_ratios: tuple[int, int, int] | None = None,
         num_workers: int | None = None,
-        seed: int | None = None,
-        channel_dropout: float | None = None,
     ):
         """Setup data loaders.
+
+        For synthetic training mode, creates dummy dataloaders that provide
+        batch indices (actual data is generated on-device in the LitModule).
+        For real data, loads HDF5 datasets as before.
 
         Args:
             dataset_path: Path to dataset file (if None, uses config)
             batch_size: Batch size (if None, uses config)
             split_ratios: Train/val/test split ratios (if None, uses config)
             num_workers: Number of data loader workers (if None, uses config)
-            seed: Random seed for splitting (if None, uses config)
-            channel_dropout: Channel dropout rate (if None, uses config)
         """
-        # Convert data_dir to absolute path
-        base_dir = Path(__file__).parent.parent  # Go up two levels from training.py
+        if batch_size is None:
+            batch_size = self.config.training_config['batch_size']
+
+        # Synthetic training: create dummy dataloaders
+        if self._is_synthetic():
+            syn = self.config.synthetic_config
+            steps = syn['steps_per_epoch']
+            val_steps = syn.get('val_steps', steps // 5)
+
+            train_ds = SyntheticIndexDataset(steps * batch_size)
+            val_ds = SyntheticIndexDataset(val_steps * batch_size)
+
+            self.train_loader = DataLoader(
+                train_ds, batch_size=batch_size, shuffle=True
+            )
+            self.val_loader = DataLoader(val_ds, batch_size=batch_size)
+            self.test_loader = self.val_loader
+            return
+
+        # Real data: load HDF5 datasets
+        base_dir = Path(__file__).parent.parent
 
         def resolve_path(data_dir: str, filename: str | None = None) -> str:
-            """Resolve path relative to project root, optionally joining with
-            filename.
-            """
-            # Remove leading './' if present
+            """Resolve path relative to project root."""
             data_dir = str(data_dir).lstrip('./')
             abs_dir = base_dir / data_dir
-
-            # Create directory if it doesn't exist
             Path(abs_dir).mkdir(parents=True, exist_ok=True)
-
-            # If filename is provided, join it with the directory
             return str(abs_dir / filename) if filename else str(abs_dir)
 
-        # Use provided arguments or fall back to config
         if dataset_path is None:
             data_dir = self.config.data_config['data_dir']
             dataset_path = resolve_path(
@@ -237,34 +281,32 @@ class TrainingInterface:
         if split_ratios is None:
             split_ratios = self.config.data_config['split_ratios']
 
-        if seed is None:
-            seed = self.config.data_config['split_seed']
-
-        if batch_size is None:
-            batch_size = self.config.training_config['batch_size']
-
         if num_workers is None:
             num_workers = self.config.data_config['num_workers']
-
-        if channel_dropout is None:
-            # Get channel_dropout parameter from config
-            if self.config.model_config['role'] == 'ensemble':
-                channel_dropout = 0.0
-            else:
-                channel_dropout = self.config.data_config['channel_dropout']
 
         self.train_loader, self.val_loader, self.test_loader = get_data_loaders(
             dataset_path=dataset_path,
             split_ratios=split_ratios,
             batch_size=batch_size,
             num_workers=num_workers,
-            seed=seed,
-            channel_dropout=channel_dropout,
         )
 
-    def create_lightning_module(self) -> Fusion | Ensemble:
-        """Create lightning module based on model type."""
-        model_role = self.config.model_config['role']
+    def create_lightning_module(self) -> LitModule:
+        """Create lightning module based on model type.
+
+        Derives in_channels from data configuration:
+        - Synthetic: len(wavelengths_nm)
+        - Real data: num_pd_channels (default 3)
+        """
+        # Derive in_channels from data, not model config
+        if self._is_synthetic():
+            syn = self.config.synthetic_config
+            wavelengths = syn['wavelengths_nm']
+            self.config.model_config['in_channels'] = len(wavelengths)
+        else:
+            self.config.model_config['in_channels'] = self.config.data_config.get(
+                'num_pd_channels', 3
+            )
 
         # Common optimizer hyperparameters
         optimizer_hparams = {
@@ -272,43 +314,42 @@ class TrainingInterface:
             # TODO: why is lr a string?
             'lr': eval(self.config.training_config['learning_rate']),
             'momentum': self.config.training_config['momentum'],
+            'weight_decay': eval(self.config.training_config['weight_decay']),
         }
 
         # Common scheduler hyperparameters
-        max_epochs = self.config.training_config['max_epochs']
         warmup_epochs = self.config.training_config['warmup_epochs']
-        cosine_epochs = max_epochs - warmup_epochs
-        target_lr = eval(self.config.training_config['learning_rate'])
+        T_0 = self.config.training_config['T_0']
+        T_mult = self.config.training_config['T_mult']
 
         scheduler_hparams = {
             'warmup_epochs': warmup_epochs,
-            'cosine_epochs': cosine_epochs,
-            'target_lr': target_lr,
-            'T_max': cosine_epochs,  # For CosineAnnealingLR
+            'T_0': T_0,
+            'T_mult': T_mult,
             'eta_min': self.config.training_config['eta_min'],
         }
 
-        if model_role == 'standard':
-            return Fusion(
-                model_hparams=self.config.model_config,
-                optimizer_hparams=optimizer_hparams,
-                scheduler_hparams=scheduler_hparams,
-                loss_hparams=self.config.loss_config,
-                training_hparams=self.config.training_config,
+        common_kwargs = dict(
+            model_hparams=self.config.model_config,
+            optimizer_hparams=optimizer_hparams,
+            scheduler_hparams=scheduler_hparams,
+            loss_hparams=self.config.loss_config,
+            training_hparams=self.config.training_config,
+            data_hparams=self.config.data_config,
+        )
+
+        if self._is_synthetic():
+            syn = self.config.synthetic_config
+            return SyntheticLitModule(
+                **common_kwargs,
+                wavelengths_nm=syn['wavelengths_nm'],
+                start_freq=syn.get('start_freq', 1.0),
+                end_freq=syn.get('end_freq', 1000.0),
+                steps_per_epoch=syn['steps_per_epoch'],
+                max_displacement_um=syn.get('max_displacement_um', 5.0),
             )
-        elif model_role == 'ensemble':
-            return Ensemble(
-                model_hparams=self.config.model_config,
-                optimizer_hparams=optimizer_hparams,
-                scheduler_hparams=scheduler_hparams,
-                loss_hparams=self.config.loss_config,
-                training_hparams=self.config.training_config,
-            )
-        else:
-            raise ValueError(
-                f'Unknown model role: {model_role}. '
-                f'Supported roles: "standard", "ensemble"'
-            )
+
+        return LitModule(**common_kwargs)
 
     def setup_trainer(self) -> L.Trainer:
         """Setup Lightning trainer with callbacks and loggers."""
@@ -349,7 +390,7 @@ class TrainingInterface:
             max_epochs=self.config.training_config['max_epochs'],
             callbacks=callbacks,
             logger=loggers,
-            check_val_every_n_epoch=7,
+            check_val_every_n_epoch=5,
             accelerator=accelerator,
             devices=devices,
         )
@@ -362,165 +403,17 @@ class TrainingInterface:
             val_dataloaders=self.val_loader,
         )
 
-        # if self.config.training_config.get('use_logging', False):
-        #     self.trainer.loggers[0].experiment.finish()
-
     def test(self):
-        """Test the model."""
+        """Test the model using best checkpoint."""
         if hasattr(self, 'test_loader'):
-            self.trainer.test(self.lightning_module, dataloaders=self.test_loader)
+            checkpoint_callback = None
+            for callback in self.trainer.callbacks:
+                if isinstance(callback, ModelCheckpoint):
+                    checkpoint_callback = callback
+                    break
 
-    def plot_predictions_from_checkpoint(
-        self,
-        checkpoint_path: str,
-        dataset_path: str,
-        batch_size: int = 64,
-        split_ratios: tuple[int, int, int] = (80, 10, 10),
-        num_workers: int = 4,
-        seed: int = 42,
-    ):
-        """Plot predictions from a checkpoint.
-
-        Creates a plot with up to 4 rows:
-        1. Predicted velocities vs targets
-        2-4. Input signals (up to 3 photodiode channels)
-
-        Args:
-            checkpoint_path: Path to the checkpoint file
-            dataset_path: Path to the dataset file
-            batch_size: Batch size for data loader
-            split_ratios: Train/val/test split ratios
-            num_workers: Number of data loader workers
-            seed: Random seed for data splitting
-        """
-        # Load the model from checkpoint
-        model = Fusion.load_from_checkpoint(checkpoint_path, strict=False)
-        trainer = L.Trainer(accelerator='cpu', logger=[])
-
-        # Figure out which role the model was trained in so we setup the correct data
-        model_role = model.model_hparams['role']
-        if model_role == 'standard':
-            channel_dropout = 0.0  # Standard models use all channels
-        elif model_role == 'ensemble':
-            channel_dropout = 0.0  # Ensemble models don't use dropout for evaluation
-        else:
-            raise ValueError(
-                f'Unknown model role: {model_role}. '
-                f'Supported roles: "standard", "ensemble"'
+            self.trainer.test(
+                self.lightning_module,
+                dataloaders=self.test_loader,
+                ckpt_path='best' if checkpoint_callback else None,
             )
-
-        # Setup data loaders with explicit parameters
-        self.setup_data(
-            dataset_path=dataset_path,
-            batch_size=batch_size,
-            split_ratios=split_ratios,
-            num_workers=num_workers,
-            seed=seed,
-            channel_dropout=channel_dropout,
-        )
-
-        # Get predictions
-        predictions = trainer.predict(model, self.test_loader)
-
-        # Process the first batch of predictions
-        # predictions[batch_idx] returns a tuple of (velocity_hat, velocity_target,
-        # displacement_hat, displacement_target, signals)
-        batch_idx = 0
-        velocity_hat = predictions[batch_idx][0].cpu().numpy()  # Predicted velocities
-        velocity_target = predictions[batch_idx][1].cpu().numpy()  # Target velocities
-        displacement_hat = (
-            predictions[batch_idx][2].cpu().numpy()
-        )  # Predicted displacement
-        displacement_target = (
-            predictions[batch_idx][3].cpu().numpy()
-        )  # Target displacement
-        signals = predictions[batch_idx][4].cpu().numpy()  # Input signals
-
-        logger.debug(f'Signals shape: {signals.shape}')
-        logger.debug(f'Velocity hat shape: {velocity_hat.shape}')
-        logger.debug(f'Velocity target shape: {velocity_target.shape}')
-        logger.debug(f'Displacement hat shape: {displacement_hat.shape}')
-        logger.debug(f'Displacement target shape: {displacement_target.shape}')
-
-        # Get the number of samples in the batch and number of PD channels
-        batch_size, num_channels, signal_length = signals.shape
-
-        # Calculate MSE losses for the entire batch
-        mse_loss_fn = torch.nn.MSELoss()
-        velocity_tensor = torch.tensor(velocity_hat)
-        velocity_target_tensor = torch.tensor(velocity_target)
-        displacement_tensor = torch.tensor(displacement_hat)
-        displacement_target_tensor = torch.tensor(displacement_target)
-        batch_velocity_mse = mse_loss_fn(velocity_tensor, velocity_target_tensor).item()
-        batch_displacement_mse = mse_loss_fn(
-            displacement_tensor, displacement_target_tensor
-        ).item()
-
-        # Plot for each sample in the batch
-        for i in range(
-            min(batch_size, 10)
-        ):  # Limit to 10 samples to avoid too many plots
-            # Calculate sample-specific MSE losses
-            sample_velocity_mse = mse_loss_fn(
-                torch.tensor(velocity_hat[i]), torch.tensor(velocity_target[i])
-            ).item()
-            sample_displacement_mse = mse_loss_fn(
-                torch.tensor(displacement_hat[i]), torch.tensor(displacement_target[i])
-            ).item()
-
-            # Create a figure with subplots - one for velocities and up to 3 for signals
-            fig, axs = plt.subplots(1 + num_channels, 1, figsize=(10, 8), sharex=True)
-
-            # Plot predicted vs target velocities on the primary y-axis
-            axs[0].plot(velocity_target[i], label='Target Velocity', color='blue')
-            axs[0].plot(
-                velocity_hat[i], label='Predicted Velocity', color='red', linestyle='--'
-            )
-            axs[0].set_title(
-                f'Velocity (MSE: {sample_velocity_mse:.2e}) and '
-                f'Displacement (MSE: {sample_displacement_mse:.2e})'
-            )
-            axs[0].set_ylabel('Velocity (μm/s)', color='blue')
-            axs[0].tick_params(axis='y', labelcolor='blue')
-            # axs[0].legend(loc='upper left')
-            axs[0].grid(True, alpha=0.3)
-
-            # Create a twin axis for displacement
-            ax_twin = axs[0].twinx()
-            ax_twin.plot(
-                displacement_target[i], label='Target Displacement', color='green'
-            )
-            ax_twin.plot(
-                displacement_hat[i],
-                label='Predicted Displacement',
-                color='orange',
-                linestyle='--',
-            )
-            ax_twin.set_ylabel('Displacement (μm)', color='green')
-            ax_twin.tick_params(axis='y', labelcolor='green')
-            ax_twin.legend(loc='upper right')
-
-            # Ensure both legends are visible
-            lines1, labels1 = axs[0].get_legend_handles_labels()
-            lines2, labels2 = ax_twin.get_legend_handles_labels()
-            ax_twin.legend(lines1 + lines2, labels1 + labels2, loc='upper right')
-
-            # Plot each input signal channel
-            for j in range(num_channels):
-                channel_names = ['PD1 (RP1_CH2)', 'PD2 (RP2_CH1)', 'PD3 (RP2_CH2)']
-                axs[j + 1].plot(signals[i, j, :], label=f'Channel {j + 1}')
-                axs[j + 1].set_title(f'Input Signal - {channel_names[j]}')
-                axs[j + 1].set_ylabel('Amplitude')
-                axs[j + 1].grid(True)
-
-            # Set x-axis label for the bottom subplot
-            axs[-1].set_xlabel('Sample')
-
-            # Add overall title with batch MSE values
-            plt.suptitle(
-                f'Sample {i + 1} from Batch {batch_idx + 1}\n'
-                f'Batch MSE: Velocity={batch_velocity_mse:.2e}, '
-                f'Displacement={batch_displacement_mse:.2e}'
-            )
-            plt.tight_layout()
-            plt.show()

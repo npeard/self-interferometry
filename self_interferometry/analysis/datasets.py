@@ -40,21 +40,14 @@ class VelocityDataset(Dataset):
         file_path: Path to HDF5 file
         num_pd_channels: Number of photodiode channels to use (1-3)
         cache_size: Number of items to cache in memory (0 for no caching)
-        channel_dropout: Probability of dropping a channel during training
-            (default: 0.0)
     """
 
     def __init__(
-        self,
-        file_path: str | Path,
-        num_pd_channels: int = 3,
-        cache_size: int = 0,
-        channel_dropout: float = 0.0,
+        self, file_path: str | Path, num_pd_channels: int = 3, cache_size: int = 0
     ):
         self.file_path = file_path
         self.num_pd_channels = min(max(1, num_pd_channels), 3)  # Ensure between 1 and 3
         self.cache_size = cache_size
-        self.channel_dropout = channel_dropout  # Probability of dropping a channel
         self.sample_rate = None  # Will be set in open_hdf5
 
         # Channel keys for photodiode signals
@@ -212,17 +205,6 @@ class VelocityDataset(Dataset):
         # Apply z-score normalization to photodiode signals
         signals = (signals - self.pd_means) / self.pd_stds
 
-        # Apply channel dropout during training if probability > 0 and multiple channels
-        if (
-            self.channel_dropout > 0
-            and self.num_pd_channels > 1
-            and np.random.random() < self.channel_dropout
-        ):
-            # Randomly select a channel to drop
-            channel_to_drop = np.random.randint(0, self.num_pd_channels)
-            # Set the selected channel to zeros
-            signals[channel_to_drop, :] = 0.0
-
         # Convert to PyTorch tensors
         signals_tensor = torch.FloatTensor(signals)
         velocity_tensor = torch.FloatTensor(velocity)
@@ -252,17 +234,18 @@ def get_data_loaders(
     split_ratios: tuple[int, int, int] = (80, 10, 10),
     batch_size: int = 32,
     num_workers: int = 4,
-    seed: int = 42,
     **dataset_kwargs: dict[str],
 ) -> tuple[DataLoader, DataLoader, DataLoader]:
     """Create DataLoaders for training, validation, and testing from a single dataset.
+
+    The train/val/test split is always deterministic with a hardcoded seed of 42,
+    ensuring the same split every time for reproducible evaluation.
 
     Args:
         dataset_path: Path to the single HDF5 dataset file
         split_ratios: Tuple of (train, val, test) percentages that sum to 100
         batch_size: Batch size for all dataloaders
         num_workers: Number of worker processes for data loading
-        seed: Random seed for reproducible splits
         **dataset_kwargs: Additional arguments to pass to the dataset class
 
     Returns:
@@ -281,8 +264,8 @@ def get_data_loaders(
     val_size = int(total_length * split_ratios[1] / 100)
     test_size = total_length - train_size - val_size  # Remainder goes to test
 
-    # Create random split
-    generator = torch.Generator().manual_seed(seed)
+    # Create random split with hardcoded seed for deterministic splits
+    generator = torch.Generator().manual_seed(42)
     train_dataset, val_dataset, test_dataset = torch.utils.data.random_split(
         full_dataset, [train_size, val_size, test_size], generator=generator
     )

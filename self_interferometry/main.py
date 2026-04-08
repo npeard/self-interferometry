@@ -1,11 +1,10 @@
 import argparse
 import logging
-import random
 import sys
 import time
 from pathlib import Path
 
-import numpy as np
+import lightning as L
 from acquisition.redpitaya.manager import RedPitayaManager
 from analysis.generate_data import generate_dataset_from_rp
 from analysis.training_interface import TrainingConfig, TrainingInterface
@@ -31,23 +30,13 @@ def setup_logging(verbosity: str) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description='Train a new model or test from checkpoint'
+        description='Train a model or acquire data from Red Pitaya'
     )
     parser.add_argument(
         '--config',
         type=str,
-        default='./analysis/configs/tcn-config.yaml',
-        help='Path to YAML config file. Required for training, optional for testing.',
-    )
-    parser.add_argument(
-        '--checkpoint',
-        type=str,
-        help='Path to checkpoint file for evaluation. Requires --dataset argument.',
-    )
-    parser.add_argument(
-        '--dataset',
-        type=str,
-        help='Path to dataset file for checkpoint evaluation. Required when using --checkpoint.',
+        default='./analysis/models/configs/tcn-config.yaml',
+        help='Path to YAML config file for training.',
     )
     parser.add_argument(
         '--acquire_dataset',
@@ -74,28 +63,6 @@ def parse_args() -> argparse.Namespace:
     )
     # IP address is now handled by RedPitayaManager defaults
     return parser.parse_args()
-
-
-def setup_random_seed(seed: int | None = None) -> int:
-    """Set random seed for reproducibility using NumPy's default_rng.
-
-    Args:
-        seed: Optional seed value. If None, a random seed will be generated.
-
-    Returns:
-        The seed value used.
-    """
-    if seed is None:
-        # Create a non-seeded RNG to generate a seed
-        temp_rng = np.random.default_rng()
-        # Generate a random seed between 0 and 2^32 - 1
-        seed = temp_rng.integers(0, 2**32)
-
-    # Set seeds for both random and numpy
-    random.seed(seed)
-    np.random.default_rng(seed)
-
-    return seed
 
 
 def acquire_dataset(
@@ -132,6 +99,9 @@ def acquire_dataset(
         logger.info('Configuring Red Pitaya for data acquisition...')
         rp_manager.reset_all()
 
+        # Configure daisy chain for synchronized triggering
+        rp_manager.configure_daisy_chain()
+
         # Create dataset
         generate_dataset_from_rp(
             rp_manager=rp_manager,
@@ -145,27 +115,6 @@ def acquire_dataset(
         rp_manager.close_all()
 
 
-def evaluate_checkpoint(
-    checkpoint_path: str, dataset_path: str, logger: logging.Logger
-) -> None:
-    """Evaluate a model from a checkpoint file.
-
-    Args:
-        checkpoint_path: Path to the checkpoint file
-        dataset_path: Path to the dataset file
-        logger: Logger instance for output
-    """
-    logger.info('Loading from checkpoint for evaluation...')
-    logger.info(f'Checkpoint path: {checkpoint_path}')
-    logger.info(f'Dataset path: {dataset_path}')
-
-    # Create trainer with no config for checkpoint evaluation
-    trainer = TrainingInterface(config=None)
-    trainer.plot_predictions_from_checkpoint(
-        checkpoint_path=checkpoint_path, dataset_path=dataset_path
-    )
-
-
 def train_model(config_path: str, logger: logging.Logger) -> None:
     """Train a model using the specified configuration.
 
@@ -175,8 +124,11 @@ def train_model(config_path: str, logger: logging.Logger) -> None:
     """
     config = TrainingConfig.from_yaml(config_path)
 
-    # Set random seed from time
-    seed = setup_random_seed(int(time.time()))
+    # Seed everything (Python random, NumPy, PyTorch, CUDA) from time
+    seed = int(time.time())
+    L.seed_everything(seed)
+    # Note that get_data_loaders in datasets.py uses a hardcoded seed of 42 for
+    # deterministic splits
     logger.info(f'Using random seed: {seed}')
 
     # Convert single config to list for unified processing
@@ -189,7 +141,6 @@ def train_model(config_path: str, logger: logging.Logger) -> None:
         trainer = TrainingInterface(
             config=train_config,
             experiment_name=train_config.training_config['experiment_name'],
-            checkpoint_dir=train_config.training_config['checkpoint_dir'],
         )
 
         # Start training
@@ -223,18 +174,7 @@ def main():
         acquire_dataset(args.num_samples, args.dataset_name, logger)
         sys.exit()
 
-    # Mode 2: Checkpoint Evaluation (no TrainingConfig needed)
-    if args.checkpoint:
-        if not args.dataset:
-            raise ValueError(
-                '--dataset argument is required when using --checkpoint. '
-                'Please specify the path to the dataset file.'
-            )
-
-        evaluate_checkpoint(args.checkpoint, args.dataset, logger)
-        return
-
-    # Mode 3: Training (requires TrainingConfig)
+    # Mode 2: Training (requires TrainingConfig)
     if not args.config:
         raise ValueError('Config file is required for training mode')
 
@@ -244,9 +184,6 @@ def main():
 if __name__ == '__main__':
     # Training new model:
     # python main.py --config path/to/config.yaml
-
-    # Evaluating from checkpoint:
-    # python main.py --checkpoint path/to/checkpoint.ckpt --dataset path/to/dataset.h5
 
     # Acquiring real data from Red Pitaya:
     # python main.py --acquire_dataset --num_samples 5000 --dataset_name my-data.h5
