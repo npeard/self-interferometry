@@ -77,7 +77,7 @@ def _():
 
     # Fringe slope
     im1 = axes[1].imshow(
-        np.log(np.abs(fringe_slope) + 1e-10).T,
+        np.abs(fringe_slope).T,
         extent=[R1_vals[0], R1_vals[-1], -np.pi, np.pi],
         aspect='auto',
         origin='lower',

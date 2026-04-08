@@ -23,16 +23,20 @@ def _(mo):
     A Michelson interferometer converts a phase perturbation $\delta\varphi(t)$ into a
     detected intensity:
 
-    $$I(\varphi) = \frac{I_0}{2}\bigl(1 + V\cos(\varphi_0 + \delta\varphi)\bigr)$$
+    $$I(\varphi) = \frac{I_0}{2}\bigl(1 + V\cos(\varphi_0 + \delta\varphi)\bigr) + \mathcal{N}(0,\sigma)$$
 
     where $\varphi_0$ is the static operating-point phase offset and $V$ is the fringe
-    visibility (set to 1 for an ideal interferometer).
+    visibility (set to 1 for an ideal interferometer). $\mathcal{N}(0,\sigma)$ represents our independent
+    zero-mean Gaussian noise on the channel for shot-noise-limited detection (Poisson statistics).
 
-    For shot-noise-limited detection (Poisson statistics), the Fisher Information on
-    $\delta\varphi$ from a single intensity measurement is:
+    The log likelihood is then
+    $$ \log f(I; \varphi) = \frac{I_0^2}{4\sigma^2}\bigl(I - 1 - V\cos(\varphi_0 + \delta\varphi)\bigr)^2$$
 
-    $$\mathcal{F}(\delta\varphi) = \frac{\bigl(\partial I / \partial \delta\varphi\bigr)^2}{I}
-    = \frac{I_0}{2} \cdot \frac{V^2 \sin^2(\varphi_0 + \delta\varphi)}{1 + V\cos(\varphi_0 + \delta\varphi)}$$
+    The Fisher Information on $\delta\varphi$ from a single intensity measurement is
+    the expectation of the squared derivative of the log-likelihood with respect to $\delta\varphi$:
+
+    $$\mathcal{I}(I; \delta\varphi) = \bigl(\partial \log f / \partial \delta\varphi\bigr)^2
+    = \frac{I_0^2 V^2}{4\sigma^2} \cdot \sin^2(\varphi_0 + \delta\varphi) $$
 
     - **Minimum FI**: at $\varphi_0 + \delta\varphi = 0, \pm\pi$ (bright/dark fringe — flat intensity, zero slope)
     - **Maximum FI**: near quadrature $\varphi_0 + \delta\varphi \approx \pm\pi/2$ (steepest fringe slope)
@@ -60,13 +64,24 @@ def _(np):
         """Detected intensity for a Michelson interferometer."""
         return (i0 / 2) * (1 + vis * np.cos(p0 + dphi))
 
-    def fisher_info(dphi, p0, i0=1.0, vis=1.0):
+    def fisher_info(dphi, p0, i0=1.0, vis=1.0, noise_level=1.0):
         """Shot-noise-limited Fisher Information on delta_phi."""
         total_phase = p0 + dphi
         numerator = (i0 / 2) ** 2 * vis**2 * np.sin(total_phase) ** 2
-        denominator = michelson_intensity(dphi, p0, i0, vis)
-        denominator = np.maximum(denominator, 1e-15)
-        return numerator / denominator
+        # denominator should be noise level, variance of the Gaussian noise
+        return numerator / noise_level
+
+    def fisher_info_displacement(d, p0, wavelength, i0=1.0, vis=1.0, noise_level=1.0):
+        """Fisher Information on physical displacement d (in nm).
+
+        Phase is phi = 4*pi*d / wavelength (Michelson round-trip).
+        FI w.r.t. d picks up the Jacobian factor (4*pi/wavelength)^2.
+        """
+        phase = 4 * np.pi * d / wavelength
+        jacobian_sq = (4 * np.pi / wavelength) ** 2
+        return (
+            (i0 / 2) ** 2 * vis**2 * np.sin(p0 + phase) ** 2 * jacobian_sq / noise_level
+        )
 
     return I0, V, delta_phi, fisher_info, michelson_intensity
 
@@ -180,29 +195,52 @@ def _(I0, V, delta_phi, fisher_info, np, plt):
     _axes3[0].grid(True, alpha=0.3)
 
     _K_range = np.arange(1, 21)
-    _min_FI = []
-    _mean_FI = []
+
+    # Uniform unit-circle [0, 2π) spacing
+    _min_FI_uc = []
     for _K in _K_range:
         _offsets = np.linspace(0, np.pi, _K, endpoint=False)
         _FI_total = np.zeros_like(delta_phi)
         for _p0 in _offsets:
             _FI_total += fisher_info(delta_phi, _p0, I0, V)
-        _min_FI.append(np.min(_FI_total))
-        _mean_FI.append(np.mean(_FI_total))
+        _min_FI_uc.append(np.min(_FI_total))
+
+    # Monte Carlo: random phase offsets drawn uniformly from [0, 2π)
+    _N_mc = 1000
+    _rng = np.random.default_rng(42)
+    _mc_min_mean = np.zeros(len(_K_range))
+    _mc_min_std = np.zeros(len(_K_range))
+    for _i, _K in enumerate(_K_range):
+        _rand_offsets = _rng.uniform(0, np.pi, (_N_mc, _K))
+        _all_phases = (
+            _rand_offsets[:, :, np.newaxis] + delta_phi[np.newaxis, np.newaxis, :]
+        )
+        _FI_trials = np.sum((I0 / 2) ** 2 * V**2 * np.sin(_all_phases) ** 2, axis=1)
+        _mc_min_mean[_i] = np.mean(np.min(_FI_trials, axis=1))
+        _mc_min_std[_i] = np.std(np.min(_FI_trials, axis=1))
 
     _axes3[1].plot(
         _K_range,
-        _min_FI,
+        _min_FI_uc,
         'o-',
-        color='tab:red',
-        label=r'Worst-case (min over $\delta\varphi$)',
+        color='tab:blue',
+        label=r'Uniform $[0,\pi)$: worst-case',
+        linewidth=1.5,
     )
     _axes3[1].plot(
         _K_range,
-        _mean_FI,
+        _mc_min_mean,
         's-',
-        color='tab:blue',
-        label=r'Average over $\delta\varphi$',
+        color='tab:orange',
+        label=r'Monte Carlo: worst-case (mean $\pm 1\sigma$)',
+        linewidth=1.5,
+    )
+    _axes3[1].fill_between(
+        _K_range,
+        np.maximum(_mc_min_mean - _mc_min_std, 0),
+        _mc_min_mean + _mc_min_std,
+        color='tab:orange',
+        alpha=0.2,
     )
     _axes3[1].axhline(
         np.max(_FI_quad),
@@ -212,10 +250,13 @@ def _(I0, V, delta_phi, fisher_info, np, plt):
         label='Single max (quadrature)',
     )
     _axes3[1].set_xlabel('Number of interferometers K')
-    _axes3[1].set_ylabel(r'Fisher Information $\mathcal{F}$')
-    _axes3[1].set_title('Scaling of FI with Number of Interferometers')
+    _axes3[1].set_ylabel(
+        r'Minimum Fisher Information $\min_{\delta\varphi}\,\mathcal{F}$'
+    )
+    _axes3[1].set_title('Scaling of Min(FI) with Number of Interferometers')
     _axes3[1].legend(fontsize=8)
     _axes3[1].grid(True, alpha=0.3)
+    _axes3[1].set_xticks(_K_range)
 
     plt.tight_layout()
     plt.show()
@@ -306,6 +347,260 @@ def _(mo):
     **Bottom:** The three detected intensity signals. When one channel is flat
     (zero slope), the others are changing rapidly, providing complementary
     information about the phase.
+    """)
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    ## Multi-Color Interferometer Arrays
+
+    When interferometers operate at **different wavelengths**, each maps the same physical
+    displacement $d$ to a different phase:
+
+    $$\varphi_k = \frac{4\pi}{\lambda_k}\,d + \varphi_0^{(k)}$$
+
+    The Fisher Information on displacement $d$ for interferometer $k$ acquires a
+    Jacobian factor from the wavelength-dependent phase sensitivity:
+
+    $$\mathcal{F}_k(d) = \frac{I_0^2 V^2}{4\sigma^2}
+    \sin^2\!\Bigl(\varphi_0^{(k)} + \frac{4\pi d}{\lambda_k}\Bigr)
+    \cdot \Bigl(\frac{4\pi}{\lambda_k}\Bigr)^2$$
+
+    Wavelength diversity provides two advantages over phase-offset diversity alone:
+
+    1. **Incommensurate fringe periods** — the zeros of $\sin^2(\cdot)$ for different
+       $\lambda$ do not coincide, so blind spots are suppressed more effectively than
+       with a single color at different offsets.
+    2. **Shorter wavelengths contribute more FI per channel** via the $(4\pi/\lambda)^2$
+       prefactor.
+
+    Below we compare how the mean Fisher Information (averaged over displacement) scales
+    with array size $K$ for multi-color arrays vs. single-color phase-offset-diverse arrays.
+    """)
+
+
+@app.cell
+def _(I0, V, np, plt):
+    _N_d = 1000
+    _d_grid = np.linspace(0, 1000, _N_d)  # displacement in nm, 0 to 2 µm
+
+    _K_range = np.arange(1, 21)
+    _N_mc = 1000
+    _rng = np.random.default_rng(42)
+
+    _lambda_ref = 635.0  # reference wavelength in nm
+
+    # --- Multi-color: random wavelengths in [450, 780] nm + random phase offsets ---
+    _mc_multi_min_mean = np.zeros(len(_K_range))
+    _mc_multi_min_std = np.zeros(len(_K_range))
+    _mc_multi_avg_mean = np.zeros(len(_K_range))
+    _mc_multi_avg_std = np.zeros(len(_K_range))
+    for _i, _K in enumerate(_K_range):
+        _lambdas = _rng.uniform(450, 675, (_N_mc, _K))  # nm
+        _phi0s = _rng.uniform(0, np.pi, (_N_mc, _K))
+        # Shape: (N_mc, K, N_d)
+        _phases = (
+            _phi0s[:, :, np.newaxis]
+            + 4
+            * np.pi
+            * _d_grid[np.newaxis, np.newaxis, :]
+            / _lambdas[:, :, np.newaxis]
+        )
+        _jacobian_sq = (4 * np.pi / _lambdas) ** 2  # (N_mc, K)
+        _FI_per_channel = (
+            (I0 / 2) ** 2 * V**2 * np.sin(_phases) ** 2 * _jacobian_sq[:, :, np.newaxis]
+        )
+        _FI_total = np.sum(_FI_per_channel, axis=1)  # (N_mc, N_d)
+        _min_over_d = np.min(_FI_total, axis=1)  # (N_mc,)
+        _avg_over_d = np.mean(_FI_total, axis=1)  # (N_mc,)
+        _mc_multi_min_mean[_i] = np.mean(_min_over_d)
+        _mc_multi_min_std[_i] = np.std(_min_over_d)
+        _mc_multi_avg_mean[_i] = np.mean(_avg_over_d)
+        _mc_multi_avg_std[_i] = np.std(_avg_over_d)
+
+    # --- Phase-offset only: all at 635 nm, random phase offsets ---
+    _mc_phase_min_mean = np.zeros(len(_K_range))
+    _mc_phase_min_std = np.zeros(len(_K_range))
+    _mc_phase_avg_mean = np.zeros(len(_K_range))
+    _mc_phase_avg_std = np.zeros(len(_K_range))
+    for _i, _K in enumerate(_K_range):
+        _phi0s = _rng.uniform(0, np.pi, (_N_mc, _K))
+        _phases = (
+            _phi0s[:, :, np.newaxis]
+            + 4 * np.pi * _d_grid[np.newaxis, np.newaxis, :] / _lambda_ref
+        )
+        _jacobian_sq_ref = (4 * np.pi / _lambda_ref) ** 2
+        _FI_per_channel = (I0 / 2) ** 2 * V**2 * np.sin(_phases) ** 2 * _jacobian_sq_ref
+        _FI_total = np.sum(_FI_per_channel, axis=1)
+        _min_over_d = np.min(_FI_total, axis=1)
+        _avg_over_d = np.mean(_FI_total, axis=1)
+        _mc_phase_min_mean[_i] = np.mean(_min_over_d)
+        _mc_phase_min_std[_i] = np.std(_min_over_d)
+        _mc_phase_avg_mean[_i] = np.mean(_avg_over_d)
+        _mc_phase_avg_std[_i] = np.std(_avg_over_d)
+
+    # --- Baselines at K=3: specific single-color arrays ---
+    _baseline_lambdas = np.array([635.0, 675.0, 515.0])  # (3_wl,)
+    _baseline_colors = ['tab:red', 'tab:purple', 'tab:green']
+    _baseline_labels = ['635 nm', '675 nm', '515 nm']
+
+    _phi0s = _rng.uniform(0, np.pi, (_N_mc, 3))  # (N_mc, 3_channels)
+    # (3_wl, N_mc, 3_ch, N_d)
+    _phases = (
+        _phi0s[np.newaxis, :, :, np.newaxis]
+        + 4
+        * np.pi
+        * _d_grid[np.newaxis, np.newaxis, np.newaxis, :]
+        / _baseline_lambdas[:, np.newaxis, np.newaxis, np.newaxis]
+    )
+    _jac_sq = (4 * np.pi / _baseline_lambdas) ** 2  # (3_wl,)
+    _FI_per_channel = (
+        (I0 / 2) ** 2
+        * V**2
+        * np.sin(_phases) ** 2
+        * _jac_sq[:, np.newaxis, np.newaxis, np.newaxis]
+    )
+    _FI_total = np.sum(_FI_per_channel, axis=2)  # (3_wl, N_mc, N_d)
+    _FI_min_over_d = np.min(_FI_total, axis=2)  # (3_wl, N_mc)
+    _baseline_min_means = np.mean(_FI_min_over_d, axis=1)  # (3_wl,)
+    _FI_avg_over_d = np.mean(_FI_total, axis=2)  # (3_wl, N_mc)
+    _baseline_avg_means = np.mean(_FI_avg_over_d, axis=1)  # (3_wl,)
+
+    # --- Plot: side-by-side min vs mean FI ---
+    _fig, (_ax_min, _ax_avg) = plt.subplots(1, 2, figsize=(14, 6))
+
+    # Left: Mean of Min FI (worst-case robustness)
+    _ax_min.plot(
+        _K_range,
+        _mc_multi_min_mean,
+        's-',
+        color='tab:blue',
+        linewidth=1.5,
+        label=r'Multi-color ($\lambda \sim U[450,675]$ nm)',
+    )
+    _ax_min.fill_between(
+        _K_range,
+        _mc_multi_min_mean - _mc_multi_min_std,
+        _mc_multi_min_mean + _mc_multi_min_std,
+        color='tab:blue',
+        alpha=0.2,
+    )
+    _ax_min.plot(
+        _K_range,
+        _mc_phase_min_mean,
+        'o-',
+        color='tab:orange',
+        linewidth=1.5,
+        label=r'Phase-offset only (635 nm)',
+    )
+    _ax_min.fill_between(
+        _K_range,
+        _mc_phase_min_mean - _mc_phase_min_std,
+        _mc_phase_min_mean + _mc_phase_min_std,
+        color='tab:orange',
+        alpha=0.2,
+    )
+    for _bm, _bc, _bl in zip(
+        _baseline_min_means, _baseline_colors, _baseline_labels, strict=False
+    ):
+        _ax_min.scatter(
+            3,
+            _bm,
+            s=100,
+            color=_bc,
+            zorder=5,
+            edgecolors='k',
+            linewidths=0.8,
+            label=rf'$K=3$ baseline ({_bl})',
+        )
+    _ax_min.set_xlabel('Number of interferometers $K$')
+    _ax_min.set_ylabel(r'$\langle \min_d \mathcal{F}(d) \rangle$ (nm$^{-2}$)')
+    _ax_min.set_title('Worst-Case FI (Mean of Min over $d$)')
+    _ax_min.legend(fontsize=8)
+    _ax_min.grid(True, alpha=0.3)
+    _ax_min.set_xticks(_K_range)
+
+    # Right: Mean of Mean FI (average sensitivity)
+    _ax_avg.plot(
+        _K_range,
+        _mc_multi_avg_mean,
+        's-',
+        color='tab:blue',
+        linewidth=1.5,
+        label=r'Multi-color ($\lambda \sim U[450,675]$ nm)',
+    )
+    _ax_avg.fill_between(
+        _K_range,
+        _mc_multi_avg_mean - _mc_multi_avg_std,
+        _mc_multi_avg_mean + _mc_multi_avg_std,
+        color='tab:blue',
+        alpha=0.2,
+    )
+    _ax_avg.plot(
+        _K_range,
+        _mc_phase_avg_mean,
+        'o-',
+        color='tab:orange',
+        linewidth=1.5,
+        label=r'Phase-offset only (635 nm)',
+    )
+    _ax_avg.fill_between(
+        _K_range,
+        _mc_phase_avg_mean - _mc_phase_avg_std,
+        _mc_phase_avg_mean + _mc_phase_avg_std,
+        color='tab:orange',
+        alpha=0.2,
+    )
+    for _bm, _bc, _bl in zip(
+        _baseline_avg_means, _baseline_colors, _baseline_labels, strict=False
+    ):
+        _ax_avg.scatter(
+            3,
+            _bm,
+            s=100,
+            color=_bc,
+            zorder=5,
+            edgecolors='k',
+            linewidths=0.8,
+            label=rf'$K=3$ baseline ({_bl})',
+        )
+    _ax_avg.set_xlabel('Number of interferometers $K$')
+    _ax_avg.set_ylabel(r'$\langle \overline{\mathcal{F}}(d) \rangle$ (nm$^{-2}$)')
+    _ax_avg.set_title('Average FI (Mean of Mean over $d$)')
+    _ax_avg.legend(fontsize=8)
+    _ax_avg.grid(True, alpha=0.3)
+    _ax_avg.set_xticks(_K_range)
+
+    plt.tight_layout()
+    plt.show()
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    The two panels reveal a fundamental trade-off between wavelength diversity and
+    worst-case robustness:
+
+    **Left (Worst-Case FI):** Single-color arrays with diverse phase offsets
+    outperform multi-color arrays, especially at small $K$. This is because all
+    channels at the same wavelength oscillate at the **same spatial frequency** —
+    their zeros are fixed relative to each other, so well-spread phase offsets
+    guarantee at least one channel is always near quadrature. With different
+    wavelengths, the fringe periods are **incommensurate**, and by Kronecker's
+    theorem the joint phase trajectory is dense on the torus: there always exist
+    displacements where all channels are simultaneously near their zeros, driving
+    the worst-case FI down.
+
+    **Right (Average FI):** Multi-color arrays achieve higher average FI because
+    shorter wavelengths contribute more information per channel via the
+    $(4\pi/\lambda)^2$ Jacobian factor. The harmonic mean of the wavelength
+    distribution weights shorter $\lambda$ more heavily, boosting the multi-color
+    curve above the single-color reference.
+
+    The **baseline points** at $K=3$ confirm the $1/\lambda^2$ scaling: shorter
+    wavelengths (515 nm) yield more FI per channel than longer ones (675 nm) in
+    both metrics.
     """)
 
 
