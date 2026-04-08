@@ -6,31 +6,9 @@
 
 ## Overview
 
-Self-mixing interferometry (SMI) is a powerful optical sensing technique that leverages the interference between a laser beam and its reflection from a target within the laser cavity itself. The interference inside the laser gain medium results in nonlinear self-mixing which can be read out as a drop in luminescence of the gain medium or a transient voltage drop across the laser diode. The nonlinear self-mixing results in signals that are difficult to interpret and analyze. This repository contains our PyTorch framework for training and deploying neural networks applied to this signal processing task, addressing the fundamental challenges that have limited industrial applications for decades.
+Self-mixing interferometry (SMI) offers a cost-effective and optically simple alternative to Michelson interferometry. However, adapting SMI for standard vibrometry remains challenging because analytical signal processing is brittle and sensitive to laser feedback conditions. Furthermore, achieving true portability for field deployment is limited by severe phase noise introduced in optical fibers.
 
-## The Challenge
-
-Traditional self-mixing interferometry faces significant practical limitations:
-- **Signal interpretation complexity**: SMI signals depend sensitively on alignment conditions, target reflectivity, and feedback parameters
-- **Speckle effects**: Diffusive targets cause signal quality variations that can completely invalidate measurements
-- **Limited signal availability**: Systems often fail with non-cooperative targets or changing environmental conditions
-
-This project demonstrates how **convolutional neural networks** can revolutionize self-mixing interferometry by:
-
-### 🧠 **Intelligent Signal Processing**
-- **Universal signal interpretation**: Neural networks trained on diverse signal conditions can extract displacement information from arbitrary SMI waveforms
-- **Robust to noise and distortion**: Networks maintain performance even with severely degraded signals
-- **Multi-regime operation**: Single model works across different feedback regimes without parameter tuning
-
-### 🔄 **Multi-Channel High-Availability Sensing**
-- **Redundant measurement channels**: Multiple independent SMI sensors provide fault tolerance
-- **Graceful degradation**: System maintains accuracy even when individual channels fail completely
-- **Enhanced reliability**: Achieves high-availability displacement sensing robust to speckle and alignment variations
-
-### ⚡ **Real-Time Performance**
-- **Embeddable networks**: Lightweight architectures suitable for embedded systems
-- **Fast inference**: Process thousands of measurements in milliseconds
-- **No parameter estimation**: Direct displacement inference without complex physics models of the laser self-mixing process
+This repository implements an optical and computational framework that overcomes these limitations, using a multispectral SMI array constructed from standard laboratory components. By leveraging convolutional neural networks, our signal processing pipeline reconstructs mechanical displacement with an RMSE below 200 nm directly through multimode fiber. This synergy of frugal optics and deep learning yields an accessible and precise vibrometry tool uniquely suited for hidden or physically constrained environments.
 
 ## Quick Start for Contributors
 
@@ -57,12 +35,14 @@ This project demonstrates how **convolutional neural networks** can revolutioniz
    pre-commit install
    ```
 
-5. Create a new branch for your feature:
+5. Install the [Marimo](https://marimo.io/) VSCode extension for interactive notebook support. Notebooks in `notebooks/` are Marimo notebooks (`.py` files) and can be opened with `marimo edit notebooks/<name>.py` or directly in VSCode with the extension.
+
+6. Create a new branch for your feature:
    ```bash
    git checkout -b feature-name
    ```
 
-6. Make your changes and run tasks:
+7. Make your changes and run tasks:
    ```bash
    # Run tests
    task test
@@ -83,18 +63,18 @@ This project demonstrates how **convolutional neural networks** can revolutioniz
    task all
    ```
 
-7. Commit and push your changes:
+8. Commit and push your changes:
    ```bash
    git add .
    git commit -m "Description of changes"
    git push origin feature-name
    ```
 
-8. Open a Pull Request on GitHub
+9. Open a Pull Request on GitHub
 
 ## Running the Main Script
 
-The `main.py` script provides three different execution modes for working with the self-mixing interferometry system:
+The `main.py` script provides two execution modes:
 
 ### Mode 1: Training a New Model
 
@@ -113,24 +93,7 @@ python main.py --config path/to/config.yaml
 python main.py --config ./analysis/configs/tcn-config.yaml --verbosity DEBUG
 ```
 
-### Mode 2: Evaluating from Checkpoint
-
-Evaluate a trained model from a checkpoint file on a specific dataset:
-
-```bash
-python main.py --checkpoint path/to/checkpoint.ckpt --dataset path/to/dataset.h5
-```
-
-**Arguments:**
-- `--checkpoint`: Path to the model checkpoint file (`.ckpt`)
-- `--dataset`: Path to the dataset file (`.h5`) for evaluation
-
-**Example:**
-```bash
-python main.py --checkpoint ./checkpoints/model-epoch=50.ckpt --dataset ./analysis/data/test-data.h5
-```
-
-### Mode 3: Acquiring Real Data from Red Pitaya
+### Mode 2: Acquiring Real Data from Red Pitaya
 
 Acquire real experimental data from Red Pitaya hardware for training or testing:
 
@@ -149,3 +112,13 @@ python main.py --acquire_dataset --num_samples 10000 --dataset_name experimental
 ```
 
 **Note:** The Red Pitaya connection uses default settings configured in the `RedPitayaManager`. The acquired data will be saved to `./analysis/data/` directory.
+
+### Evaluating a Trained Model
+
+To visualize predictions, residuals, and input gradient attributions from a trained checkpoint, use the interactive Marimo notebook:
+
+```bash
+marimo edit notebooks/predictions.py
+```
+
+Set the checkpoint path and dataset path (or `"synthetic"`) in the UI controls at the top of the notebook.

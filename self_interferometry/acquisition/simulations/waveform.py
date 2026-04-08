@@ -5,6 +5,7 @@ arbitrary waveforms with specific frequency characteristics.
 """
 
 import numpy as np
+import torch
 from numpy.fft import fft, fftfreq, ifft
 from numpy.random import default_rng
 
@@ -196,13 +197,6 @@ class Waveform:
                 pos_idx = np.argmin(np.abs(self.freq + f))
                 if pos_idx != i:  # Make sure we don't use the same index
                     symmetrized_spectrum[i] = np.conj(self.spectrum[pos_idx])
-        # Note that the following block does not work and leaves some imaginary compents
-        # in the waveform
-        # symmetrized_spectrum = np.where(
-        #     self.freq < 0,
-        #     np.conj(self.spectrum),
-        #     self.spectrum
-        # )
 
         # Update the spectrum with the symmetrized version
         self.spectrum = symmetrized_spectrum
@@ -233,6 +227,120 @@ class Waveform:
 
         # Store the spectrum
         self.spectrum = spectrum
+
+    def _init_torch_cache(self, device: torch.device) -> None:
+        """Initialize cached torch tensors for generate_batch_torch.
+
+        Precomputes frequency grid, valid-frequency mask, and Hermitian symmetry
+        index mappings on the target device. Called once and cached.
+        """
+        N = self.BUFFER_SIZE
+        freq_t = torch.fft.fftfreq(N, d=1.0 / self.acq_sample_rate, device=device)
+
+        # Valid positive frequency mask
+        valid_freqs_t = torch.tensor(
+            self.valid_freqs, dtype=torch.float64, device=device
+        )
+        pos_mask = freq_t > 0
+        pos_freqs = freq_t[pos_mask]
+
+        # Match valid frequencies: for each positive freq, check if any valid freq
+        # is within 0.5 Hz
+        valid_match = torch.any(
+            torch.abs(pos_freqs.unsqueeze(-1) - valid_freqs_t.unsqueeze(0)) <= 0.5,
+            dim=-1,
+        )
+        # Combined mask: positive, in range, and matches a valid frequency
+        valid_pos_full = torch.zeros(N, dtype=torch.bool, device=device)
+        valid_pos_full[pos_mask] = (
+            (pos_freqs >= self.start_freq) & (pos_freqs <= self.end_freq) & valid_match
+        )
+
+        # Hermitian symmetry: for standard FFT layout, negative freq at index k
+        # maps to positive freq at index (N - k)
+        neg_mask = freq_t < 0
+        neg_indices = neg_mask.nonzero(as_tuple=True)[0]
+        conj_indices = N - neg_indices
+
+        # Frequency resolution
+        delta_f = float(self.acq_sample_rate / N)
+
+        self._torch_cache = {
+            'device': device,
+            'freq': freq_t,
+            'valid_pos_mask': valid_pos_full,
+            'neg_indices': neg_indices,
+            'conj_indices': conj_indices,
+            'delta_f': delta_f,
+            'N': N,
+        }
+
+    def generate_batch_torch(
+        self, batch_size: int, device: torch.device | str = 'cpu'
+    ) -> torch.Tensor:
+        """Generate a batch of random displacement waveforms using PyTorch on GPU.
+
+        Uses the same Rayleigh amplitude + uniform phase approach as the NumPy
+        _randomize_spectrum method, but operates in batched mode on the target device.
+        Reuses precomputed frequency grids and valid frequency masks from __init__.
+
+        The generated waveforms have frequency content only within
+        [start_freq, end_freq] at the acquisition sample rate, matching the
+        real experiment's spectral properties.
+
+        See Phys. Rev. A 107, 042611 (2023) and
+        https://doi.org/10.1016/0141-1187(84)90050-6 for why we use the Rayleigh
+        distribution for the spectral amplitudes.
+
+        Args:
+            batch_size: Number of waveforms to generate
+            device: Target device ('cpu', 'cuda', etc.)
+
+        Returns:
+            Displacement tensor of shape [batch_size, BUFFER_SIZE]
+        """
+        device = torch.device(device) if isinstance(device, str) else device
+
+        # Initialize or update torch cache if needed
+        if not hasattr(self, '_torch_cache') or self._torch_cache['device'] != device:
+            self._init_torch_cache(device)
+
+        cache = self._torch_cache
+        N = cache['N']
+        valid_pos_mask = cache['valid_pos_mask']
+        neg_indices = cache['neg_indices']
+        conj_indices = cache['conj_indices']
+        delta_f = cache['delta_f']
+
+        # 1. Generate Rayleigh-distributed amplitudes for valid positive frequencies
+        # Rayleigh(scale) = scale * sqrt(-2 * ln(U)), U ~ Uniform(0, 1)
+        # scale = sqrt(S(f) * delta_f), with S(f) ~ Uniform(0, 1) for valid freqs
+        u_amp = torch.rand(batch_size, N, device=device).clamp(min=1e-10)
+        s_f = torch.rand(batch_size, N, device=device)  # power spectral density
+        scale = torch.sqrt(s_f * delta_f)
+        amplitudes = scale * torch.sqrt(-2.0 * torch.log(u_amp))
+        # Zero out non-valid frequencies
+        amplitudes[:, ~valid_pos_mask] = 0.0
+
+        # 2. Random uniform phases in [0, 2*pi)
+        phases = torch.rand(batch_size, N, device=device) * (2.0 * torch.pi)
+
+        # 3. Build complex spectrum for positive frequencies
+        spectrum = torch.zeros(batch_size, N, dtype=torch.cfloat, device=device)
+        spectrum[:, valid_pos_mask] = (
+            amplitudes[:, valid_pos_mask] * torch.exp(1j * phases[:, valid_pos_mask])
+        ).to(torch.cfloat)
+
+        # 4. Hermitian symmetry: spectrum[neg_idx] = conj(spectrum[N - neg_idx])
+        spectrum[:, neg_indices] = spectrum[:, conj_indices].conj()
+
+        # 5. DC and Nyquist to zero
+        spectrum[:, 0] = 0.0
+        if N % 2 == 0:
+            spectrum[:, N // 2] = 0.0
+
+        # 6. IFFT to time domain
+        return torch.fft.ifft(spectrum, norm='ortho').real
 
     def sample(
         self,

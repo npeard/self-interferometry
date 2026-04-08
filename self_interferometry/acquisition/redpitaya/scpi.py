@@ -572,7 +572,7 @@ class SCPI:
     def get_settings(self, siglab: bool = False, input4: bool = False) -> str:
         """Retrieves the settings from Red Pitaya, prints them in console and returns
         them as an array with the following sequence:
-        [decimation, avearge, trig_dly, trig_dly_ns, trig_lvl, buf_size, gain_ch1,
+        [decimation, average, trig_dly, trig_dly_ns, trig_lvl, buf_size, gain_ch1,
         gain_ch2, coup_ch1, coup_ch2, ext_trig_lvl, gain_ch3, gain_ch4].
             Decimation   - Current decimation
             Average      - Current averaging status (ON/OFF)

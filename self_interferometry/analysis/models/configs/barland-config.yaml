@@ -24,7 +24,6 @@ training:
   use_logging: true
   wandb_project: "self-interferometry"
   experiment_name: "barland_pareto_test"
-  checkpoint_dir: "./analysis/checkpoints"
   target: "velocity"  # "velocity" or "displacement" - what the model predicts
 
 loss:
@@ -36,5 +35,4 @@ data:
   data_dir: "./analysis/data"
   dataset_file: ["free-space-synchro_10k.h5", "mmfiber-synchro_10k.h5"]
   split_ratios: [[80, 10, 10]]  # train, val, test percentages
-  split_seed: 42
   num_workers: 7

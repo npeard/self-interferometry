@@ -24,7 +24,6 @@ dependencies = [
     "tqdm",
     "pyyaml",
     "scipy",
-    "neuraloperator",
 ]
 
 [project.urls]
@@ -55,6 +54,10 @@ dev = [
     "taskipy",
     "pre-commit",
     "nbstripout",
+    "marimo",
+    "lmfit",
+    "uncertainties",
+    "schemdraw",
 ]
 
 [tool.flit.module]

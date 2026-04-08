@@ -234,17 +234,18 @@ def get_data_loaders(
     split_ratios: tuple[int, int, int] = (80, 10, 10),
     batch_size: int = 32,
     num_workers: int = 4,
-    seed: int = 42,
     **dataset_kwargs: dict[str],
 ) -> tuple[DataLoader, DataLoader, DataLoader]:
     """Create DataLoaders for training, validation, and testing from a single dataset.
+
+    The train/val/test split is always deterministic with a hardcoded seed of 42,
+    ensuring the same split every time for reproducible evaluation.
 
     Args:
         dataset_path: Path to the single HDF5 dataset file
         split_ratios: Tuple of (train, val, test) percentages that sum to 100
         batch_size: Batch size for all dataloaders
         num_workers: Number of worker processes for data loading
-        seed: Random seed for reproducible splits
         **dataset_kwargs: Additional arguments to pass to the dataset class
 
     Returns:
@@ -263,8 +264,8 @@ def get_data_loaders(
     val_size = int(total_length * split_ratios[1] / 100)
     test_size = total_length - train_size - val_size  # Remainder goes to test
 
-    # Create random split
-    generator = torch.Generator().manual_seed(seed)
+    # Create random split with hardcoded seed for deterministic splits
+    generator = torch.Generator().manual_seed(42)
     train_dataset, val_dataset, test_dataset = torch.utils.data.random_split(
         full_dataset, [train_size, val_size, test_size], generator=generator
     )

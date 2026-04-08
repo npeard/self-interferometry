@@ -1,7 +1,7 @@
 import marimo
 
-__generated_with = "0.20.4"
-app = marimo.App(width="medium")
+__generated_with = '0.20.4'
+app = marimo.App(width='medium')
 
 
 @app.cell
@@ -29,18 +29,20 @@ def _():
 
 @app.cell
 def _():
-    import numpy as np
     import matplotlib.pyplot as plt
+    import numpy as np
 
     # Parameters
     N_R1 = 500
     N_phi = 500
     R2 = 1.0
 
-    R1_vals = np.linspace(0, 1, N_R1, endpoint=False)  # exclude R1=1 to avoid singularity
+    R1_vals = np.linspace(
+        0, 1, N_R1, endpoint=False
+    )  # exclude R1=1 to avoid singularity
     phi_vals = np.linspace(-np.pi, np.pi, N_phi)
 
-    R1_grid, phi_grid = np.meshgrid(R1_vals, phi_vals, indexing="ij")
+    R1_grid, phi_grid = np.meshgrid(R1_vals, phi_vals, indexing='ij')
 
     # Fresnel amplitude coefficients
     r1 = np.sqrt(R1_grid)
@@ -64,31 +66,30 @@ def _():
     im0 = axes[0].imshow(
         I_detected.T,
         extent=[R1_vals[0], R1_vals[-1], -np.pi, np.pi],
-        aspect="auto",
-        origin="lower",
-        cmap="inferno",
+        aspect='auto',
+        origin='lower',
+        cmap='inferno',
     )
-    axes[0].set_xlabel("R1 (front mirror reflectance)")
-    axes[0].set_ylabel("Phase φ (rad)")
-    axes[0].set_title("Detected Intensity  $|E_r|^2$")
-    fig.colorbar(im0, ax=axes[0], label="Intensity (a.u.)")
+    axes[0].set_xlabel('R1 (front mirror reflectance)')
+    axes[0].set_ylabel('Phase φ (rad)')
+    axes[0].set_title('Detected Intensity  $|E_r|^2$')
+    fig.colorbar(im0, ax=axes[0], label='Intensity (a.u.)')
 
     # Fringe slope
     im1 = axes[1].imshow(
-        np.log(np.abs(fringe_slope) + 1e-10).T,
+        np.abs(fringe_slope).T,
         extent=[R1_vals[0], R1_vals[-1], -np.pi, np.pi],
-        aspect="auto",
-        origin="lower",
-        cmap="RdBu_r",
+        aspect='auto',
+        origin='lower',
+        cmap='RdBu_r',
     )
-    axes[1].set_xlabel("R1 (front mirror reflectance)")
-    axes[1].set_ylabel("Phase φ (rad)")
-    axes[1].set_title(r"Fringe Slope  $\partial I / \partial \varphi$")
-    fig.colorbar(im1, ax=axes[1], label="dI/dφ")
+    axes[1].set_xlabel('R1 (front mirror reflectance)')
+    axes[1].set_ylabel('Phase φ (rad)')
+    axes[1].set_title(r'Fringe Slope  $\partial I / \partial \varphi$')
+    fig.colorbar(im1, ax=axes[1], label='dI/dφ')
 
     plt.tight_layout()
     plt.show()
-    return
 
 
 @app.cell
@@ -98,7 +99,6 @@ def _(mo):
 
     **Right:** Fringe slope (dI/dφ), showing how sensitive the detected signal is to phase changes at each operating point. Higher absolute slope = greater displacement sensitivity.
     """)
-    return
 
 
 @app.cell
@@ -111,8 +111,7 @@ def _(mo):
     - Near **R1 → 1**, the cavity becomes highly resonant — extremely sharp fringes with very high slope at resonance, but the signal is very sensitive to the operating point.
     - The **optimal R1** for displacement sensing balances fringe sharpness against dynamic range.
     """)
-    return
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     app.run()
