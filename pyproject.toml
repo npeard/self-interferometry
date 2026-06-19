@@ -157,6 +157,7 @@ platforms = ["osx-64", "osx-arm64", "linux-64"]
 [tool.pixi.dependencies]
 python = ">=3.12,<3.13"
 numba = "*"
+polars = ">=1.0"
 
 [tool.pixi.pypi-dependencies]
 self-interferometry = { path = ".", editable = true }
