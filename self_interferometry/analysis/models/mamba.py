@@ -311,6 +311,7 @@ class Mamba(nn.Module):
         return self.projection(x)  # [batch, 1, seq_len]
 
     @property
+    @torch.jit.unused
     def total_params(self) -> int:
         """Total number of trainable parameters."""
         return sum(p.numel() for p in self.parameters() if p.requires_grad)

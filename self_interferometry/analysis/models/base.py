@@ -129,21 +129,17 @@ class Model(nn.Module):
 
         Excluded from TorchScript: only ``forward`` is part of the packaged
         interface, and not every inner model defines ``encode``.
+
+        Note: model-size metadata (``total_params``/``receptive_field``) is read
+        off the inner model directly (e.g. by ``LitModule``); the wrapper does
+        not re-expose it as scripted properties, which TorchScript would try to
+        compile.
         """
         x = self.feature_map(x)
         x = (x - self.input_mean) / self.input_std
         return self.inner.encode(x)
 
-    @property
-    def total_params(self) -> int:
-        """Trainable parameter count of the inner model."""
-        return sum(p.numel() for p in self.inner.parameters() if p.requires_grad)
-
-    @property
-    def receptive_field(self) -> int | None:
-        """Receptive field of the inner model if it exposes one."""
-        return getattr(self.inner, 'receptive_field', None)
-
+    @torch.jit.unused
     def to_torchscript(self) -> torch.jit.ScriptModule:
         """Compile this wrapped model to TorchScript for packaging/export.
 

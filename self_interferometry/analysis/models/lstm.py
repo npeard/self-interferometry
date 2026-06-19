@@ -3,6 +3,7 @@
 import logging
 from dataclasses import dataclass
 
+import torch
 from torch import Tensor, nn
 
 logger = logging.getLogger(__name__)
@@ -89,6 +90,7 @@ class LSTM(nn.Module):
         return out.permute(0, 2, 1)
 
     @property
+    @torch.jit.unused
     def total_params(self) -> int:
         """Calculate the total number of trainable parameters."""
         return sum(p.numel() for p in self.parameters() if p.requires_grad)

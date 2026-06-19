@@ -3,6 +3,7 @@
 import logging
 from dataclasses import dataclass
 
+import torch
 from torch import Tensor, nn
 
 from .cross_attention_block import CrossAttentionBlock
@@ -118,6 +119,9 @@ class TCAN(nn.Module):
         self.config = config
         self.in_channels = config.in_channels
         embed_dim = config.siamese_channels[-1]
+        # Cache as a plain int attribute so forward() does not touch the
+        # dataclass config (which TorchScript cannot type).
+        self.embed_dim = embed_dim
 
         # Shared-weight encoder TCN (one instance, reused for every channel)
         self.siamese_encoder = _make_siamese_tcn(config)
@@ -136,6 +140,7 @@ class TCAN(nn.Module):
         logger.info(f'Number of parameters in TCAN: {self.total_params:,}')
 
     @property
+    @torch.jit.unused
     def receptive_field(self) -> int:
         """Calculate the receptive field of the TCAN.
 
@@ -145,6 +150,7 @@ class TCAN(nn.Module):
         return self.siamese_encoder.receptive_field + self.decoder.receptive_field
 
     @property
+    @torch.jit.unused
     def total_params(self) -> int:
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
 
@@ -183,7 +189,7 @@ class TCAN(nn.Module):
             [batch, 1, seq_len]
         """
         batch_size, _, seq_len = x.shape
-        embed_dim = self.config.siamese_channels[-1]
+        embed_dim = self.embed_dim
 
         # Siamese encoder: per-channel feature extraction
         features, _ = self.encode(x)

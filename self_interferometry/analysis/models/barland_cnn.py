@@ -29,6 +29,10 @@ class BarlandCNN(nn.Module):
         super().__init__()
         self.config = config
         self.in_channels = config.in_channels
+        # Cache as plain int attributes so forward() does not touch the
+        # dataclass config (which TorchScript cannot type).
+        self.window_size = config.window_size
+        self.window_stride = config.window_stride
         self.conv_layers = nn.Sequential(
             nn.Conv1d(self.in_channels, 16, kernel_size=7),
             # Lout = 250, given L = 256
@@ -81,6 +85,7 @@ class BarlandCNN(nn.Module):
                     nn.utils.parametrizations.weight_norm(module)
 
     @property
+    @torch.jit.unused
     def receptive_field(self) -> int:
         """Receptive field of the CNN in input samples.
 
@@ -96,6 +101,7 @@ class BarlandCNN(nn.Module):
         return 91
 
     @property
+    @torch.jit.unused
     def total_params(self) -> int:
         """Total number of trainable parameters."""
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
@@ -131,15 +137,15 @@ class BarlandCNN(nn.Module):
             [batch, 1, signal_length]
         """
         batch_size, in_channels, signal_length = x.shape
-        window_size = self.config.window_size
-        window_stride = self.config.window_stride
+        window_size = self.window_size
+        window_stride = self.window_stride
 
         # Right-pad so an integer number of complete windows covers the signal.
         # num_windows = ceil((signal_length - window_size) / window_stride) + 1
         num_windows = math.ceil(max(signal_length - window_size, 0) / window_stride) + 1
         padded_length = (num_windows - 1) * window_stride + window_size
         pad_right = padded_length - signal_length
-        padded = functional.pad(x, (0, pad_right), mode='constant', value=0)
+        padded = functional.pad(x, (0, pad_right), mode='constant', value=0.0)
 
         # Extract all strided windows at once via functional.unfold.
         # Result: [batch, in_channels * window_size, num_windows]

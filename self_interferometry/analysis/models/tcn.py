@@ -142,12 +142,14 @@ class TCN(nn.Module):
                     nn.utils.parametrizations.weight_norm(module)
 
     @property
+    @torch.jit.unused
     def receptive_field(self) -> int:
         """Calculate the receptive field of the TCN."""
         dilations = torch.tensor(self.config.temporal_dilations)
         return int(torch.sum((self.config.kernel_size - 1) * dilations).item())
 
     @property
+    @torch.jit.unused
     def total_params(self) -> int:
         """Calculate the total number of parameters in the model."""
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
