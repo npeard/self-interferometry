@@ -4,7 +4,7 @@ import logging
 import sys
 from typing import Any, override
 
-import lightning as L
+import lightning as lightning_module
 import torch
 from torch import nn, optim
 
@@ -27,7 +27,7 @@ from self_interferometry.analysis.models.vicreg import VicRegLoss
 logger = logging.getLogger(__name__)
 
 
-class LitModule(L.LightningModule):
+class LitModule(lightning_module.LightningModule):
     """Lightning Module for fusing multiple sensor channels into velocity predictions.
     It supports both static and dynamic loss weighting between velocity and displacement
     loss terms for improved training stability.
@@ -42,7 +42,9 @@ class LitModule(L.LightningModule):
         training_hparams: dict | None = None,
         data_hparams: dict | None = None,
     ):
-        """Args:
+        """Initialize LitModule with hyperparameter configuration.
+
+        Args:
         model_hparams: Hyperparameters for the model
         optimizer_hparams: Hyperparameters for the optimizer
         scheduler_hparams: Hyperparameters for the learning rate scheduler
@@ -172,7 +174,7 @@ class LitModule(L.LightningModule):
             # - AdamW to other parameters (biases, norms, etc.)
 
             # Separate parameters by dimensionality
-            # For models with body/head structure, we need to handle all model parameters
+            # For models with body/head structure, handle all model parameters
             hidden_weights = [p for p in self.model.parameters() if p.ndim >= 2]
             other_params = [p for p in self.model.parameters() if p.ndim < 2]
 
@@ -218,7 +220,7 @@ class LitModule(L.LightningModule):
         else:
             raise ValueError(f'Unknown optimizer: {optimizer_name}')
 
-        # Configure multi-stage scheduler: linear warmup then cosine annealing with warm restarts
+        # Configure multi-stage scheduler: linear warmup then cosine annealing
         warmup_epochs = self.scheduler_hparams['warmup_epochs']
         eta_min = self.scheduler_hparams['eta_min']
         T_0 = self.scheduler_hparams['T_0']
@@ -234,7 +236,7 @@ class LitModule(L.LightningModule):
             optimizer, lr_lambda=warmup_lambda
         )
         cosine_scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
-            optimizer, T_0=T_0, T_mult=T_mult, eta_min=eval(eta_min)
+            optimizer, T_0=T_0, T_mult=T_mult, eta_min=float(eta_min)
         )
 
         scheduler = optim.lr_scheduler.SequentialLR(
@@ -254,11 +256,13 @@ class LitModule(L.LightningModule):
         """Custom loss function that returns a dictionary of loss components.
 
         Supports two modes based on self.target:
-        - 'velocity': Model predicts velocity, displacement loss is auxiliary (physics-informed)
+        - 'velocity': Model predicts velocity, displacement loss is auxiliary
+          (physics-informed)
         - 'displacement': Model predicts displacement, velocity loss is not used
 
         Args:
-            prediction: Model predictions (velocity or displacement based on self.target)
+            prediction: Model predictions (velocity or displacement based on
+                self.target)
             velocity_target: Ground truth velocity
             displacement_target: Ground truth displacement
 
@@ -345,7 +349,7 @@ class LitModule(L.LightningModule):
         n = len(channel_features)
         for i in range(n):
             for j in range(i + 1, n):
-                # Pool over time: [batch, embed_dim, seq_len] → [batch, embed_dim]
+                # Pool over time: [batch, embed_dim, seq_len] -> [batch, embed_dim]
                 fi = channel_features[i].mean(dim=-1)
                 fj = channel_features[j].mean(dim=-1)
                 vicreg = vicreg + self.vicreg_loss(fi, fj)

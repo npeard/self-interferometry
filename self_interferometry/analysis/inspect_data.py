@@ -43,7 +43,7 @@ def visualize_dataset(
 
         # Print dataset information
         logger.info(f'Dataset: {Path(dataset_path).name}')
-        logger.info(f'Number of samples: {len(f[list(f.keys())[0]])}')
+        logger.info(f'Number of samples: {len(f[next(iter(f.keys()))])}')
         logger.info(f'Available channels: {list(f.keys())}')
 
     # Create dataset and dataloader
@@ -52,7 +52,7 @@ def visualize_dataset(
 
     # Get samples from dataloader
     samples_processed = 0
-    for batch_idx, (signals, velocity, displacement) in enumerate(dataloader):
+    for batch_idx, (signals_t, velocity_t, displacement_t) in enumerate(dataloader):
         if samples_processed >= max_samples:
             break
 
@@ -61,9 +61,9 @@ def visualize_dataset(
             pass
 
         # Convert tensors to numpy arrays
-        signals = signals.numpy()
-        velocity = velocity.numpy()
-        displacement = displacement.numpy()
+        signals = signals_t.numpy()
+        velocity = velocity_t.numpy()
+        displacement = displacement_t.numpy()
 
         # Get the number of samples in the batch and number of PD channels
         batch_size, num_channels, signal_length = signals.shape
@@ -91,14 +91,14 @@ def visualize_dataset(
             # Plot velocity on the primary y-axis
             axs[0].plot(time, velocity[i], label='Velocity', color='blue')
             axs[0].set_title('Velocity and Displacement')
-            axs[0].set_ylabel('Velocity (μm/s)', color='blue')
+            axs[0].set_ylabel('Velocity (umm/s)', color='blue')
             axs[0].tick_params(axis='y', labelcolor='blue')
             axs[0].grid(True, alpha=0.3)
 
             # Create a twin axis for displacement
             ax_twin = axs[0].twinx()
             ax_twin.plot(time, displacement[i], label='Displacement', color='green')
-            ax_twin.set_ylabel('Displacement (μm)', color='green')
+            ax_twin.set_ylabel('Displacement (umm)', color='green')
             ax_twin.tick_params(axis='y', labelcolor='green')
 
             # Ensure both legends are visible
@@ -153,7 +153,7 @@ def plot_histograms(dataset_path: str | Path):
         }
 
         # Calculate FFT frequencies
-        first_key = list(f.keys())[0]
+        first_key = next(iter(f.keys()))
         n = len(f[first_key][0, :])
         logger.info(f'Number of samples: {n}')
         freqs = np.fft.fftfreq(n, 1 / sample_rate)
@@ -161,7 +161,7 @@ def plot_histograms(dataset_path: str | Path):
         pos_freqs = freqs[pos_idx]
 
         # Process each channel
-        for key in f.keys():
+        for key in f:
             if key in channel_info:
                 info = channel_info[key]
                 label = info['label']
@@ -190,7 +190,7 @@ def plot_histograms(dataset_path: str | Path):
                     gaussian,
                     'r-',
                     linewidth=2,
-                    label=f'Gaussian (σ={std:.4f})',
+                    label=f'Gaussian (sigma={std:.4f})',
                 )
 
                 axes[0, col].set_title(f'{label} Histogram')
@@ -238,10 +238,10 @@ def analyze_dataset(dataset_path: str | Path):
     """
     with h5py.File(dataset_path, 'r') as f:
         logger.info(f'Dataset Analysis: {Path(dataset_path).name}')
-        logger.info(f'Number of samples: {len(f[list(f.keys())[0]])}')
+        logger.info(f'Number of samples: {len(f[next(iter(f.keys()))])}')
 
         # Calculate statistics for each channel
-        for key in f.keys():
+        for key in f:
             if key == 'RP1_CH1':
                 label = 'Speaker Drive Voltage'
             elif key == 'RP1_CH2':

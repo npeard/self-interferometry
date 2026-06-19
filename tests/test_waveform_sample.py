@@ -290,8 +290,8 @@ def test_waveform_statistics():
     )
 
     # Test 6: Check that the range of the data is reasonable for a Gaussian
-    # For a large sample from a Gaussian, we expect most values to be within ±3 standard
-    # deviations
+    # For a large sample from a Gaussian, we expect most values to be within
+    # +/-3 standard deviations
     normalized_max = np.max(np.abs(normalized_voltages))
     assert normalized_max < 5.0, (
         f'Maximum absolute normalized value ({normalized_max}) is too large for a '

@@ -8,7 +8,7 @@ from itertools import product
 from pathlib import Path
 from typing import Any, Union
 
-import lightning as L
+import lightning as lightning_module
 import torch
 import yaml
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
@@ -312,9 +312,9 @@ class TrainingInterface:
         optimizer_hparams = {
             'name': self.config.training_config['optimizer'],
             # TODO: why is lr a string?
-            'lr': eval(self.config.training_config['learning_rate']),
+            'lr': float(self.config.training_config['learning_rate']),
             'momentum': self.config.training_config['momentum'],
-            'weight_decay': eval(self.config.training_config['weight_decay']),
+            'weight_decay': float(self.config.training_config['weight_decay']),
         }
 
         # Common scheduler hyperparameters
@@ -351,7 +351,7 @@ class TrainingInterface:
 
         return LitModule(**common_kwargs)
 
-    def setup_trainer(self) -> L.Trainer:
+    def setup_trainer(self) -> lightning_module.Trainer:
         """Setup Lightning trainer with callbacks and loggers."""
         callbacks = []
         # Add WandB logger if configured
@@ -386,7 +386,7 @@ class TrainingInterface:
             with contextlib.suppress(ValueError):
                 devices = int(devices)
 
-        return L.Trainer(
+        return lightning_module.Trainer(
             max_epochs=self.config.training_config['max_epochs'],
             callbacks=callbacks,
             logger=loggers,

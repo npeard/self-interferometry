@@ -4,7 +4,7 @@ import sys
 import time
 from pathlib import Path
 
-import lightning as L
+import lightning as lightning_module
 from acquisition.redpitaya.manager import RedPitayaManager
 from analysis.generate_data import generate_dataset_from_rp
 from analysis.training_interface import TrainingConfig, TrainingInterface
@@ -47,12 +47,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--num_samples',
         type=int,
-        help='Number of samples to acquire from Red Pitaya. Required when using --acquire_dataset.',
+        help='Number of samples to acquire. Required with --acquire_dataset.',
     )
     parser.add_argument(
         '--dataset_name',
         type=str,
-        help='Filename for the acquired dataset (e.g., "my-data.h5"). Required when using --acquire_dataset.',
+        help='Dataset filename (e.g., "my-data.h5"). Required with --acquire_dataset.',
     )
     parser.add_argument(
         '--verbosity',
@@ -126,7 +126,7 @@ def train_model(config_path: str, logger: logging.Logger) -> None:
 
     # Seed everything (Python random, NumPy, PyTorch, CUDA) from time
     seed = int(time.time())
-    L.seed_everything(seed)
+    lightning_module.seed_everything(seed)
     # Note that get_data_loaders in datasets.py uses a hardcoded seed of 42 for
     # deterministic splits
     logger.info(f'Using random seed: {seed}')

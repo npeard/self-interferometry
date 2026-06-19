@@ -241,7 +241,7 @@ def _(ACQ_SAMPLE_RATE, CHANNEL_NAMES, np, plt, sample_index, signals, velocity_t
             label='Velocity',
             lw=3,
         )
-        _ax2.set_ylabel('Velocity (μm/s)', color='#972a19')
+        _ax2.set_ylabel('Velocity (umm/s)', color='#972a19')
         _ax2.tick_params(axis='y', labelcolor='#972a19')
     _axs[-1].set_xlabel('Time (ms)')
     # _fig.suptitle(f'Raw Input Signals - Sample {_i + 1}')
@@ -291,8 +291,8 @@ def _(
     _axs[0].plot(
         _time_ms, velocity_hat[_i], label='Predicted', color='#d95f02', linestyle='--'
     )
-    _axs[0].set_title(f'Velocity (RMSE: {_v_rmse:.1f} μm/s)')
-    _axs[0].set_ylabel('Velocity (μm/s)')
+    _axs[0].set_title(f'Velocity (RMSE: {_v_rmse:.1f} umm/s)')
+    _axs[0].set_ylabel('Velocity (umm/s)')
     _axs[0].grid(True, alpha=0.3)
     _axs[0].legend(loc='upper right')
 
@@ -300,7 +300,7 @@ def _(
     _axs[1].plot(_time_ms, _v_residual, label='Residual', color='#7570b3')
     _axs[1].axhline(y=0, color='black', linestyle=':')
     _axs[1].set_title(f'Velocity Residual (MSE: {_v_mse:.2e})')
-    _axs[1].set_ylabel('Residual (μm/s)')
+    _axs[1].set_ylabel('Residual (umm/s)')
     _axs[1].grid(True, alpha=0.3)
     _axs[1].legend(loc='upper right')
 
@@ -313,8 +313,8 @@ def _(
         color='#d95f02',
         linestyle='--',
     )
-    _axs[2].set_title(f'Displacement (RMSE: {_d_rmse:.4f} μm)')
-    _axs[2].set_ylabel('Displacement (μm)')
+    _axs[2].set_title(f'Displacement (RMSE: {_d_rmse:.4f} umm)')
+    _axs[2].set_ylabel('Displacement (umm)')
     _axs[2].grid(True, alpha=0.3)
     _axs[2].legend(loc='upper right')
 
@@ -322,7 +322,7 @@ def _(
     _axs[3].plot(_time_ms, _d_residual, label='Residual', color='#7570b3')
     _axs[3].axhline(y=0, color='black', linestyle=':')
     _axs[3].set_title(f'Displacement Residual (MSE: {_d_mse:.2e})')
-    _axs[3].set_ylabel('Residual (μm)')
+    _axs[3].set_ylabel('Residual (umm)')
     _axs[3].grid(True, alpha=0.3)
     _axs[3].legend(loc='upper right')
 
@@ -388,7 +388,7 @@ def _(
         linestyle='--',
     )
     _axs[0].set_title(f'Velocity (MSE: {_v_mse:.2e})')
-    _axs[0].set_ylabel('Velocity (μm/s)')
+    _axs[0].set_ylabel('Velocity (umm/s)')
     _axs[0].grid(True, alpha=0.3)
     _axs[0].legend(loc='upper right')
 
@@ -396,7 +396,7 @@ def _(
     _axs[1].plot(_time_ms, _v_residual, label='Velocity Residual', color='purple')
     _axs[1].axhline(y=0, color='black', linestyle=':', alpha=0.5)
     _axs[1].set_title(f'Velocity Residual (MSE: {_v_mse:.2e})')
-    _axs[1].set_ylabel('Residual (μm/s)')
+    _axs[1].set_ylabel('Residual (umm/s)')
     _axs[1].grid(True, alpha=0.3)
     _axs[1].legend(loc='upper right')
 
@@ -412,7 +412,7 @@ def _(
         linestyle='--',
     )
     _axs[2].set_title(f'Displacement (MSE: {_d_mse:.2e})')
-    _axs[2].set_ylabel('Displacement (μm)')
+    _axs[2].set_ylabel('Displacement (umm)')
     _axs[2].grid(True, alpha=0.3)
     _axs[2].legend(loc='upper right')
 
@@ -420,7 +420,7 @@ def _(
     _axs[3].plot(_time_ms, _d_residual, label='Displacement Residual', color='purple')
     _axs[3].axhline(y=0, color='black', linestyle=':', alpha=0.5)
     _axs[3].set_title(f'Displacement Residual (MSE: {_d_mse:.2e})')
-    _axs[3].set_ylabel('Residual (μm)')
+    _axs[3].set_ylabel('Residual (umm)')
     _axs[3].grid(True, alpha=0.3)
     _axs[3].legend(loc='upper right')
 
@@ -499,7 +499,7 @@ def _(displacement_hat, displacement_target, np, plt, velocity_hat, velocity_tar
         label=f'Mean: {_v_rmse.mean():.2f}',
     )
     _axs[0].set_title(f'Velocity RMSE (std: {_v_rmse.std():.2f})')
-    _axs[0].set_xlabel('RMSE (μm/s)')
+    _axs[0].set_xlabel('RMSE (umm/s)')
     _axs[0].set_ylabel('Count')
     _axs[0].legend()
     _axs[0].grid(True, alpha=0.3)
@@ -513,7 +513,7 @@ def _(displacement_hat, displacement_target, np, plt, velocity_hat, velocity_tar
         label=f'Mean: {_d_rmse.mean():.3f}',
     )
     _axs[1].set_title(f'Displacement RMSE (std: {_d_rmse.std():.3f})')
-    _axs[1].set_xlabel('RMSE (μm)')
+    _axs[1].set_xlabel('RMSE (umm)')
     _axs[1].set_ylabel('Count')
     _axs[1].legend()
     _axs[1].grid(True, alpha=0.3)
@@ -548,8 +548,8 @@ def _(
         range=[[-_v_lim, _v_lim], [-_v_lim, _v_lim]],
     )
     _axs[0].plot([-_v_lim, _v_lim], [-_v_lim, _v_lim], 'r--', alpha=0.7, label='y = x')
-    _axs[0].set_xlabel('Target Velocity (μm/s)')
-    _axs[0].set_ylabel('Predicted Velocity (μm/s)')
+    _axs[0].set_xlabel('Target Velocity (umm/s)')
+    _axs[0].set_ylabel('Predicted Velocity (umm/s)')
     _axs[0].set_title('Velocity Correlation')
     _axs[0].set_aspect('equal')
     _axs[0].legend()
@@ -568,8 +568,8 @@ def _(
         range=[[-_d_lim, _d_lim], [-_d_lim, _d_lim]],
     )
     _axs[1].plot([-_d_lim, _d_lim], [-_d_lim, _d_lim], 'r--', alpha=0.7, label='y = x')
-    _axs[1].set_xlabel('Target Displacement (μm)')
-    _axs[1].set_ylabel('Predicted Displacement (μm)')
+    _axs[1].set_xlabel('Target Displacement (umm)')
+    _axs[1].set_ylabel('Predicted Displacement (umm)')
     _axs[1].set_title('Displacement Correlation')
     _axs[1].set_aspect('equal')
     _axs[1].legend()
@@ -691,7 +691,7 @@ def _(
         _ax.set_xticks(_x)
         _ax.set_xticklabels(_labels, rotation=30, ha='right')
         _ax.set_title(_title)
-        _unit = '(μm/ms)' if 'Velocity' in _title else '(μm)'
+        _unit = '(umm/ms)' if 'Velocity' in _title else '(umm)'
         _ax.set_ylabel(f'RMSE {_unit}')
         _ax.grid(True, alpha=0.3, axis='y')
 
@@ -718,10 +718,10 @@ def _(
         _rm = np.sqrt(mse_mmfiber[0])
         _rf = np.sqrt(mse_free[0])
         mean_ratio = _rm / _rf
-        # Propagate std via delta method: σ_RMSE = σ_MSE / (2*sqrt(mean_MSE))
+        # Propagate std via delta method: sigma_RMSE = sigma_MSE / (2*sqrt(mean_MSE))
         _sm = mse_mmfiber[1] / (2 * _rm)
         _sf = mse_free[1] / (2 * _rf)
-        # Then ratio error propagation: σ_ratio = ratio * sqrt((σ_a/a)^2 + (σ_b/b)^2)
+        # Then ratio error propagation: sigma_ratio = ratio * sqrt((sigma_a/a)^2 + (sigma_b/b)^2)
         std_ratio = mean_ratio * np.sqrt((_sm / _rm) ** 2 + (_sf / _rf) ** 2)
         min_ratio = np.sqrt(mse_mmfiber[2]) / np.sqrt(mse_free[3])
         max_ratio = np.sqrt(mse_mmfiber[3]) / np.sqrt(mse_free[2])

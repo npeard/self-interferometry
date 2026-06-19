@@ -43,8 +43,8 @@ class SyntheticLitModule(LitModule):
 
     The displacement waveforms are generated using the same Rayleigh amplitude + random
     phase approach as the real experiment's Waveform class, but in PyTorch for GPU
-    acceleration. The coil driver transfer function is skipped — displacement is generated
-    directly.
+    acceleration. The coil driver transfer function is skipped --
+    displacement is generated directly.
     """
 
     def __init__(
@@ -61,7 +61,9 @@ class SyntheticLitModule(LitModule):
         steps_per_epoch: int = 1000,
         max_displacement_um: float = 5.0,
     ):
-        """Args:
+        """Initialize SyntheticLitModule with hyperparameter configuration.
+
+        Args:
         model_hparams: Hyperparameters for the model
         optimizer_hparams: Hyperparameters for the optimizer
         scheduler_hparams: Hyperparameters for the learning rate scheduler
@@ -170,7 +172,7 @@ class SyntheticLitModule(LitModule):
         """Generate synthetic data on-device and delegate to parent training_step.
 
         Args:
-            batch: Tensor of indices from SyntheticIndexDataset (used only for batch size)
+            batch: Tensor of indices from SyntheticIndexDataset (batch size only)
             batch_idx: Index of current batch
         """
         batch_size = len(batch)
@@ -182,7 +184,7 @@ class SyntheticLitModule(LitModule):
         """Generate synthetic data on-device and delegate to parent validation_step.
 
         Args:
-            batch: Tensor of indices from SyntheticIndexDataset (used only for batch size)
+            batch: Tensor of indices from SyntheticIndexDataset (batch size only)
             batch_idx: Index of current batch
         """
         batch_size = len(batch)

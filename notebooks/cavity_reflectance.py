@@ -15,7 +15,7 @@ def _():
         We model a two-mirror cavity where:
         - **R1** (front mirror reflectance) is scanned from 0 to 1
         - **R2** (back mirror reflectance) is fixed at 1
-        - **φ** (round-trip phase from back-surface vibrations) varies from −π to π
+        - **phi** (round-trip phase from back-surface vibrations) varies from -pi to pi
 
         The reflected electric field from the cavity (Fresnel coefficients) is:
 
@@ -71,7 +71,7 @@ def _():
         cmap='inferno',
     )
     axes[0].set_xlabel('R1 (front mirror reflectance)')
-    axes[0].set_ylabel('Phase φ (rad)')
+    axes[0].set_ylabel('Phase phi (rad)')
     axes[0].set_title('Detected Intensity  $|E_r|^2$')
     fig.colorbar(im0, ax=axes[0], label='Intensity (a.u.)')
 
@@ -84,9 +84,9 @@ def _():
         cmap='RdBu_r',
     )
     axes[1].set_xlabel('R1 (front mirror reflectance)')
-    axes[1].set_ylabel('Phase φ (rad)')
+    axes[1].set_ylabel('Phase phi (rad)')
     axes[1].set_title(r'Fringe Slope  $\partial I / \partial \varphi$')
-    fig.colorbar(im1, ax=axes[1], label='dI/dφ')
+    fig.colorbar(im1, ax=axes[1], label='dI/dphi')
 
     plt.tight_layout()
     plt.show()
@@ -95,9 +95,9 @@ def _():
 @app.cell
 def _(mo):
     mo.md(r"""
-    **Left:** Photodiode intensity as a function of front-mirror reflectance R1 and round-trip phase φ (R2 = {R2}).
+    **Left:** Photodiode intensity as a function of front-mirror reflectance R1 and round-trip phase phi (R2 = {R2}).
 
-    **Right:** Fringe slope (dI/dφ), showing how sensitive the detected signal is to phase changes at each operating point. Higher absolute slope = greater displacement sensitivity.
+    **Right:** Fringe slope (dI/dphi), showing how sensitive the detected signal is to phase changes at each operating point. Higher absolute slope = greater displacement sensitivity.
     """)
 
 
@@ -106,9 +106,9 @@ def _(mo):
     mo.md(r"""
     ## Key Observations
 
-    - At **R1 ≈ 0**, the cavity has no front mirror — light passes through and reflects off R2 with no interference. The fringe slope is modest.
+    - At **R1 ~ 0**, the cavity has no front mirror -- light passes through and reflects off R2 with no interference. The fringe slope is modest.
     - As **R1 increases**, the cavity finesse grows and fringes sharpen, increasing the peak slope.
-    - Near **R1 → 1**, the cavity becomes highly resonant — extremely sharp fringes with very high slope at resonance, but the signal is very sensitive to the operating point.
+    - Near **R1 -> 1**, the cavity becomes highly resonant -- extremely sharp fringes with very high slope at resonance, but the signal is very sensitive to the operating point.
     - The **optimal R1** for displacement sensing balances fringe sharpness against dynamic range.
     """)
 

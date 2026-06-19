@@ -76,7 +76,7 @@ class LSTM(nn.Module):
             Tensor of shape [batch_size, 1, sequence_length] containing
             predicted velocity
         """
-        # x: [batch, in_channels, seq_len] → [batch, seq_len, in_channels]
+        # x: [batch, in_channels, seq_len] -> [batch, seq_len, in_channels]
         x = x.permute(0, 2, 1)
 
         # lstm_out: [batch, seq_len, hidden_size * num_directions]

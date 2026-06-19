@@ -16,10 +16,10 @@ class MichelsonInterferometer:
     displacement of the mirror.
 
     Unit Conventions:
-        - Wavelength: microns (μm)
-        - Displacement: microns (μm)
+        - Wavelength: microns (umm)
+        - Displacement: microns (umm)
         - Time: seconds (s)
-        - Velocity: microns per second (μm/s)
+        - Velocity: microns per second (umm/s)
         - Phase: radians
 
     Note:
@@ -33,7 +33,7 @@ class MichelsonInterferometer:
 
         Args:
             wavelength: The wavelength of light used in the interferometer in
-                microns (μm).
+                microns (umm).
             phase: Initial phase offset in radians, representing the random
                 position offset of the interferometer mirrors.
         """
@@ -50,7 +50,7 @@ class MichelsonInterferometer:
         We only return the interference term, as if we had applied LayerNorm.
 
         Args:
-            displacement: Array of mirror displacements in microns (μm).
+            displacement: Array of mirror displacements in microns (umm).
                 The displacement represents the physical movement of the mirror,
                 not the optical path difference (which is twice the displacement).
                 Can be either a NumPy array or a PyTorch tensor.
@@ -83,7 +83,7 @@ class MichelsonInterferometer:
         the displacement, and removes the DC offset from the signal.
 
         Args:
-            displacement: Array of mirror displacements in microns (μm).
+            displacement: Array of mirror displacements in microns (umm).
             time: Array of time points in seconds (s) corresponding to the
             displacement data.
 
@@ -91,8 +91,8 @@ class MichelsonInterferometer:
             Tuple containing:
             - time: The input time array (s).
             - signal: The interferometer output signal with DC offset removed (V).
-            - displacement: The input displacement array (μm).
-            - velocity: Calculated velocity array derived from displacement (μm/s).
+            - displacement: The input displacement array (umm).
+            - velocity: Calculated velocity array derived from displacement (umm/s).
 
         Note:
             Velocity is calculated by taking the first-order difference of the
@@ -118,14 +118,14 @@ class MichelsonInterferometer:
         relationship between the interferometer output and the mirror motion.
 
         Args:
-            displacement: Array of mirror displacements in microns (μm).
+            displacement: Array of mirror displacements in microns (umm).
             time: Array of time points in seconds (s) corresponding to the
             displacement data.
 
         Note:
             - The left y-axis (blue) shows the interferometer signal in volts (V).
-            - The right y-axis shows both displacement (red) in microns (μm) and
-              velocity (green) in microns per second (μm/s), though only the
+            - The right y-axis shows both displacement (red) in microns (umm) and
+              velocity (green) in microns per second (umm/s), though only the
               displacement units are labeled on the axis.
             - The plot is displayed using matplotlib's plt.show() and will block
               execution until the plot window is closed.
@@ -143,7 +143,7 @@ class MichelsonInterferometer:
         ax2 = ax1.twinx()
         ax2.plot(time, displacement, color='r')
         ax2.plot(time, velocity, color='g')
-        ax2.set_ylabel('Displacement (μm)', color='r')
+        ax2.set_ylabel('Displacement (umm)', color='r')
         ax2.tick_params('y', colors='r')
 
         plt.tight_layout()
@@ -373,12 +373,12 @@ class InterferometerArray:
 
         # Plot displacement and velocity in the top subplot
         axes[0].plot(time, displacement, color='r', label='Displacement')
-        axes[0].set_ylabel('Displacement (μm)', color='r')
+        axes[0].set_ylabel('Displacement (umm)', color='r')
         axes[0].tick_params('y', colors='r')
 
         ax_twin = axes[0].twinx()
         ax_twin.plot(time, velocity, color='g', label='Velocity')
-        ax_twin.set_ylabel('Velocity (μm/s)', color='g')
+        ax_twin.set_ylabel('Velocity (umm/s)', color='g')
         ax_twin.tick_params('y', colors='g')
 
         # Add a legend to the top subplot
@@ -399,7 +399,7 @@ class InterferometerArray:
 
             axes[i + 1].plot(time, signal, color=signal_color)
             axes[i + 1].set_ylabel(
-                f'Signal {i + 1} (λ = {wavelength_nm:.1f} nm) (V)', color=signal_color
+                f'Signal {i + 1} ({wavelength_nm:.1f} nm) (V)', color=signal_color
             )
             axes[i + 1].tick_params('y', colors=signal_color)
             axes[i + 1].grid(True)
@@ -436,14 +436,14 @@ class InterferometerArray:
         axes[0].plot(
             time, displacement, '.', color='r', label='Displacement'
         )  # Already in microns
-        axes[0].set_ylabel('Displacement (μm)', color='r')
+        axes[0].set_ylabel('Displacement (umm)', color='r')
         axes[0].tick_params('y', colors='r')
 
         ax_twin = axes[0].twinx()
         ax_twin.plot(
             time, velocity, '.', color='g', label='Velocity'
         )  # Already in microns/s
-        ax_twin.set_ylabel('Velocity (μm/s)', color='g')
+        ax_twin.set_ylabel('Velocity (umm/s)', color='g')
         ax_twin.tick_params('y', colors='g')
 
         # Add a legend to the top subplot
@@ -464,7 +464,7 @@ class InterferometerArray:
 
             axes[i + 1].plot(time, signal, '.', color=signal_color)
             axes[i + 1].set_ylabel(
-                f'Signal {i + 1} (λ = {wavelength_nm:.1f} nm) (V)', color=signal_color
+                f'Signal {i + 1} ({wavelength_nm:.1f} nm) (V)', color=signal_color
             )
             axes[i + 1].tick_params('y', colors=signal_color)
             axes[i + 1].grid(True)

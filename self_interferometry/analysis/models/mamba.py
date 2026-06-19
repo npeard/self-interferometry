@@ -15,8 +15,8 @@ import math
 from dataclasses import dataclass
 
 import torch
-import torch.nn.functional as F
 from torch import Tensor, nn
+from torch.nn import functional
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ def selective_scan(
     d_state = A.shape[1]
 
     # ZOH discretisation: A_bar = exp(delta * A), B_bar = delta * B (simplified Euler)
-    # delta: [batch, d_model, seq_len] → unsqueeze for state dim
+    # delta: [batch, d_model, seq_len] -> unsqueeze for state dim
     # A:     [d_model, d_state]
     delta_A = torch.exp(
         delta.unsqueeze(2) * A.unsqueeze(0).unsqueeze(-1)
@@ -57,14 +57,14 @@ def selective_scan(
         delta.unsqueeze(2) * B.unsqueeze(1) * u.unsqueeze(2)
     )  # [batch, d_model, d_state, seq_len]
 
-    # Sequential scan over time — O(L) but simple and correct
+    # Sequential scan over time -- O(L) but simple and correct
     # For moderate seq_len this is the bottleneck; a parallel scan would be
     # O(L log L) but requires more complex code.
     h = torch.zeros(batch, d_model, d_state, device=u.device, dtype=u.dtype)
     ys = []
     for t in range(seq_len):
         h = delta_A[..., t] * h + delta_B_u[..., t]
-        # y_t = C_t · h_t  summed over state dim
+        # y_t = C_t * h_t  summed over state dim
         y_t = (C[:, :, t].unsqueeze(1) * h).sum(dim=2)  # [batch, d_model]
         ys.append(y_t)
 
@@ -80,9 +80,10 @@ def selective_scan(
 class MambaBlock(nn.Module):
     """Single Mamba layer with selective SSM and gated MLP.
 
-    The block follows the original paper's structure:
-        x  →  norm  →  [linear expand]  →  conv1d  →  SiLU
-                    ↘  [linear expand]                      → SSM → gate → contract  →  residual
+    The block follows the original paper's structure::
+
+        x -> norm -> [expand] -> conv1d -> SiLU -> SSM -> gate -> contract -> residual
+             norm -> [expand]  (z gate) -------------------------^
     """
 
     def __init__(
@@ -145,7 +146,7 @@ class MambaBlock(nn.Module):
         residual = x
         batch, d_model, seq_len = x.shape
 
-        # LayerNorm operates on the last dim → transpose
+        # LayerNorm operates on the last dim -> transpose
         x = x.permute(0, 2, 1)  # [batch, seq_len, d_model]
         x = self.norm(x)
 
@@ -156,29 +157,29 @@ class MambaBlock(nn.Module):
         # Causal depthwise conv on the SSM branch
         x_branch = x_branch.permute(0, 2, 1)  # [batch, d_inner, seq_len]
         x_branch = self.conv1d(x_branch)[..., :seq_len]  # chomp future
-        x_branch = F.silu(x_branch)
+        x_branch = functional.silu(x_branch)
 
         # SSM projections: B, C, delta from x_branch
-        # x_branch: [batch, d_inner, seq_len] → permute for linear
+        # x_branch: [batch, d_inner, seq_len] -> permute for linear
         x_branch_t = x_branch.permute(0, 2, 1)  # [batch, seq_len, d_inner]
         bcd = self.x_proj(x_branch_t)  # [batch, seq_len, d_state*2 + d_inner]
         B, C, delta = bcd.split([self.d_state, self.d_state, self.d_inner], dim=-1)
 
-        delta = F.softplus(self.dt_proj(delta))  # [batch, seq_len, d_inner]
+        delta = functional.softplus(self.dt_proj(delta))  # [batch, seq_len, d_inner]
 
         # Reshape to channels-first for scan
         B = B.permute(0, 2, 1)  # [batch, d_state, seq_len]
         C = C.permute(0, 2, 1)  # [batch, d_state, seq_len]
         delta = delta.permute(0, 2, 1)  # [batch, d_inner, seq_len]
 
-        A = -torch.exp(self.A_log)  # [d_inner, d_state] — negative for stability
+        A = -torch.exp(self.A_log)  # [d_inner, d_state] -- negative for stability
 
         y = selective_scan(
             x_branch, delta, A, B, C, self.D
         )  # [batch, d_inner, seq_len]
 
         # Gate with z branch (SiLU gating)
-        z = F.silu(z)  # [batch, seq_len, d_inner]
+        z = functional.silu(z)  # [batch, seq_len, d_inner]
         y = y.permute(0, 2, 1) * z  # [batch, seq_len, d_inner]
 
         # Contract back to d_model
@@ -234,7 +235,7 @@ class Mamba(nn.Module):
     expected by LitModule.
 
     Architecture:
-        lifting  →  N × MambaBlock  →  projection
+        lifting  ->  N x MambaBlock  ->  projection
     """
 
     def __init__(self, config: MambaConfig):
@@ -260,7 +261,7 @@ class Mamba(nn.Module):
         # Final norm before projection
         if config.use_layer_norm:
             self.final_norm = nn.Sequential(
-                nn.Conv1d(1, 1, 1)  # placeholder — replaced below
+                nn.Conv1d(1, 1, 1)  # placeholder -- replaced below
             )
             # Use a proper channels-last LayerNorm via a small wrapper
             self.final_norm = _ChannelsLastLayerNorm(config.d_model)
@@ -276,7 +277,7 @@ class Mamba(nn.Module):
 
     def _init_weights(self) -> None:
         for module in self.modules():
-            if isinstance(module, nn.Linear) or isinstance(module, nn.Conv1d):
+            if isinstance(module, nn.Linear | nn.Conv1d):
                 nn.init.xavier_normal_(module.weight)
                 if module.bias is not None:
                     nn.init.zeros_(module.bias)

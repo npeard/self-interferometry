@@ -23,12 +23,12 @@ def _(mo):
     A Type A package contains a laser diode (LD) and a monitor
     photodiode (PD) with opposite orientations through a shared pin:
 
-    - **Pin 1**: PD anode → through 51 kΩ sense resistor → ground
+    - **Pin 1**: PD anode -> through 51 kOhm sense resistor -> ground
     - **Pin 2**: PD cathode / LD anode (floating, positively biased)
-    - **Pin 3**: LD cathode → ground
+    - **Pin 3**: LD cathode -> ground
 
     Pin 2 is positively biased, forward-biasing the LD and
-    reverse-biasing the PD. A 51 kΩ resistor converts PD photocurrent
+    reverse-biasing the PD. A 51 kOhm resistor converts PD photocurrent
     to a voltage measured by a ground-referenced oscilloscope probe.
 
     Protection diodes across the LD:
@@ -78,7 +78,7 @@ def _(elm, schemdraw):
         # Junction between PD and resistor (probe point)
         junc = d.add(elm.Dot())
 
-        R_end = d.add(elm.Resistor().down().label('51 kΩ', loc='bottom'))
+        R_end = d.add(elm.Resistor().down().label('51 kOhm', loc='bottom'))
 
         # Probe from junction left to oscilloscope
         d.add(elm.Line().at(junc.center).left().length(2))

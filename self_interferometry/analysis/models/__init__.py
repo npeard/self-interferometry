@@ -14,16 +14,14 @@ from .temporal_block import TemporalBlock
 from .transpose import Transpose
 
 __all__ = [
-    # Main models
-    'BarlandCNN',
     'LSTM',
-    'Mamba',
-    'TCN',
     'SCNN',
     'TCAN',
-    # Helper modules
+    'TCN',
+    'BarlandCNN',
     'Chomp1d',
-    'Transpose',
-    'TemporalBlock',
     'CrossAttentionBlock',
+    'Mamba',
+    'TemporalBlock',
+    'Transpose',
 ]

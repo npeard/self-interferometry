@@ -87,8 +87,8 @@ class RedPitayaManager:
                 if blink_on_connect:
                     self.blink_led(device_idx=i, led_num=0, num_blinks=3, period=0.5)
 
-            except Exception as e:
-                logger.error(f'Failed to connect to {ip}: {e}')
+            except Exception:
+                logger.exception(f'Failed to connect to {ip}')
 
         # Set data save path
         if data_save_path:
@@ -128,7 +128,7 @@ class RedPitayaManager:
             'end_freq': 1000,
             'trigger_source': 'NOW',
             'trigger_delay': 15 * 16384,
-            # Empirical testing based on loss values during training indicate that waiting
+            # Empirical testing shows that waiting
             # at least 10 full buffers for triggering is sufficient to get rid of the
             # transient signal. No further delay than 20 full buffers is necessary.
             'channels_to_acquire': [
@@ -231,7 +231,7 @@ class RedPitayaManager:
             gen_dec: Decimation for generation
             burst_mode: Enable/disable burst mode
             burst_count: Number of periods in one burst
-            burst_period: Total time of one burst in µs
+            burst_period: Total time of one burst in uss
         """
         # Update settings with provided values
         if wave_form is not None:
@@ -309,7 +309,7 @@ class RedPitayaManager:
             )
 
         logger.info(
-            f'Generation configured on {self.device_names[device_idx]}, channel {channel}'
+            f'Generation configured on {self.device_names[device_idx]}, ch {channel}'
         )
 
     def enable_output(self, device_idx: int = 0, channel: int = 1, enable: bool = True):
@@ -349,7 +349,7 @@ class RedPitayaManager:
         device = self.devices[device_idx]
         device.tx_txt(f'SOUR{channel}:TRig:INT')
         logger.info(
-            f'Generation triggered on {self.device_names[device_idx]}, channel {channel}'
+            f'Generation triggered on {self.device_names[device_idx]}, ch {channel}'
         )
 
     def configure_acquisition(
@@ -545,14 +545,14 @@ class RedPitayaManager:
                         )
                         data[f'{primary_name}_CH{chan}'] = channel_data
                         logger.info(
-                            f'Successfully acquired data from {primary_name} Channel {chan}'
+                            f'Acquired data from {primary_name} Channel {chan}'
                         )
-                    except Exception as e:
-                        logger.error(
-                            f'Error acquiring data from {primary_name}, channel {chan}: {e}'
+                    except Exception:
+                        logger.exception(
+                            f'Error acquiring data from {primary_name}, channel {chan}'
                         )
-        except Exception as e:
-            logger.error(f'Error during data acquisition from primary device: {e}')
+        except Exception:
+            logger.exception('Error during data acquisition from primary device')
 
         # Get data from secondary devices
         for device, name in zip(secondary_devices, secondary_names, strict=False):
@@ -567,12 +567,12 @@ class RedPitayaManager:
                             logger.info(
                                 f'Successfully acquired data from {name} Channel {chan}'
                             )
-                        except Exception as e:
-                            logger.error(
-                                f'Error acquiring data from {name}, channel {chan}: {e}'
+                        except Exception:
+                            logger.exception(
+                                f'Error acquiring data from {name}, channel {chan}'
                             )
-            except Exception as e:
-                logger.error(f'Error during data acquisition from {name}: {e}')
+            except Exception:
+                logger.exception(f'Error during data acquisition from {name}')
 
         return data
 
@@ -710,10 +710,9 @@ class RedPitayaManager:
                     f.attrs[key] = value
 
             # Find Red Pitaya channel keys (the raw input signals)
-            channel_keys = []
-            for key in data:
-                if key.startswith('RP') and '_CH' in key:
-                    channel_keys.append(key)
+            channel_keys = [
+                key for key in data if key.startswith('RP') and '_CH' in key
+            ]
 
             if not channel_keys:
                 logger.warning('No Red Pitaya channel data found in acquisition')
@@ -807,7 +806,7 @@ class RedPitayaManager:
         data: dict[str, np.ndarray],
         vel_tf_data: np.ndarray = None,
         disp_derivative_data: np.ndarray = None,
-        vel_fft: np.ndarray = None,
+        vel_fft: np.ndarray = None,  # noqa: ARG002
         disp_tf_data: np.ndarray = None,
         vel_integrated_data: np.ndarray = None,
         freqs: np.ndarray = None,
@@ -842,10 +841,7 @@ class RedPitayaManager:
         )
 
         # Filter to only include raw channel data (not processed data)
-        channel_data = {}
-        for k, v in data.items():
-            if '_CH' in k:  # New naming convention: RP1_CH1
-                channel_data[k] = v
+        channel_data = {k: v for k, v in data.items() if '_CH' in k}
 
         # Define channel order with new naming convention
         channel_order = [
@@ -1019,7 +1015,7 @@ class RedPitayaManager:
                             simulated_signals[pd_type] * real_signal_amplitude
                         )
 
-                        # Use same color as real signal but with dashed line and alpha=0.5
+                        # Use same color as real signal, dashed and alpha=0.5
                         self.axes[i, 1].plot(
                             time_data,
                             scaled_simulated_signal,
@@ -1085,7 +1081,7 @@ class RedPitayaManager:
                         label='Phase',
                         alpha=0.3,
                     )
-                    ax_phase.set_ylabel('Phase (°)', color='red')
+                    ax_phase.set_ylabel('Phase (deg)', color='red')
                     ax_phase.tick_params(axis='y', labelcolor='red')
                     ax_phase.set_ylim(-180, 180)
 
@@ -1123,8 +1119,8 @@ class RedPitayaManager:
                 plt.show(block=True)
             else:
                 plt.pause(0.01)  # Small pause to update plot
-        except Exception as e:
-            logger.error(f'Error in show_plot: {e}')
+        except Exception:
+            logger.exception('Error in show_plot')
 
     def setup_histograms(self):
         """Set up the histogram and spectrum plots for signal visualization."""
@@ -1502,7 +1498,7 @@ class RedPitayaManager:
         # Don't call plt.draw() or plt.pause() here - we'll do that in the
         # calling function
 
-    def show_histograms(self, block=False):
+    def show_histograms(self, block: bool = False):
         """Show the histograms plot.
 
         Args:
@@ -1518,8 +1514,8 @@ class RedPitayaManager:
                 plt.show(block=True)
             else:
                 plt.pause(0.1)  # Increase pause time to ensure plot updates
-        except Exception as e:
-            logger.error(f'Error in show_histograms: {e}')
+        except Exception:
+            logger.exception('Error in show_histograms')
 
     def run_one_shot(
         self,
@@ -1601,8 +1597,8 @@ class RedPitayaManager:
                 )
                 data['Displacement_FFT'] = disp_fft  # Displacement spectrum
                 data['Frequencies'] = freqs  # Frequency array
-            except Exception as e:
-                logger.error(f'Error processing data: {e}')
+            except Exception:
+                logger.exception('Error processing data')
         else:
             logger.warning(
                 f'No speaker data found for {self.device_names[device_idx]}_CH1'
@@ -1639,8 +1635,8 @@ class RedPitayaManager:
                         plt.figure(self.hist_fig.number)
                         plt.draw()
                     plt.pause(0.01)  # Small pause to update both plots
-            except Exception as e:
-                logger.error(f'Error updating plots: {e}')
+            except Exception:
+                logger.exception('Error updating plots')
 
         return data
 
@@ -1719,8 +1715,8 @@ class RedPitayaManager:
                     if hdf5_file and shot_data:
                         try:
                             self.save_data(shot_data, hdf5_file)
-                        except Exception as e:
-                            logger.error(f'Error saving data to HDF5 file: {e}')
+                        except Exception:
+                            logger.exception('Error saving data to HDF5 file')
 
                     all_data.append(shot_data)
 
@@ -1728,8 +1724,8 @@ class RedPitayaManager:
                     if i < num_shots - 1:  # Don't wait after the last shot
                         time.sleep(delay_between_shots)
 
-                except Exception as e:
-                    logger.error(f'Error in shot {i}: {e}')
+                except Exception:
+                    logger.exception(f'Error in shot {i}')
                     # Continue with next shot instead of stopping
                     continue
 
@@ -1759,14 +1755,14 @@ class RedPitayaManager:
                             'displacement': [],
                             'velocity': [],
                         }
-                except Exception as e:
-                    logger.error(f'Error cleaning up plots: {e}')
+                except Exception:
+                    logger.exception('Error cleaning up plots')
 
             end_time = datetime.now()
             logger.info(f'Completed {len(all_data)} acquisition cycles')
             logger.info(f'End time: {end_time.strftime("%H:%M:%S.%f")}')
 
-            return all_data
+        return all_data
 
     def blink_led(
         self,
@@ -1793,7 +1789,7 @@ class RedPitayaManager:
         logger.info(f'Blinking LED[{led_num}] on {device_name} {num_blinks} times')
 
         try:
-            for i in range(num_blinks):
+            for _ in range(num_blinks):
                 # Turn LED on
                 device.tx_txt(f'DIG:PIN LED{led_num},1')
                 time.sleep(period / 2.0)
@@ -1803,8 +1799,8 @@ class RedPitayaManager:
                 time.sleep(period / 2.0)
 
             logger.info(f'Finished blinking LED on {device_name}')
-        except Exception as e:
-            logger.exception(f'Error blinking LED on {device_name}: {e}')
+        except Exception:
+            logger.exception(f'Error blinking LED on {device_name}')
             logger.exception('Are you sure the SCPI server is running?')
 
 

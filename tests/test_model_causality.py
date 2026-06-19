@@ -101,7 +101,7 @@ def _causal_violation_rate(baseline, outputs, step_positions, block_size, thresh
 
         post_step_max = outputs[i, step_pos:].abs().max().item()
         if post_step_max < 1e-6:
-            # No meaningful response at all – skip to avoid false positives
+            # No meaningful response at all -- skip to avoid false positives
             continue
 
         pre_step_deviation = (outputs[i, :step_pos] - baseline[:step_pos]).abs()
@@ -192,7 +192,10 @@ def mamba_model():
 
 
 class TestMambaCausality:
-    """Mamba uses causal depthwise conv and sequential state updates — must be causal."""
+    """Mamba uses causal depthwise conv and sequential state updates -- must be causal.
+
+    The causal conv and sequential SSM updates guarantee no lookahead.
+    """
 
     def test_causal_violation_rate(self, mamba_model):
         baseline, outputs = _get_step_outputs(
@@ -243,7 +246,7 @@ class TestLSTMBidirectionalNonCausality:
             baseline, outputs, STEP_POSITIONS, BLOCK_SIZE, VIOLATION_THRESHOLD
         )
         assert violation_rate > 0.0, (
-            'Bidirectional LSTM shows no causal violations — '
+            'Bidirectional LSTM shows no causal violations -- '
             'backward pass may not be working'
         )
 
@@ -260,7 +263,7 @@ class TestSCNNNonCausality:
             baseline, outputs, STEP_POSITIONS, BLOCK_SIZE, VIOLATION_THRESHOLD
         )
         assert violation_rate > 0.0, (
-            'SCNN shows no causal violations — symmetric padding may not be working'
+            'SCNN shows no causal violations -- symmetric padding may not be working'
         )
 
 

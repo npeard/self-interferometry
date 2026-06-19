@@ -130,7 +130,7 @@ class TCAN(nn.Module):
             dropout=config.dropout,
         )
 
-        # Decoder TCN: in_channels * embed_dim → 1
+        # Decoder TCN: in_channels * embed_dim -> 1
         self.decoder = _make_decoder_tcn(config)
 
         logger.info(f'Number of parameters in TCAN: {self.total_params:,}')
@@ -158,11 +158,12 @@ class TCAN(nn.Module):
             features: [batch, in_channels * embed_dim, seq_len] concatenated
                 per-channel encoder outputs, ready for cross-attention.
             channel_features: list of in_channels tensors each
-                [batch, embed_dim, seq_len] — exposed for VICReg.
+                [batch, embed_dim, seq_len] -- exposed for VICReg.
         """
         batch_size, _, seq_len = x.shape
-        # Fold channels into batch for a single batched forward pass through the shared encoder.
-        # [batch * in_channels, 1, seq_len] → [batch * in_channels, embed_dim, seq_len]
+        # Fold channels into batch for a single batched forward pass through
+        # the shared encoder.
+        # [batch * in_channels, 1, seq_len] -> [batch * in_channels, embed_dim, seq_len]
         x_flat = x.reshape(batch_size * self.in_channels, 1, seq_len)
         out = self.siamese_encoder(x_flat)
         embed_dim = out.shape[1]
@@ -200,5 +201,5 @@ class TCAN(nn.Module):
         features = features.reshape(batch_size, seq_len, self.in_channels * embed_dim)
         features = features.permute(0, 2, 1).contiguous()
 
-        # Decoder: all attended channel features → 1-channel output
+        # Decoder: all attended channel features -> 1-channel output
         return self.decoder(features)  # [batch, 1, seq_len]

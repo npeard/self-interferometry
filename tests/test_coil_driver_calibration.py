@@ -139,9 +139,9 @@ def test_manual_transfer_function_computation():
     )
 
     # Also verify that the velocity is the derivative of displacement
-    # For a sinusoidal displacement x(t) = A*sin(ω*t + φ), the velocity is
-    # v(t) = A*ω*cos(ω*t + φ)
-    # In the frequency domain, this is equivalent to multiplying by iω = i*2*π*f
+    # For a sinusoidal displacement x(t) = A*sin(omega*t + phi), the velocity is
+    # v(t) = A*omega*cos(omega*t + phi)
+    # In the frequency domain, this is equivalent to multiplying by iomega = i*2*pi*f
     assert np.allclose(
         velocity_transfer, displacement_transfer * freqs * 2 * np.pi * 1j
     ), (
@@ -172,7 +172,7 @@ def test_displacement_velocity_relationship():
         voltage, sample_rate
     )
 
-    # Verify that velocity_spectrum = iω * displacement_spectrum
+    # Verify that velocity_spectrum = iomega * displacement_spectrum
     # This is equivalent to velocity being the time derivative of displacement
     expected_velocity_spectrum = (
         1j * 2 * np.pi * displacement_freqs * displacement_spectrum

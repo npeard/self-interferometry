@@ -3,6 +3,7 @@
 import logging
 import socket
 import struct
+import sys
 
 import numpy as np
 
@@ -33,8 +34,8 @@ class SCPI:
 
             self._socket.connect((host, port))
 
-        except OSError as e:
-            logger.error(f'SCPI >> connect({host!s:s}:{port:d}) failed: {e!s:s}')
+        except OSError:
+            logger.exception(f'SCPI >> connect({host!s:s}:{port:d}) failed')
 
     def __del__(self):
         if self._socket is not None:
@@ -62,7 +63,7 @@ class SCPI:
         self.check_error(stop)
         return msg
 
-    def rx_arb(self):
+    def rx_arb(self) -> bytes | bool:
         """Receive binary data from scpi server."""
         numOfBytes = 0
         data = b''
@@ -94,7 +95,7 @@ class SCPI:
         self.check_error(stop)
         return data
 
-    def tx_txt(self, msg: str):
+    def tx_txt(self, msg: str) -> None:
         """Send text string ending and append delimiter."""
         return self._socket.sendall(
             (msg + self.delimiter).encode('utf-8')
@@ -119,7 +120,7 @@ class SCPI:
                 logger.error(err)
                 n = err.split(',')
                 if len(n) > 0 and stop and int(n[0]) > 9500:
-                    exit(1)
+                    sys.exit(1)
 
     # SCPI command functions
 
@@ -182,7 +183,7 @@ class SCPI:
                 Number of repeated bursts.
                 Defaults to 1.
             period (int | None, optional) :
-                Total time of one burst in µs {1, 5e8}. Includes the signal and delay.
+                Total time of one burst in uss {1, 5e8}. Includes the signal and delay.
                 Defaults to `None`.
             trig (str, optional):
                 Trigger source (EXT_PE, EXT_NE, INT, GATED).
@@ -305,7 +306,7 @@ class SCPI:
             try:
                 assert period >= 1
             except AssertionError as period_err:
-                raise ValueError('Minimal burst period 1 µs') from period_err
+                raise ValueError('Minimal burst period 1 uss') from period_err
 
         try:
             assert trig.upper() in trigger_list
@@ -338,8 +339,7 @@ class SCPI:
             self.tx_txt(f'SOUR{chan}:DCYC {dcyc}')
 
         if (data is not None) and (func.upper() == 'ARBITRARY'):
-            for n in data:
-                wf_data.append(f'{n:.5f}')
+            wf_data.extend(f'{n:.5f}' for n in data)
             cust_wf = ', '.join(map(str, wf_data))
 
             self.tx_txt(f'SOUR{chan}:TRAC:DATA:DATA {cust_wf}')
@@ -618,12 +618,12 @@ class SCPI:
         settings.append(self.txrx_txt('ACQ:TRIG:LEV?'))
         settings.append(self.txrx_txt('ACQ:BUF:SIZE?'))
 
-        for i in range(n):
-            settings.append(self.txrx_txt(f'ACQ:SOUR{i + 1}:GAIN?'))
+        settings.extend(self.txrx_txt(f'ACQ:SOUR{i + 1}:GAIN?') for i in range(n))
 
         if siglab:
-            for i in range(2):
-                settings.append(self.txrx_txt(f'ACQ:SOUR{i + 1}:COUP?'))
+            settings.extend(
+                self.txrx_txt(f'ACQ:SOUR{i + 1}:COUP?') for i in range(2)
+            )
 
             settings.append(self.txrx_txt('ACQ:TRIG:EXT:LEV?'))
 
@@ -950,9 +950,7 @@ class SCPI:
         self.tx_txt(f'UART:READ{length}')
         res = self.rx_txt()
         res = res.strip('{}\n\r').replace('  ', '').split(',')
-        string = ''.join(chr(int(x)) for x in res)  # int(x).decode("utf8")
-
-        return string
+        return ''.join(chr(int(x)) for x in res)  # int(x).decode("utf8")
 
     def spi_set(
         self,
@@ -982,7 +980,6 @@ class SCPI:
         speed_max_limit = 100e6
         speed_min_limit = 1
         cs_mode_list = ['NORMAL', 'HIGH']
-        order_list = ['MSB', 'LSB']
         spi_mode_list = ['LISL', 'LIST', 'HISL', 'HIST']
         bits_min_limit = 7
 
@@ -1049,56 +1046,56 @@ class SCPI:
 
     # IEEE Mandated Commands
 
-    def cls(self):
+    def cls(self) -> None:
         """Clear Status Command."""
         return self.tx_txt('*CLS')
 
-    def ese(self, value: int):
+    def ese(self, value: int) -> None:
         """Standard Event Status Enable Command."""
         return self.tx_txt(f'*ESE {value}')
 
-    def ese_q(self):
+    def ese_q(self) -> str | None:
         """Standard Event Status Enable Query."""
         return self.txrx_txt('*ESE?')
 
-    def esr_q(self):
+    def esr_q(self) -> str | None:
         """Standard Event Status Register Query."""
         return self.txrx_txt('*ESR?')
 
-    def idn_q(self):
+    def idn_q(self) -> str | None:
         """Identification Query."""
         return self.txrx_txt('*IDN?')
 
-    def opc(self):
+    def opc(self) -> None:
         """Operation Complete Command."""
         return self.tx_txt('*OPC')
 
-    def opc_q(self):
+    def opc_q(self) -> str | None:
         """Operation Complete Query."""
         return self.txrx_txt('*OPC?')
 
-    def rst(self):
+    def rst(self) -> None:
         """Reset Command."""
         return self.tx_txt('*RST')
 
-    def sre(self):
+    def sre(self) -> None:
         """Service Request Enable Command."""
         return self.tx_txt('*SRE')
 
-    def sre_q(self):
+    def sre_q(self) -> str | None:
         """Service Request Enable Query."""
         return self.txrx_txt('*SRE?')
 
-    def stb_q(self):
+    def stb_q(self) -> str | None:
         """Read Status Byte Query."""
         return self.txrx_txt('*STB?')
 
     # :SYSTem
 
-    def err_c(self):
+    def err_c(self) -> str | None:
         """Error count."""
         return self.txrx_txt('SYST:ERR:COUN?')
 
-    def err_n(self):
+    def err_n(self) -> str | None:
         """Error next."""
         return self.txrx_txt('SYST:ERR:NEXT?')

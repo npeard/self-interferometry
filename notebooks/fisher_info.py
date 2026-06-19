@@ -38,7 +38,7 @@ def _(mo):
     $$\mathcal{I}(I; \delta\varphi) = \bigl(\partial \log f / \partial \delta\varphi\bigr)^2
     = \frac{I_0^2 V^2}{4\sigma^2} \cdot \sin^2(\varphi_0 + \delta\varphi) $$
 
-    - **Minimum FI**: at $\varphi_0 + \delta\varphi = 0, \pm\pi$ (bright/dark fringe — flat intensity, zero slope)
+    - **Minimum FI**: at $\varphi_0 + \delta\varphi = 0, \pm\pi$ (bright/dark fringe -- flat intensity, zero slope)
     - **Maximum FI**: near quadrature $\varphi_0 + \delta\varphi \approx \pm\pi/2$ (steepest fringe slope)
 
     ## Multiple Interferometers
@@ -159,7 +159,7 @@ def _(mo):
     mo.md(r"""
     The 2D map shows FI as a function of both the static offset $\varphi_0$ and
     the perturbation $\delta\varphi$. The dark bands (zero FI) lie along
-    $\varphi_0 + \delta\varphi = n\pi$ — exactly the bright and dark fringes
+    $\varphi_0 + \delta\varphi = n\pi$ -- exactly the bright and dark fringes
     where the intensity slope vanishes. A single interferometer always has blind
     spots in this map.
     """)
@@ -196,7 +196,7 @@ def _(I0, V, delta_phi, fisher_info, np, plt):
 
     _K_range = np.arange(1, 21)
 
-    # Uniform unit-circle [0, 2π) spacing
+    # Uniform unit-circle [0, 2pi) spacing
     _min_FI_uc = []
     for _K in _K_range:
         _offsets = np.linspace(0, np.pi, _K, endpoint=False)
@@ -205,7 +205,7 @@ def _(I0, V, delta_phi, fisher_info, np, plt):
             _FI_total += fisher_info(delta_phi, _p0, I0, V)
         _min_FI_uc.append(np.min(_FI_total))
 
-    # Monte Carlo: random phase offsets drawn uniformly from [0, 2π)
+    # Monte Carlo: random phase offsets drawn uniformly from [0, 2pi)
     _N_mc = 1000
     _rng = np.random.default_rng(42)
     _mc_min_mean = np.zeros(len(_K_range))
@@ -341,7 +341,7 @@ def _(mo):
     phase information whenever $\delta\varphi$ passes through $0$ or $\pm\pi$
     (bright/dark fringes). Even the optimally-placed single interferometer
     ($\varphi_0=\pi/2$) still has periodic blind spots. With $K=3$ uniformly
-    spaced interferometers, the total FI never drops to zero — at least one
+    spaced interferometers, the total FI never drops to zero -- at least one
     channel is always near quadrature.
 
     **Bottom:** The three detected intensity signals. When one channel is flat
@@ -369,7 +369,7 @@ def _(mo):
 
     Wavelength diversity provides two advantages over phase-offset diversity alone:
 
-    1. **Incommensurate fringe periods** — the zeros of $\sin^2(\cdot)$ for different
+    1. **Incommensurate fringe periods** -- the zeros of $\sin^2(\cdot)$ for different
        $\lambda$ do not coincide, so blind spots are suppressed more effectively than
        with a single color at different offsets.
     2. **Shorter wavelengths contribute more FI per channel** via the $(4\pi/\lambda)^2$
@@ -383,7 +383,7 @@ def _(mo):
 @app.cell
 def _(I0, V, np, plt):
     _N_d = 1000
-    _d_grid = np.linspace(0, 1000, _N_d)  # displacement in nm, 0 to 2 µm
+    _d_grid = np.linspace(0, 1000, _N_d)  # displacement in nm, 0 to 2 usm
 
     _K_range = np.arange(1, 21)
     _N_mc = 1000
@@ -584,7 +584,7 @@ def _(mo):
 
     **Left (Worst-Case FI):** Single-color arrays with diverse phase offsets
     outperform multi-color arrays, especially at small $K$. This is because all
-    channels at the same wavelength oscillate at the **same spatial frequency** —
+    channels at the same wavelength oscillate at the **same spatial frequency** --
     their zeros are fixed relative to each other, so well-spread phase offsets
     guarantee at least one channel is always near quadrature. With different
     wavelengths, the fringe periods are **incommensurate**, and by Kronecker's
@@ -611,15 +611,15 @@ def _(mo):
 
     | Configuration | Worst-case FI | Sensitivity |
     |---|---|---|
-    | Single interferometer at fringe peak/null | 0 | **Blind** — no phase info |
+    | Single interferometer at fringe peak/null | 0 | **Blind** -- no phase info |
     | Single interferometer at quadrature | Maximum for 1 channel | Good, but periodic blind spots |
     | $K$ interferometers, same offset | $K \times$ single (but still has zeros) | Scales amplitude, not robustness |
-    | $K$ interferometers, diverse offsets | $> 0$ for all $\delta\varphi$ | **Robust** — no blind spots |
+    | $K$ interferometers, diverse offsets | $> 0$ for all $\delta\varphi$ | **Robust** -- no blind spots |
 
     The key insight: multiple interferometers with **different** phase offsets
     provide complementary information. The combined Fisher Information exceeds
     what any single interferometer can achieve, not just in magnitude but in
-    **coverage** — eliminating the blind spots where a single interferometer
+    **coverage** -- eliminating the blind spots where a single interferometer
     has zero sensitivity to phase displacements.
     """)
 

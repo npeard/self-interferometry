@@ -4,8 +4,8 @@ import math
 from dataclasses import dataclass
 
 import torch
-import torch.nn.functional as F
 from torch import Tensor, nn
+from torch.nn import functional
 
 act_fn_by_name = {'LeakyReLU': nn.LeakyReLU(), 'Tanh': nn.Tanh()}
 
@@ -116,10 +116,10 @@ class BarlandCNN(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         """Slide a fixed context window over the full input sequence.
 
-        All windows are extracted simultaneously via F.unfold and processed in a
-        single batched forward pass. Each window produces one scalar prediction
+        All windows are extracted simultaneously via functional.unfold and processed
+        in a single batched forward pass. Each window produces one scalar prediction
         that is broadcast across all window_size positions it covers. Where
-        windows overlap, predictions are averaged (F.fold + count normalisation).
+        windows overlap, predictions are averaged (functional.fold + count norm).
 
         Padding is added on the right only so that the last window is complete
         even when signal_length is not divisible by window_stride.
@@ -139,11 +139,11 @@ class BarlandCNN(nn.Module):
         num_windows = math.ceil(max(signal_length - window_size, 0) / window_stride) + 1
         padded_length = (num_windows - 1) * window_stride + window_size
         pad_right = padded_length - signal_length
-        padded = F.pad(x, (0, pad_right), mode='constant', value=0)
+        padded = functional.pad(x, (0, pad_right), mode='constant', value=0)
 
-        # Extract all strided windows at once via F.unfold.
+        # Extract all strided windows at once via functional.unfold.
         # Result: [batch, in_channels * window_size, num_windows]
-        windows = F.unfold(
+        windows = functional.unfold(
             padded.unsqueeze(2), kernel_size=(1, window_size), stride=(1, window_stride)
         )
 
@@ -152,18 +152,18 @@ class BarlandCNN(nn.Module):
             batch_size * num_windows, in_channels, window_size
         )
 
-        # Single batched forward pass → [batch * num_windows, 1]
+        # Single batched forward pass -> [batch * num_windows, 1]
         preds = self._forward_windows(windows)
 
-        # Broadcast each scalar prediction over its full window span via F.fold
-        # with kernel_size=window_size. F.fold sums contributions where windows
+        # Broadcast each scalar prediction over its full window span via functional.fold
+        # with kernel_size=window_size. functional.fold sums contributions where windows
         # overlap; dividing by the count average them.
-        # preds: [batch * num_windows, 1] → [batch, 1 * window_size, num_windows]
+        # preds: [batch * num_windows, 1] -> [batch, 1 * window_size, num_windows]
         preds = preds.reshape(batch_size, 1, num_windows).expand(
             batch_size, window_size, num_windows
         )
 
-        folded = F.fold(
+        folded = functional.fold(
             preds,
             output_size=(1, padded_length),
             kernel_size=(1, window_size),
@@ -173,7 +173,7 @@ class BarlandCNN(nn.Module):
         ones = torch.ones(
             batch_size, window_size, num_windows, device=x.device, dtype=x.dtype
         )
-        counts = F.fold(
+        counts = functional.fold(
             ones,
             output_size=(1, padded_length),
             kernel_size=(1, window_size),

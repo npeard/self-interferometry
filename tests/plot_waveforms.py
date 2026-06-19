@@ -169,7 +169,7 @@ def plot_waveforms(
     # ax3.plot(t, displacement, 'b-', label='Standard')
     ax3.plot(t_eq, displacement_eq, 'r--', label='Equalized Gain')
     ax3.set_title('Displacement Waveform')
-    ax3.set_ylabel('Displacement (μm)')
+    ax3.set_ylabel('Displacement (umm)')
     ax3.grid(True)
     ax3.legend()
 
@@ -190,14 +190,14 @@ def plot_waveforms(
         freqs_fft_eq,
         2 * np.pi * 0.5 * np.abs(displacement_fft_eq),
         'r--',
-        label='2π/2*Equalized FFT',
+        label='2pi/2*Equalized FFT',
     )
     ax4.plot(
         waveform.freq,
         2 * np.pi * 0.5 * np.abs(displacement_spectrum_eq),
         'r-',
         alpha=0.3,
-        label='2π/2*Equalized Expected',
+        label='2pi/2*Equalized Expected',
     )
 
     # Plot transfer function on left y-axis
@@ -205,7 +205,7 @@ def plot_waveforms(
         dense_freq,
         np.abs(displacement_transfer) / (2 * np.pi) * 2,
         'g-',
-        label='Transfer Function (divided by 2π/2)',
+        label='Transfer Function (divided by 2pi/2)',
     )
 
     ax4.set_title('Displacement Spectrum & Transfer Function')
@@ -238,7 +238,7 @@ def plot_waveforms(
     ax5.plot(t_eq, velocity_eq, 'r--', label='Equalized Gain')
     ax5.set_title('Velocity Waveform')
     ax5.set_xlabel('Time (s)')
-    ax5.set_ylabel('Velocity (μm/s)')
+    ax5.set_ylabel('Velocity (umm/s)')
     ax5.grid(True)
     ax5.legend()
 
@@ -262,14 +262,14 @@ def plot_waveforms(
         freqs_fft_eq,
         2 * np.pi * 0.5 * np.abs(velocity_fft_eq),
         'r--',
-        label='2π/2*Equalized FFT',
+        label='2pi/2*Equalized FFT',
     )
     ax6.plot(
         waveform.freq,
         2 * np.pi * 0.5 * np.abs(velocity_spectrum_eq),
         'r-',
         alpha=0.3,
-        label='2π/2*Equalized Expected',
+        label='2pi/2*Equalized Expected',
     )
 
     # For velocity, we do multiply by 2*pi*1j*frequency, angular frequency in FFT
@@ -277,7 +277,7 @@ def plot_waveforms(
         dense_freq,
         np.abs(velocity_transfer) / (2 * np.pi) * 2,
         'g-',
-        label='Transfer Function (divided by 2π/2)',
+        label='Transfer Function (divided by 2pi/2)',
     )
 
     ax6.set_title('Velocity Spectrum & Transfer Function')
@@ -366,7 +366,7 @@ def plot_waveform_histograms(
     x = np.linspace(min(all_voltages), max(all_voltages), 1000)
     gaussian = stats.norm.pdf(x, loc=0, scale=np.sqrt(noise_variance))
     ax.plot(
-        x, gaussian, 'r-', linewidth=2, label=f'Gaussian (μ=0, σ²={noise_variance:.4f})'
+        x, gaussian, 'r-', linewidth=2, label=f'Gaussian (um=0, sigma^2={noise_variance:.4f})'
     )
     ax.legend()
 
