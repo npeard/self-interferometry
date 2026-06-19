@@ -18,13 +18,11 @@ def _():
 
 @app.cell
 def _():
-    from self_interferometry.acquisition.redpitaya.redpitaya_config import (
-        RedPitayaConfig,
-    )
     from self_interferometry.analysis.datasets import get_data_loaders
     from self_interferometry.analysis.generate_data import generate_synthetic_test_data
     from self_interferometry.analysis.lit_module import LitModule
     from self_interferometry.analysis.synthetic_lit_module import DEFAULT_WAVELENGTHS_NM
+    from self_interferometry.redpitaya.redpitaya_config import RedPitayaConfig
 
     ACQ_SAMPLE_RATE = RedPitayaConfig.SAMPLE_RATE_DEC1 / 256
     CHANNEL_NAMES = ['PD1 (635 nm)', 'PD2 (675 nm)', 'PD3 (515 nm)']

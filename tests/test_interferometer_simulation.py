@@ -3,12 +3,12 @@
 
 import numpy as np
 
-from self_interferometry.acquisition.simulations.coil_driver import CoilDriver
-from self_interferometry.acquisition.simulations.interferometers import (
+from self_interferometry.synthetic.coil_driver import CoilDriver
+from self_interferometry.synthetic.interferometers import (
     InterferometerArray,
     MichelsonInterferometer,
 )
-from self_interferometry.acquisition.simulations.waveform import Waveform
+from self_interferometry.synthetic.waveform import Waveform
 
 
 class TestInterferometerSimulation:

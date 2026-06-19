@@ -621,9 +621,7 @@ class SCPI:
         settings.extend(self.txrx_txt(f'ACQ:SOUR{i + 1}:GAIN?') for i in range(n))
 
         if siglab:
-            settings.extend(
-                self.txrx_txt(f'ACQ:SOUR{i + 1}:COUP?') for i in range(2)
-            )
+            settings.extend(self.txrx_txt(f'ACQ:SOUR{i + 1}:COUP?') for i in range(2))
 
             settings.append(self.txrx_txt('ACQ:TRIG:EXT:LEV?'))
 

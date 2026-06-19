@@ -6,10 +6,10 @@ from typing import override
 import torch
 from torch.utils.data import Dataset
 
-from self_interferometry.acquisition.redpitaya.redpitaya_config import RedPitayaConfig
-from self_interferometry.acquisition.simulations.coil_driver import CoilDriver
-from self_interferometry.acquisition.simulations.waveform import Waveform
 from self_interferometry.analysis.lit_module import LitModule
+from self_interferometry.redpitaya.redpitaya_config import RedPitayaConfig
+from self_interferometry.synthetic.coil_driver import CoilDriver
+from self_interferometry.synthetic.waveform import Waveform
 
 logger = logging.getLogger(__name__)
 
