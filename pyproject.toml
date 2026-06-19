@@ -180,10 +180,21 @@ pytest-xdist = ">=2.5"
 pytest-benchmark = "*"
 coverage = { version = "*", extras = ["toml"] }
 
+# Storage-format evaluation only (scripts/benchmark_storage.py). These are not
+# used by the library or training pipeline; kept isolated in their own
+# environment so they do not bloat default/dev/test. See
+# docs/data-storage-evaluation.md.
+[tool.pixi.feature.bench.dependencies]
+pyarrow = ">=24.0.0,<25"
+zarr = ">=3.2.1,<4"
+duckdb = ">=1.5.4,<2"
+hdf5plugin = ">=6.0.0,<7"
+
 [tool.pixi.environments]
 default = { solve-group = "default" }
 dev = { features = ["dev", "test"], solve-group = "default" }
 test = { features = ["test"], solve-group = "default" }
+bench = { features = ["bench"], solve-group = "default" }
 
 [tool.pixi.tasks]
 format = "ruff format . && ruff check --fix ."
