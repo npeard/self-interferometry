@@ -4,11 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from self_interferometry.analysis.datamodule import VelocityDataModule
+from smi.analysis.datamodule import VelocityDataModule
 
 DATASET = (
     Path(__file__).parent.parent
-    / 'self_interferometry'
+    / 'smi'
     / 'analysis'
     / 'data'
     / 'circuit-noise-600.h5'

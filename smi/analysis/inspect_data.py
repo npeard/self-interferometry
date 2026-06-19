@@ -8,8 +8,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from torch.utils.data import DataLoader
 
-from self_interferometry.analysis.datasets import VelocityDataset
-from self_interferometry.redpitaya.redpitaya_config import RedPitayaConfig
+from smi.analysis.datasets import VelocityDataset
+from smi.redpitaya.redpitaya_config import RedPitayaConfig
 
 logger = logging.getLogger(__name__)
 

@@ -8,11 +8,11 @@ from torch.utils.data import Dataset
 
 from torch import nn
 
-from self_interferometry.analysis.lit_module import LitModule
-from self_interferometry.analysis.models.base import Model
-from self_interferometry.redpitaya.redpitaya_config import RedPitayaConfig
-from self_interferometry.synthetic.coil_driver import CoilDriver
-from self_interferometry.synthetic.waveform import Waveform
+from smi.analysis.lit_module import LitModule
+from smi.analysis.models.base import Model
+from smi.redpitaya.redpitaya_config import RedPitayaConfig
+from smi.synthetic.coil_driver import CoilDriver
+from smi.synthetic.waveform import Waveform
 
 logger = logging.getLogger(__name__)
 

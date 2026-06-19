@@ -6902,7 +6902,7 @@ packages:
   size: 433413
   timestamp: 1764777166076
 - pypi: .
-  name: self-interferometry
+  name: smi
   requires_dist:
   - numpy>=1.26
   - matplotlib

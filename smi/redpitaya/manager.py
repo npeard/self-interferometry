@@ -24,11 +24,11 @@ try:
     from .scpi import SCPI
 except ImportError:
     # Fall back to absolute imports (when run as a script)
-    from self_interferometry.redpitaya.redpitaya_config import RedPitayaConfig
-    from self_interferometry.redpitaya.scpi import SCPI
-    from self_interferometry.synthetic.coil_driver import CoilDriver
-    from self_interferometry.synthetic.interferometers import MichelsonInterferometer
-    from self_interferometry.synthetic.waveform import Waveform
+    from smi.redpitaya.redpitaya_config import RedPitayaConfig
+    from smi.redpitaya.scpi import SCPI
+    from smi.synthetic.coil_driver import CoilDriver
+    from smi.synthetic.interferometers import MichelsonInterferometer
+    from smi.synthetic.waveform import Waveform
 
 logger = logging.getLogger(__name__)
 

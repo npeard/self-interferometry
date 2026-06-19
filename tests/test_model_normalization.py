@@ -3,8 +3,8 @@
 import numpy as np
 import torch
 
-from self_interferometry.analysis.models.base import FeatureMap, Model
-from self_interferometry.analysis.models.tcn import TCN, TCNConfig
+from smi.analysis.models.base import FeatureMap, Model
+from smi.analysis.models.tcn import TCN, TCNConfig
 
 SEQ_LEN = 256
 IN_CHANNELS = 3

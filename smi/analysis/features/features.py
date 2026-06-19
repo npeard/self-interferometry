@@ -1,7 +1,7 @@
 """Built-in feature definitions.
 
 Importing this module registers every feature on the
-:data:`~self_interferometry.analysis.features.registry.default_registry`.
+:data:`~smi.analysis.features.registry.default_registry`.
 
 Inputs are the photodiode channels (identity on the raw array). Targets are the
 velocity and displacement waveforms derived from the speaker drive voltage
@@ -11,7 +11,7 @@ stable identifiers used as keys in the version-controlled ``normalization.py``.
 
 import numpy as np
 
-from self_interferometry.synthetic.coil_driver import CoilDriver
+from smi.synthetic.coil_driver import CoilDriver
 
 from .registry import RawShot, register_feature
 

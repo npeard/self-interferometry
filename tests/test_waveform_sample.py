@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 from plot_waveforms import calculate_fft
 
-from self_interferometry.synthetic.waveform import Waveform
+from smi.synthetic.waveform import Waveform
 
 logger = logging.getLogger(__name__)
 

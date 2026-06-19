@@ -12,7 +12,7 @@ import lightning as lightning_module
 import torch
 from torch.utils.data import DataLoader, random_split
 
-from self_interferometry.analysis.datasets import VelocityDataset
+from smi.analysis.datasets import VelocityDataset
 
 logger = logging.getLogger(__name__)
 

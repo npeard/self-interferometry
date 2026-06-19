@@ -14,8 +14,8 @@ from matplotlib import gridspec
 from numpy.fft import fft, fftfreq
 from scipy import stats
 
-from self_interferometry.synthetic.coil_driver import CoilDriver
-from self_interferometry.synthetic.waveform import Waveform
+from smi.synthetic.coil_driver import CoilDriver
+from smi.synthetic.waveform import Waveform
 
 logger = logging.getLogger(__name__)
 

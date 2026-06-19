@@ -31,7 +31,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install flit
         pip install -e .[dev]
-        python -c "import self_interferometry; print(f'Successfully imported self_interferometry package')"
+        python -c "import smi; print(f'Successfully imported smi package')"
 
     - name: Test with pytest
       run: |

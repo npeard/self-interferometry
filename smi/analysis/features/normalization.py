@@ -5,7 +5,7 @@ Shots used: 600
 
 Regenerate with::
 
-    pixi run python -m self_interferometry.analysis.features.compute_norm_stats <dataset.h5>
+    pixi run python -m smi.analysis.features.compute_norm_stats <dataset.h5>
 """
 
 NORMALIZATION_STATS: dict[str, dict[str, float]] = {

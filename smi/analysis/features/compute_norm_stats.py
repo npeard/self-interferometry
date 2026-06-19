@@ -1,7 +1,7 @@
 """Compute per-feature normalization statistics from a dataset.
 
 Points at an HDF5 dataset, evaluates every registered feature
-(:data:`~self_interferometry.analysis.features.registry.default_registry`) for
+(:data:`~smi.analysis.features.registry.default_registry`) for
 each shot, and writes per-feature mean/std to ``normalization.py`` for version
 control. Models bake these stats into ``register_buffer`` s (see
 ``analysis/models/base.py``) so internal layers see zero-mean/unit-variance
@@ -9,8 +9,8 @@ features while the rest of the codebase works in raw physical units.
 
 Usage::
 
-    pixi run python -m self_interferometry.analysis.features.compute_norm_stats \
-        self_interferometry/analysis/data/circuit-noise-600.h5
+    pixi run python -m smi.analysis.features.compute_norm_stats \
+        smi/analysis/data/circuit-noise-600.h5
 """
 
 import argparse
@@ -20,7 +20,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 
-from self_interferometry.redpitaya.redpitaya_config import RedPitayaConfig
+from smi.redpitaya.redpitaya_config import RedPitayaConfig
 
 from .registry import default_registry
 
@@ -106,7 +106,7 @@ def write_normalization_module(stats: dict[str, dict], out_path: Path) -> None:
         '',
         'Regenerate with::',
         '',
-        '    pixi run python -m self_interferometry.analysis.features.compute_norm_stats'
+        '    pixi run python -m smi.analysis.features.compute_norm_stats'
         ' <dataset.h5>',
         '"""',
         '',

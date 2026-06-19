@@ -1,5 +1,5 @@
 [project]
-name = "self-interferometry"
+name = "smi"
 version = "0.1.0"
 description = "Self-Mixing Interferometry for Rapid Vibration/Acoustic Spectrograms"
 authors = [
@@ -27,8 +27,8 @@ dependencies = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/npeard/self-interferometry"
-"Bug Tracker" = "https://github.com/npeard/self-interferometry/issues"
+"Homepage" = "https://github.com/npeard/smi"
+"Bug Tracker" = "https://github.com/npeard/smi/issues"
 
 [build-system]
 requires = ["flit_core>=3.9.0,<4"]
@@ -55,7 +55,7 @@ filterwarnings = [
     "ignore::UserWarning:numba.*",
     "ignore::DeprecationWarning:numba.*",
     # Keep warnings from your own package (as warnings, not errors)
-    "default::Warning:self_interferometry.*",
+    "default::Warning:smi.*",
 ]
 
 [project.optional-dependencies]
@@ -81,7 +81,7 @@ dev = [
 ]
 
 [tool.flit.module]
-name = "self_interferometry"
+name = "smi"
 
 [tool.ruff.format]
 quote-style = "single"
@@ -140,9 +140,9 @@ allow-dict-calls-with-keyword-arguments = true
 "*.ipynb" = ["ALL"]
 "scripts/check_ascii.py" = ["S603", "S607", "T201"]
 "tests/plot_waveforms.py" = ["PLR0915", "E501"]
-"self_interferometry/redpitaya/manager.py" = ["C901", "PLR0912", "PLR0915"]
-"self_interferometry/redpitaya/scpi.py" = ["C901", "PLR0912", "PLR0915", "E501"]
-"self_interferometry/analysis/inspect_data.py" = ["PLR0915"]
+"smi/redpitaya/manager.py" = ["C901", "PLR0912", "PLR0915"]
+"smi/redpitaya/scpi.py" = ["C901", "PLR0912", "PLR0915", "E501"]
+"smi/analysis/inspect_data.py" = ["PLR0915"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -160,7 +160,7 @@ numba = "*"
 polars = ">=1.0"
 
 [tool.pixi.pypi-dependencies]
-self-interferometry = { path = ".", editable = true }
+smi = { path = ".", editable = true }
 
 [tool.pixi.feature.dev.pypi-dependencies]
 ruff = "*"
@@ -229,7 +229,7 @@ invalid-type-form = "ignore"
 possibly-missing-submodule = "ignore"
 
 [tool.coverage.run]
-source = ["self_interferometry"]
+source = ["smi"]
 branch = true
 
 [tool.coverage.report]

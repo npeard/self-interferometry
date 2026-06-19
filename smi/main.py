@@ -8,7 +8,7 @@ import lightning as lightning_module
 from analysis.generate_data import generate_dataset_from_rp
 from analysis.training_interface import TrainingConfig, TrainingInterface
 
-from self_interferometry.redpitaya.manager import RedPitayaManager
+from smi.redpitaya.manager import RedPitayaManager
 
 
 def setup_logging(verbosity: str) -> None:

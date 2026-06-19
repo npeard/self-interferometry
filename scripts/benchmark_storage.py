@@ -46,7 +46,7 @@ import numpy as np
 # Absolute path to a small real dataset (~157 MB). Subsetting keeps memory sane.
 SOURCE_H5 = Path(
     '/Users/nolanpeard/Documents/Projects/self-interferometry/'
-    'self_interferometry/analysis/data/circuit-noise-600.h5'
+    'smi/analysis/data/circuit-noise-600.h5'
 )
 
 # Channels (datasets) present in every file; one row across all = one "shot".

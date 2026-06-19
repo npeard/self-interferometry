@@ -2,9 +2,9 @@
 
 import numpy as np
 
-from self_interferometry.analysis.features import default_registry
-from self_interferometry.analysis.features.features import PD_FEATURE_TO_CHANNEL
-from self_interferometry.synthetic.coil_driver import CoilDriver
+from smi.analysis.features import default_registry
+from smi.analysis.features.features import PD_FEATURE_TO_CHANNEL
+from smi.synthetic.coil_driver import CoilDriver
 
 SIGNAL_LENGTH = 4096
 SAMPLE_RATE = 488281.25

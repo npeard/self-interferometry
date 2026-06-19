@@ -15,9 +15,9 @@ from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 from torch.utils.data import DataLoader
 
-from self_interferometry.analysis.datamodule import VelocityDataModule
-from self_interferometry.analysis.lit_module import LitModule
-from self_interferometry.analysis.synthetic_lit_module import (
+from smi.analysis.datamodule import VelocityDataModule
+from smi.analysis.lit_module import LitModule
+from smi.analysis.synthetic_lit_module import (
     SyntheticIndexDataset,
     SyntheticLitModule,
 )

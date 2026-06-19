@@ -34,7 +34,7 @@ training:
   accelerator: "gpu"
   devices: 1
   use_logging: true
-  wandb_project: "self-interferometry"
+  wandb_project: "smi"
   experiment_name: "tcan_pareto_setup"
   target: "velocity"
 
