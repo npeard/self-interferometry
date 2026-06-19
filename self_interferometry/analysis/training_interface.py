@@ -15,7 +15,7 @@ from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 from torch.utils.data import DataLoader
 
-from self_interferometry.analysis.datasets import get_data_loaders
+from self_interferometry.analysis.datamodule import VelocityDataModule
 from self_interferometry.analysis.lit_module import LitModule
 from self_interferometry.analysis.synthetic_lit_module import (
     SyntheticIndexDataset,
@@ -246,8 +246,9 @@ class TrainingInterface:
         if batch_size is None:
             batch_size = self.config.training_config['batch_size']
 
-        # Synthetic training: create dummy dataloaders
+        # Synthetic training: create dummy dataloaders (no DataModule).
         if self._is_synthetic():
+            self.datamodule = None
             syn = self.config.synthetic_config
             steps = syn['steps_per_epoch']
             val_steps = syn.get('val_steps', steps // 5)
@@ -262,7 +263,7 @@ class TrainingInterface:
             self.test_loader = self.val_loader
             return
 
-        # Real data: load HDF5 datasets
+        # Real data: build a Lightning DataModule over the HDF5 dataset.
         base_dir = Path(__file__).parent.parent
 
         def resolve_path(data_dir: str, filename: str | None = None) -> str:
@@ -284,11 +285,12 @@ class TrainingInterface:
         if num_workers is None:
             num_workers = self.config.data_config['num_workers']
 
-        self.train_loader, self.val_loader, self.test_loader = get_data_loaders(
+        self.datamodule = VelocityDataModule(
             dataset_path=dataset_path,
-            split_ratios=split_ratios,
+            split_ratios=tuple(split_ratios),
             batch_size=batch_size,
             num_workers=num_workers,
+            num_pd_channels=self.config.data_config.get('num_pd_channels', 3),
         )
 
     def create_lightning_module(self) -> LitModule:
@@ -397,23 +399,30 @@ class TrainingInterface:
 
     def train(self):
         """Train the model."""
-        self.trainer.fit(
-            self.lightning_module,
-            train_dataloaders=self.train_loader,
-            val_dataloaders=self.val_loader,
-        )
+        # Real data uses the DataModule; synthetic uses index dataloaders.
+        if getattr(self, 'datamodule', None) is not None:
+            self.trainer.fit(self.lightning_module, datamodule=self.datamodule)
+        else:
+            self.trainer.fit(
+                self.lightning_module,
+                train_dataloaders=self.train_loader,
+                val_dataloaders=self.val_loader,
+            )
 
     def test(self):
         """Test the model using best checkpoint."""
-        if hasattr(self, 'test_loader'):
-            checkpoint_callback = None
-            for callback in self.trainer.callbacks:
-                if isinstance(callback, ModelCheckpoint):
-                    checkpoint_callback = callback
-                    break
+        checkpoint_callback = any(
+            isinstance(cb, ModelCheckpoint) for cb in self.trainer.callbacks
+        )
+        ckpt_path = 'best' if checkpoint_callback else None
 
+        if getattr(self, 'datamodule', None) is not None:
+            self.trainer.test(
+                self.lightning_module, datamodule=self.datamodule, ckpt_path=ckpt_path
+            )
+        elif hasattr(self, 'test_loader'):
             self.trainer.test(
                 self.lightning_module,
                 dataloaders=self.test_loader,
-                ckpt_path='best' if checkpoint_callback else None,
+                ckpt_path=ckpt_path,
             )
