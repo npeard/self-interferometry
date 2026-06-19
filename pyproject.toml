@@ -15,10 +15,10 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "numpy==1.26.4",
+    "numpy>=1.26",
     "matplotlib",
     "numba",
-    "torch>=2.9.0",
+    "torch>=2.2",
     "lightning",
     "h5py",
     "tqdm",
@@ -38,6 +38,25 @@ build-backend = "flit_core.buildapi"
 testpaths = ["tests"]
 python_files = "test_*.py"
 addopts = "--verbose"
+filterwarnings = [
+    # Ignore external package warnings
+    "ignore::UserWarning:torch.*",
+    "ignore::DeprecationWarning:torch.*",
+    "ignore::FutureWarning:torch.*",
+    "ignore::UserWarning:numpy.*",
+    "ignore::DeprecationWarning:numpy.*",
+    "ignore::UserWarning:scipy.*",
+    "ignore::DeprecationWarning:scipy.*",
+    "ignore::UserWarning:matplotlib.*",
+    "ignore::DeprecationWarning:matplotlib.*",
+    "ignore::UserWarning:lightning.*",
+    "ignore::DeprecationWarning:lightning.*",
+    "ignore::FutureWarning:lightning.*",
+    "ignore::UserWarning:numba.*",
+    "ignore::DeprecationWarning:numba.*",
+    # Keep warnings from your own package (as warnings, not errors)
+    "default::Warning:self_interferometry.*",
+]
 
 [project.optional-dependencies]
 test = [
@@ -48,12 +67,13 @@ test = [
 ]
 dev = [
     "pytest>=8.0.0",
-    "black",
     "ruff",
     "codespell",
-    "taskipy",
     "pre-commit",
     "nbstripout",
+    "ty",             # Type checking
+    "bandit",         # Security linting
+    "coverage[toml]", # Coverage with pyproject.toml support
     "marimo",
     "lmfit",
     "uncertainties",
@@ -62,11 +82,6 @@ dev = [
 
 [tool.flit.module]
 name = "self_interferometry"
-
-[tool.black]
-line-length = 88
-target-version = ["py312"]
-include = '\.pyi?$'
 
 [tool.ruff.format]
 quote-style = "single"
@@ -103,6 +118,7 @@ ignore = [
     "S101",  # Use of assert (common in scientific code)
     "S311",  # Random generators (often fine for scientific use)
     # Naming (scientific computing often uses uppercase for matrices/operators)
+    "N803", # Argument names should be lowercase (conflicts with math notation for matrices)
     "N806", "N802", # Variable names should be lowercase (conflicts with math notation)
 ]
 
@@ -120,8 +136,13 @@ allow-dict-calls-with-keyword-arguments = true
 "docs/**.py" = ["INP001", "ARG001", "ANN"]
 "conftest.py" = ["ANN"]
 "tests/**.py" = ["ANN"]
+"notebooks/**.py" = ["T201", "ANN", "INP001", "E501", "B018", "PLR0915", "PTH123", "F841"]
 "*.ipynb" = ["ALL"]
-
+"scripts/check_ascii.py" = ["S603", "S607", "T201"]
+"tests/plot_waveforms.py" = ["PLR0915", "E501"]
+"self_interferometry/acquisition/redpitaya/manager.py" = ["C901", "PLR0912", "PLR0915"]
+"self_interferometry/acquisition/redpitaya/scpi.py" = ["C901", "PLR0912", "PLR0915", "E501"]
+"self_interferometry/analysis/inspect_data.py" = ["PLR0915"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -129,10 +150,79 @@ convention = "google"
 [tool.codespell]
 skip = ".git,*.ipynb"
 
-[tool.taskipy.tasks]
-test = "pytest"
-lint = "ruff check ."
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["osx-64", "osx-arm64", "linux-64"]
+
+[tool.pixi.dependencies]
+python = ">=3.12,<3.13"
+numba = "*"
+
+[tool.pixi.pypi-dependencies]
+self-interferometry = { path = ".", editable = true }
+
+[tool.pixi.feature.dev.pypi-dependencies]
+ruff = "*"
+codespell = "*"
+pre-commit = "*"
+nbstripout = "*"
+ty = "*"
+bandit = "*"
+marimo = "*"
+lmfit = "*"
+uncertainties = "*"
+schemdraw = "*"
+
+[tool.pixi.feature.test.pypi-dependencies]
+pytest = ">=8.0"
+pytest-cov = ">=3.0"
+pytest-xdist = ">=2.5"
+pytest-benchmark = "*"
+coverage = { version = "*", extras = ["toml"] }
+
+[tool.pixi.environments]
+default = { solve-group = "default" }
+dev = { features = ["dev", "test"], solve-group = "default" }
+test = { features = ["test"], solve-group = "default" }
+
+[tool.pixi.tasks]
 format = "ruff format . && ruff check --fix ."
+lint = "ruff check ."
+ascii = "python scripts/check_ascii.py"
+test = "pytest"
 spell = "codespell ."
 precommit = "pre-commit run --all-files"
-all = "task format && task lint && task test"
+
+[tool.pixi.feature.dev.tasks]
+typecheck = "ty check"
+all = { depends-on = ["format", "lint", "ascii", "typecheck", "test"] }
+
+[tool.ty.environment]
+python-version = "3.12"
+
+[tool.ty.src]
+exclude = [".pixi", "**/*.ipynb"]
+
+# Rules dominated by PyTorch / scientific-library typing gaps (incomplete third-
+# party stubs, autograd Function patterns). Downgraded so the high-signal rules
+# stay actionable; promote back to "error" individually as stubs improve.
+[tool.ty.rules]
+unresolved-attribute = "ignore"
+invalid-argument-type = "ignore"
+unsupported-operator = "ignore"
+not-iterable = "ignore"
+invalid-method-override = "ignore"
+not-subscriptable = "ignore"
+invalid-type-form = "ignore"
+possibly-missing-submodule = "ignore"
+
+[tool.coverage.run]
+source = ["self_interferometry"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+]
