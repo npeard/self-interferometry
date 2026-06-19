@@ -17,22 +17,18 @@ from numpy.fft import fft
 # Import our custom classes
 try:
     # Try relative imports first (when used as a package)
-    from ..simulations.coil_driver import CoilDriver
-    from ..simulations.interferometers import MichelsonInterferometer
-    from ..simulations.waveform import Waveform
+    from ..synthetic.coil_driver import CoilDriver
+    from ..synthetic.interferometers import MichelsonInterferometer
+    from ..synthetic.waveform import Waveform
     from .redpitaya_config import RedPitayaConfig
     from .scpi import SCPI
 except ImportError:
     # Fall back to absolute imports (when run as a script)
-    from self_interferometry.acquisition.redpitaya.redpitaya_config import (
-        RedPitayaConfig,
-    )
-    from self_interferometry.acquisition.redpitaya.scpi import SCPI
-    from self_interferometry.acquisition.simulations.coil_driver import CoilDriver
-    from self_interferometry.acquisition.simulations.interferometers import (
-        MichelsonInterferometer,
-    )
-    from self_interferometry.acquisition.simulations.waveform import Waveform
+    from self_interferometry.redpitaya.redpitaya_config import RedPitayaConfig
+    from self_interferometry.redpitaya.scpi import SCPI
+    from self_interferometry.synthetic.coil_driver import CoilDriver
+    from self_interferometry.synthetic.interferometers import MichelsonInterferometer
+    from self_interferometry.synthetic.waveform import Waveform
 
 logger = logging.getLogger(__name__)
 
@@ -544,9 +540,7 @@ class RedPitayaManager:
                             primary_device.acq_data(chan=chan, convert=True)
                         )
                         data[f'{primary_name}_CH{chan}'] = channel_data
-                        logger.info(
-                            f'Acquired data from {primary_name} Channel {chan}'
-                        )
+                        logger.info(f'Acquired data from {primary_name} Channel {chan}')
                     except Exception:
                         logger.exception(
                             f'Error acquiring data from {primary_name}, channel {chan}'

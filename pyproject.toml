@@ -140,8 +140,8 @@ allow-dict-calls-with-keyword-arguments = true
 "*.ipynb" = ["ALL"]
 "scripts/check_ascii.py" = ["S603", "S607", "T201"]
 "tests/plot_waveforms.py" = ["PLR0915", "E501"]
-"self_interferometry/acquisition/redpitaya/manager.py" = ["C901", "PLR0912", "PLR0915"]
-"self_interferometry/acquisition/redpitaya/scpi.py" = ["C901", "PLR0912", "PLR0915", "E501"]
+"self_interferometry/redpitaya/manager.py" = ["C901", "PLR0912", "PLR0915"]
+"self_interferometry/redpitaya/scpi.py" = ["C901", "PLR0912", "PLR0915", "E501"]
 "self_interferometry/analysis/inspect_data.py" = ["PLR0915"]
 
 [tool.ruff.lint.pydocstyle]

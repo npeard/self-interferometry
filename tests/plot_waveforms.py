@@ -14,8 +14,8 @@ from matplotlib import gridspec
 from numpy.fft import fft, fftfreq
 from scipy import stats
 
-from self_interferometry.acquisition.simulations.coil_driver import CoilDriver
-from self_interferometry.acquisition.simulations.waveform import Waveform
+from self_interferometry.synthetic.coil_driver import CoilDriver
+from self_interferometry.synthetic.waveform import Waveform
 
 logger = logging.getLogger(__name__)
 
@@ -366,7 +366,11 @@ def plot_waveform_histograms(
     x = np.linspace(min(all_voltages), max(all_voltages), 1000)
     gaussian = stats.norm.pdf(x, loc=0, scale=np.sqrt(noise_variance))
     ax.plot(
-        x, gaussian, 'r-', linewidth=2, label=f'Gaussian (um=0, sigma^2={noise_variance:.4f})'
+        x,
+        gaussian,
+        'r-',
+        linewidth=2,
+        label=f'Gaussian (um=0, sigma^2={noise_variance:.4f})',
     )
     ax.legend()
 

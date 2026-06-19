@@ -19,10 +19,10 @@ except ImportError:
     MuonWithAuxAdam = None
     SingleDeviceMuonWithAuxAdam = None
 
-from self_interferometry.acquisition.redpitaya.redpitaya_config import RedPitayaConfig
-from self_interferometry.acquisition.simulations.coil_driver import CoilDriver
 from self_interferometry.analysis.models.factory import create_model
 from self_interferometry.analysis.models.vicreg import VicRegLoss
+from self_interferometry.redpitaya.redpitaya_config import RedPitayaConfig
+from self_interferometry.synthetic.coil_driver import CoilDriver
 
 logger = logging.getLogger(__name__)
 
