@@ -6,7 +6,10 @@ from typing import override
 import torch
 from torch.utils.data import Dataset
 
+from torch import nn
+
 from self_interferometry.analysis.lit_module import LitModule
+from self_interferometry.analysis.models.base import Model
 from self_interferometry.redpitaya.redpitaya_config import RedPitayaConfig
 from self_interferometry.synthetic.coil_driver import CoilDriver
 from self_interferometry.synthetic.waveform import Waveform
@@ -115,6 +118,18 @@ class SyntheticLitModule(LitModule):
             f'SyntheticLitModule initialized with {len(wavelengths_nm)} '
             f'interferometers: {wavelengths_nm} nm'
         )
+
+    @override
+    def _make_model(self, inner: nn.Module) -> Model:
+        """Wrap with identity normalization.
+
+        Synthetic signals are already per-sample z-scored on-device (see
+        ``_generate_synthetic_batch``) and the velocity/displacement targets use
+        the synthetic scale, so the real-data feature statistics do not apply.
+        An identity wrapper preserves the historical no-normalization behavior
+        while keeping the wrapped-model interface uniform.
+        """
+        return Model.identity(inner, self.model_hparams['in_channels'])
 
     def _generate_synthetic_batch(
         self, batch_size: int, device: torch.device

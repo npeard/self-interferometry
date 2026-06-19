@@ -19,6 +19,9 @@ except ImportError:
     MuonWithAuxAdam = None
     SingleDeviceMuonWithAuxAdam = None
 
+from self_interferometry.analysis.features import default_registry
+from self_interferometry.analysis.features.normalization import NORMALIZATION_STATS
+from self_interferometry.analysis.models.base import Model
 from self_interferometry.analysis.models.factory import create_model
 from self_interferometry.analysis.models.vicreg import VicRegLoss
 from self_interferometry.redpitaya.redpitaya_config import RedPitayaConfig
@@ -59,21 +62,9 @@ class LitModule(lightning_module.LightningModule):
         self.loss_hparams = loss_hparams
         self.training_hparams = training_hparams
         self.data_hparams = data_hparams
-        self.model = create_model(model_hparams)
 
-        # Torch compilation (requires PyTorch 2+, Python < 3.12, and GPU)
-        torch_major = int(torch.__version__.split('.')[0])
-        if (
-            torch_major >= 2
-            and sys.version_info < (3, 12)
-            and torch.cuda.is_available()
-        ):
-            self.model = torch.compile(self.model)
-            # Note: torch.compile may add prefixes to parameter names, which can cause
-            # issues with state_dict loading. See notebooks/prediction.py for an example
-            # of how to handle this.
-
-        # Determine what the model should target
+        # Determine what the model should target (needed before wrapping, since
+        # the normalization wrapper scales the output by the target's stats).
         if training_hparams and 'target' in training_hparams:
             self.target = training_hparams['target']
             if self.target not in ['velocity', 'displacement']:
@@ -86,6 +77,24 @@ class LitModule(lightning_module.LightningModule):
             logger.warning(
                 "No 'target' specified in training config, defaulting to 'velocity'"
             )
+
+        # Build the inner network and wrap it so input/output normalization is
+        # baked into buffers; the wrapper's forward stays in raw physical units.
+        inner = create_model(model_hparams)
+        self._inner_model = inner
+        self.model = self._make_model(inner)
+
+        # Torch compilation (requires PyTorch 2+, Python < 3.12, and GPU)
+        torch_major = int(torch.__version__.split('.')[0])
+        if (
+            torch_major >= 2
+            and sys.version_info < (3, 12)
+            and torch.cuda.is_available()
+        ):
+            self.model = torch.compile(self.model)
+            # Note: torch.compile may add prefixes to parameter names, which can cause
+            # issues with state_dict loading. See notebooks/prediction.py for an example
+            # of how to handle this.
 
         # Initialize dynamic loss weights if enabled
         if 'dynamic' not in self.loss_hparams:
@@ -102,9 +111,10 @@ class LitModule(lightning_module.LightningModule):
 
         torch.set_float32_matmul_precision('high')
 
-        # VICReg: only instantiate when weight > 0 and model supports encode()
+        # VICReg: only instantiate when weight > 0 and the inner model supports
+        # encode() (the wrapper delegates encode() to the inner model).
         self._vicreg_weight = float(loss_hparams.get('vicreg_weight', 0.0))
-        if self._vicreg_weight > 0 and hasattr(self.model, 'encode'):
+        if self._vicreg_weight > 0 and hasattr(self._inner_model, 'encode'):
             self.vicreg_loss = VicRegLoss(
                 sim_coeff=float(loss_hparams.get('vicreg_sim_coeff', 25.0)),
                 std_coeff=float(loss_hparams.get('vicreg_std_coeff', 25.0)),
@@ -114,8 +124,8 @@ class LitModule(lightning_module.LightningModule):
             self.vicreg_loss = None
 
         # Include model size metrics in logged hyperparameters
-        total_params = getattr(self.model, 'total_params', None)
-        receptive_field = getattr(self.model, 'receptive_field', None)
+        total_params = getattr(self._inner_model, 'total_params', None)
+        receptive_field = getattr(self._inner_model, 'receptive_field', None)
         if total_params is not None:
             model_hparams = {**(model_hparams or {}), 'total_params': int(total_params)}
         if receptive_field is not None:
@@ -125,6 +135,20 @@ class LitModule(lightning_module.LightningModule):
             }
         self.model_hparams = model_hparams
         self.save_hyperparameters(ignore=['model'])
+
+    def _make_model(self, inner: nn.Module) -> Model:
+        """Wrap the inner network with baked input/output normalization.
+
+        Uses the version-controlled per-feature stats: the first ``in_channels``
+        photodiode input features scale the inputs and the target feature scales
+        the output. Subclasses with a different input scale (e.g. on-device
+        synthetic data) may override this.
+        """
+        in_channels = self.model_hparams['in_channels']
+        input_names = default_registry.input_features()[:in_channels]
+        return Model.from_registry_stats(
+            inner, input_names, self.target, NORMALIZATION_STATS
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through the model.
