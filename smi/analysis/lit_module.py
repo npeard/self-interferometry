@@ -2,7 +2,7 @@
 
 import logging
 import sys
-from typing import Any, override
+from typing import Any, cast, override
 
 import lightning as lightning_module
 import torch
@@ -10,14 +10,18 @@ from torch import nn, optim
 
 # Conditional import for Muon optimizer
 try:
-    from muon import Muon, MuonWithAuxAdam, SingleDeviceMuonWithAuxAdam
+    from muon import (  # ty: ignore[unresolved-import]  # optional dependency
+        Muon,
+        MuonWithAuxAdam,
+        SingleDeviceMuonWithAuxAdam,
+    )
 
     MUON_AVAILABLE = True
 except ImportError:
     MUON_AVAILABLE = False
-    Muon = None
-    MuonWithAuxAdam = None
-    SingleDeviceMuonWithAuxAdam = None
+    Muon: type | None = None
+    MuonWithAuxAdam: type | None = None
+    SingleDeviceMuonWithAuxAdam: type | None = None
 
 from smi.analysis.features import default_registry
 from smi.analysis.features.normalization import NORMALIZATION_STATS
@@ -236,9 +240,13 @@ class LitModule(lightning_module.LightningModule):
             # Use SingleDeviceMuonWithAuxAdam for single GPU/CPU training
             # Use MuonWithAuxAdam for distributed training
             if torch.distributed.is_available() and torch.distributed.is_initialized():
-                optimizer = MuonWithAuxAdam(param_groups, **optimizer_hparams)
+                # Guarded by the MUON_AVAILABLE check above, so not None here.
+                optimizer = MuonWithAuxAdam(  # ty: ignore[call-non-callable]
+                    param_groups, **optimizer_hparams
+                )
             else:
-                optimizer = SingleDeviceMuonWithAuxAdam(
+                # Guarded by the MUON_AVAILABLE check above, so not None here.
+                optimizer = SingleDeviceMuonWithAuxAdam(  # ty: ignore[call-non-callable]
                     param_groups, **optimizer_hparams
                 )
         else:
@@ -476,15 +484,14 @@ class LitModule(lightning_module.LightningModule):
     @override
     def predict_step(
         self,
-        batch: tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor, torch.Tensor]],
+        batch: tuple[torch.Tensor, torch.Tensor, torch.Tensor],
         batch_idx: int,
         dataloader_idx: int = 0,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Prediction step for model. Return all relevant quantities for plotting.
 
         Args:
-            batch: Tuple of (inputs, targets) where targets is a tuple of
-                  (velocity, displacement, signals)
+            batch: Tuple of (signals, velocity_target, displacement_target)
             batch_idx: Index of current batch
             dataloader_idx: Index of dataloader
 
@@ -500,13 +507,17 @@ class LitModule(lightning_module.LightningModule):
         # Derive both velocity and displacement for plotting, regardless of target
         if self.target == 'velocity':
             velocity_hat = prediction
-            displacement_hat = CoilDriver.integrate_velocity(
-                velocity_hat, sample_rate=sample_rate
+            # CoilDriver returns ndarray | Tensor; the tensor input path always
+            # yields a Tensor here.
+            displacement_hat = cast(
+                torch.Tensor,
+                CoilDriver.integrate_velocity(velocity_hat, sample_rate=sample_rate),
             )
         else:  # self.target == 'displacement'
             displacement_hat = prediction
-            velocity_hat = CoilDriver.derivative_displacement(
-                displacement_hat, sample_rate
+            velocity_hat = cast(
+                torch.Tensor,
+                CoilDriver.derivative_displacement(displacement_hat, sample_rate),
             )
 
         # Shift all displacements to start at zero for easy comparison

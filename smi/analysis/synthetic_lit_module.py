@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import logging
-from typing import override
+from typing import cast, override
 
 import torch
 from torch import nn
@@ -175,8 +175,11 @@ class SyntheticLitModule(LitModule):
         signals = (signals - signals_mean) / signals_std
 
         # 5. Compute velocity from displacement
-        velocity = CoilDriver.derivative_displacement(
-            displacement, self.acq_sample_rate
+        # CoilDriver returns ndarray | Tensor; the tensor input path always
+        # yields a Tensor here.
+        velocity = cast(
+            torch.Tensor,
+            CoilDriver.derivative_displacement(displacement, self.acq_sample_rate),
         )
 
         return signals, velocity, displacement

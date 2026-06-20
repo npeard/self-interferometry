@@ -58,7 +58,9 @@ class SCPI:
                 return msg[:-2]
         return None
 
-    def rx_txt_check_error(self, chunksize: int = 4096, stop: bool = True) -> str:
+    def rx_txt_check_error(
+        self, chunksize: int = 4096, stop: bool = True
+    ) -> str | None:
         msg = self.rx_txt(chunksize)
         self.check_error(stop)
         return msg
@@ -90,7 +92,7 @@ class SCPI:
             data += self._socket.recv(r_size)
         return data
 
-    def rx_arb_check_error(self, stop: bool = True) -> bytes:
+    def rx_arb_check_error(self, stop: bool = True) -> bytes | bool:
         data = self.rx_arb()
         self.check_error(stop)
         return data
@@ -105,7 +107,7 @@ class SCPI:
         self.tx_txt(msg)
         self.check_error(stop)
 
-    def txrx_txt(self, msg: str) -> str:
+    def txrx_txt(self, msg: str) -> str | None:
         """Send/receive text string."""
         self.tx_txt(msg)
         return self.rx_txt()
@@ -569,7 +571,7 @@ class SCPI:
 
         # print("ACQ set successfully")
 
-    def get_settings(self, siglab: bool = False, input4: bool = False) -> str:
+    def get_settings(self, siglab: bool = False, input4: bool = False) -> list:
         """Retrieves the settings from Red Pitaya, prints them in console and returns
         them as an array with the following sequence:
         [decimation, average, trig_dly, trig_dly_ns, trig_lvl, buf_size, gain_ch1,
@@ -653,7 +655,7 @@ class SCPI:
         binary: bool = False,
         convert: bool = False,
         input4: bool = False,
-    ) -> list:
+    ) -> list | bytes | bool | str | None:
         """Returns the acquired data on a channel from the Red Pitaya, with the
         following options (for a specific channel):
             - only channel       => returns the whole buffer
@@ -883,7 +885,7 @@ class SCPI:
         self.tx_txt('UART:SETUP')
         logger.info('UART is configured')
 
-    def uart_get_settings(self) -> list[str]:
+    def uart_get_settings(self) -> list[str | None]:
         """Retrieves the settings from Red Pitaya, prints them in console and returns
         them as a list with the following sequence:
         [speed, databits, stopbits, parity, timeout].
@@ -1018,7 +1020,7 @@ class SCPI:
         self.tx_txt('SPI:SET:SET')
         logger.info('SPI is configured')
 
-    def spi_get_settings(self) -> list[str]:
+    def spi_get_settings(self) -> list[str | None]:
         """Retrieves the SPI settings from Red Pitaya, prints them in console and
         returns them as an array with the following sequence:
         [mode, csmode, speed, word_len, msg_size].

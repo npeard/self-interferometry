@@ -150,7 +150,7 @@ class Waveform:
         amplitudes = np.abs(self.spectrum)
 
         # Generate random phases only for non-negative frequencies
-        phi_pos = self.rng.uniform(0, 2 * np.pi, np.sum(pos_freq_mask))
+        phi_pos = self.rng.uniform(0, 2 * np.pi, int(np.sum(pos_freq_mask)))
 
         # Ensure DC component has zero phase if present
         if np.any(self.freq == 0):
@@ -347,7 +347,7 @@ class Waveform:
         randomize_phase_only: bool = False,
         random_single_tone: bool = False,
         skip_randomization: bool = False,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Generate a sample waveform using the current configuration.
         Randomizes the spectrum and phases each time it's called.
 
@@ -362,11 +362,10 @@ class Waveform:
             the same spectrum and phases.
 
         Returns:
-            Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+            Tuple[np.ndarray, np.ndarray, np.ndarray]:
                 - Array of time points
                 - Amplitude points in time domain
-                - Spectrum (amplitude)
-                - Spectral phases (phase)
+                - Spectrum (complex amplitude)
         """
         # Generate appropriate spectrum based on parameters
         if random_single_tone:

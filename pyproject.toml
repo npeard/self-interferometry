@@ -219,11 +219,17 @@ all = { depends-on = ["format", "lint", "ascii", "typecheck", "test"] }
 
 [tool.ty.environment]
 python-version = "3.12"
+# Resolve third-party imports against the dev pixi environment explicitly, so
+# `ty` is deterministic whether invoked via `pixi run typecheck` (env activated)
+# or directly by the pre-commit hook (`.pixi/envs/dev/bin/ty`, env not active).
+python = ".pixi/envs/dev"
 
 [tool.ty.src]
 # scripts/benchmark_storage.py depends on the separate 'bench' environment
 # (pyarrow/zarr/duckdb/hdf5plugin), which ty (run in 'dev') cannot resolve.
-exclude = [".pixi", "**/*.ipynb", "scripts/benchmark_storage.py"]
+# notebooks/ are exploratory marimo apps (like .ipynb, already excluded) with
+# optional-only deps (e.g. torchview); they are not type-gated library code.
+exclude = [".pixi", "**/*.ipynb", "notebooks/**", "scripts/benchmark_storage.py"]
 
 # Rules dominated by PyTorch / scientific-library typing gaps (incomplete third-
 # party stubs, autograd Function patterns). Downgraded so the high-signal rules

@@ -78,7 +78,9 @@ def _make_siamese_tcn(config: TCANConfig) -> TCN:
         dilation_base=config.siamese_dilation_base,
     )
     tcn = TCN(tcn_config)
-    tcn.projection = nn.Identity()
+    # Encoder TCN drops its final 1x1 projection (kept as a feature extractor);
+    # replacing the typed Conv1d attribute with Identity is intentional.
+    tcn.projection = nn.Identity()  # ty: ignore[invalid-assignment]
     return tcn
 
 

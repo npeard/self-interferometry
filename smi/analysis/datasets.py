@@ -173,7 +173,7 @@ def get_data_loaders(
     split_ratios: tuple[int, int, int] = (80, 10, 10),
     batch_size: int = 32,
     num_workers: int = 4,
-    **dataset_kwargs: dict[str],
+    **dataset_kwargs: int,
 ) -> tuple[DataLoader, DataLoader, DataLoader]:
     """Create DataLoaders for training, validation, and testing from a single dataset.
 

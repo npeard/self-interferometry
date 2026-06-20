@@ -9,6 +9,7 @@ import logging
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import cast
 
 import h5py
 import matplotlib.pyplot as plt
@@ -105,7 +106,7 @@ class RedPitayaManager:
         # Initialize histogram data and figure
         self.hist_fig = None
         self.hist_axes = None
-        self.histogram_data = {
+        self.histogram_data: dict[str, list | dict] = {
             'drive_voltage': [],
             'drive_voltage_spectrum': [],
             'photodiodes': {},
@@ -628,9 +629,11 @@ class RedPitayaManager:
             self.process_drive_voltage(speaker_data)
         )
 
-        # Calculate velocity from derivative of displacement
-        velocity_derivative = self.coil_driver.derivative_displacement(
-            displacement, sample_rate
+        # Calculate velocity from derivative of displacement. derivative_displacement
+        # accepts NumPy or Torch; this path passes a NumPy array, so the result is a
+        # NumPy array (np.asarray is a no-op for an existing ndarray).
+        velocity_derivative = np.asarray(
+            self.coil_driver.derivative_displacement(displacement, sample_rate)
         )
 
         return velocity_tf, velocity_derivative, velocity_spectrum, freq
@@ -655,9 +658,11 @@ class RedPitayaManager:
             self.process_drive_voltage(speaker_data)
         )
 
-        # Integrate velocity to get displacement
-        displacement_integrated = self.coil_driver.integrate_velocity(
-            velocity, sample_rate
+        # Integrate velocity to get displacement. integrate_velocity accepts NumPy or
+        # Torch; this path passes a NumPy array, so the result is a NumPy array
+        # (np.asarray is a no-op for an existing ndarray).
+        displacement_integrated = np.asarray(
+            self.coil_driver.integrate_velocity(velocity, sample_rate)
         )
 
         # Enforce that displacement starts at zero for each trace for easier comparison
@@ -796,12 +801,12 @@ class RedPitayaManager:
     def update_plot(
         self,
         data: dict[str, np.ndarray],
-        vel_tf_data: np.ndarray = None,
-        disp_derivative_data: np.ndarray = None,
-        vel_fft: np.ndarray = None,  # noqa: ARG002
-        disp_tf_data: np.ndarray = None,
-        vel_integrated_data: np.ndarray = None,
-        freqs: np.ndarray = None,
+        vel_tf_data: np.ndarray | None = None,
+        disp_derivative_data: np.ndarray | None = None,
+        vel_fft: np.ndarray | None = None,  # noqa: ARG002
+        disp_tf_data: np.ndarray | None = None,
+        vel_integrated_data: np.ndarray | None = None,
+        freqs: np.ndarray | None = None,
     ):
         """Update the plot with new data using a 3-column layout.
 
@@ -1186,10 +1191,16 @@ class RedPitayaManager:
                     pd_type = 'L515A1 PD'
 
                 if pd_type:
+                    # These two entries are always dicts keyed by photodiode type;
+                    # cast narrows the heterogeneous list|dict value type.
+                    photodiodes = cast('dict', self.histogram_data['photodiodes'])
+                    photodiode_spectra = cast(
+                        'dict', self.histogram_data['photodiode_spectra']
+                    )
                     # Accumulate time domain data
-                    if pd_type not in self.histogram_data['photodiodes']:
-                        self.histogram_data['photodiodes'][pd_type] = []
-                    self.histogram_data['photodiodes'][pd_type].append(channel_data)
+                    if pd_type not in photodiodes:
+                        photodiodes[pd_type] = []
+                    photodiodes[pd_type].append(channel_data)
 
                     # Calculate and accumulate spectrum
                     if sample_rate is not None:
@@ -1197,11 +1208,9 @@ class RedPitayaManager:
                         pd_fft_complex = fft(channel_data, norm='ortho')
                         pd_fft_mag = np.abs(pd_fft_complex)
 
-                        if pd_type not in self.histogram_data['photodiode_spectra']:
-                            self.histogram_data['photodiode_spectra'][pd_type] = []
-                        self.histogram_data['photodiode_spectra'][pd_type].append(
-                            pd_fft_mag
-                        )
+                        if pd_type not in photodiode_spectra:
+                            photodiode_spectra[pd_type] = []
+                        photodiode_spectra[pd_type].append(pd_fft_mag)
 
         # Velocity and displacement data
         if vel_tf_data is not None:

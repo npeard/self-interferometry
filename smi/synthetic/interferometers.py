@@ -167,12 +167,15 @@ class InterferometerArray:
         self,
         displacement: np.ndarray | torch.Tensor,
         time: np.ndarray | torch.Tensor | None = None,
-    ) -> tuple[
-        np.ndarray | torch.Tensor,
-        list[np.ndarray | torch.Tensor],
-        np.ndarray | torch.Tensor,
-        np.ndarray | torch.Tensor,
-    ]:
+    ) -> (
+        list[np.ndarray | torch.Tensor]
+        | tuple[
+            np.ndarray | torch.Tensor,
+            list[np.ndarray | torch.Tensor],
+            np.ndarray | torch.Tensor,
+            np.ndarray | torch.Tensor | None,
+        ]
+    ):
         """Get simulated buffer data from all interferometers.
 
         This method feeds the same displacement and time data to all interferometers
@@ -232,7 +235,9 @@ class InterferometerArray:
         randomize_phase_only: bool = False,
         random_single_tone: bool = False,
         normalize_gain: bool = True,
-    ) -> tuple[np.ndarray, list[np.ndarray], np.ndarray, np.ndarray]:
+    ) -> tuple[
+        np.ndarray, list[np.ndarray | torch.Tensor], np.ndarray, np.ndarray, np.ndarray
+    ]:
         """Generate a simulated sample using CoilDriver to create displacement data.
 
         This method uses CoilDriver.sample() to generate a random voltage waveform and
@@ -252,8 +257,9 @@ class InterferometerArray:
 
         Returns:
             Tuple containing:
-            - time: Time data array
+            - acq_time: Acquisition time data array
             - signals: List of signal arrays from each interferometer
+            - acq_voltage: Acquisition voltage waveform
             - displacement: Displacement data array
             - velocity: Velocity data calculated from displacement
         """
@@ -346,7 +352,9 @@ class InterferometerArray:
         velocity, _, _ = coil_driver.get_velocity(acq_voltage, acq_sample_rate)
 
         # Feed the displacement and acquisition time to the interferometer array
-        _, signals, _, _ = self.get_simulated_buffer(displacement, acq_time)
+        buffer_result = self.get_simulated_buffer(displacement, acq_time)
+        assert isinstance(buffer_result, tuple)
+        _, signals, _, _ = buffer_result
 
         return acq_time, signals, acq_voltage, displacement, velocity
 
@@ -358,9 +366,9 @@ class InterferometerArray:
             displacement: Displacement data array
             time: Time data array
         """
-        time, signals, _acq_voltage, displacement, velocity = self.get_simulated_buffer(
-            displacement, time
-        )
+        result = self.get_simulated_buffer(displacement, time)
+        assert isinstance(result, tuple)
+        buffer_time, signals, buffer_displacement, velocity = result
 
         # Create a figure with subplots for each interferometer
         n_interferometers = len(self.interferometers)
@@ -372,12 +380,12 @@ class InterferometerArray:
         )
 
         # Plot displacement and velocity in the top subplot
-        axes[0].plot(time, displacement, color='r', label='Displacement')
+        axes[0].plot(buffer_time, buffer_displacement, color='r', label='Displacement')
         axes[0].set_ylabel('Displacement (umm)', color='r')
         axes[0].tick_params('y', colors='r')
 
         ax_twin = axes[0].twinx()
-        ax_twin.plot(time, velocity, color='g', label='Velocity')
+        ax_twin.plot(buffer_time, velocity, color='g', label='Velocity')
         ax_twin.set_ylabel('Velocity (umm/s)', color='g')
         ax_twin.tick_params('y', colors='g')
 
@@ -397,7 +405,7 @@ class InterferometerArray:
             # Use a unique color from the colormap
             signal_color = colors[i]
 
-            axes[i + 1].plot(time, signal, color=signal_color)
+            axes[i + 1].plot(buffer_time, signal, color=signal_color)
             axes[i + 1].set_ylabel(
                 f'Signal {i + 1} ({wavelength_nm:.1f} nm) (V)', color=signal_color
             )

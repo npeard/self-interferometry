@@ -11,6 +11,7 @@ import logging
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import gridspec
+from matplotlib.figure import Figure
 from numpy.fft import fft, fftfreq
 from scipy import stats
 
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 def calculate_fft(
     signal: np.ndarray, sample_rate: float
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """Calculate the FFT of a signal.
 
     Args:
@@ -31,9 +32,8 @@ def calculate_fft(
 
     Returns:
         Tuple containing:
-        - Frequencies
-        - Magnitude of FFT
-        - Phase of FFT
+        - Frequencies (positive half)
+        - Amplitude spectrum (positive half)
     """
     n = len(signal)
     fft_result = fft(signal, norm='ortho')
@@ -50,7 +50,7 @@ def calculate_fft(
 
 def plot_waveforms(
     waveform: Waveform, coil_driver: CoilDriver, figsize: tuple[int, int] = (15, 10)
-) -> None:
+) -> Figure:
     """Generate and plot waveforms and their FFTs.
 
     Args:
@@ -315,7 +315,7 @@ def plot_waveforms(
 
 def plot_waveform_histograms(
     waveform: Waveform, num_samples: int = 100, figsize: tuple[int, int] = (10, 8)
-) -> None:
+) -> Figure:
     """Generate multiple waveform samples and plot a histogram of the time-domain values.
 
     Args:

@@ -46,7 +46,7 @@ class CoilDriver:
         random_single_tone: bool = False,
         normalize_gain: bool = False,
         skip_randomization: bool = False,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Generate a sample waveform using the Waveform generator, with optional gain
         equalization.
 
@@ -69,11 +69,10 @@ class CoilDriver:
                 with the same spectrum and phases.
 
         Returns:
-            Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+            Tuple[np.ndarray, np.ndarray, np.ndarray]:
                 - Array of time points
                 - Amplitude points in time domain
-                - Spectrum (amplitude)
-                - Spectral phases (phase)
+                - Spectrum (complex amplitude)
         """
         # If normalize_gain is False, simply return the output of Waveform.sample()
         if not normalize_gain:
@@ -325,13 +324,13 @@ class CoilDriver:
             if len(velocity_waveform.shape) > 1:
                 _batch_size, _signal_length = velocity_waveform.shape
 
-                displacement = torch.cumsum(velocity_waveform, dim=-1) * dt
+                displacement = torch.cumsum(velocity_waveform, dim=-1) * dt  # ty: ignore[no-matching-overload]  # narrowed to Tensor at runtime via is_torch
                 # Shift displacement to start at zero
                 displacement = displacement - displacement[:, 0].unsqueeze(-1)
 
             else:
                 # Single waveform case
-                displacement = torch.cumsum(velocity_waveform, dim=0) * dt
+                displacement = torch.cumsum(velocity_waveform, dim=0) * dt  # ty: ignore[no-matching-overload]  # narrowed to Tensor at runtime via is_torch
 
                 # Shift displacement to start at zero
                 displacement = displacement - displacement[0]

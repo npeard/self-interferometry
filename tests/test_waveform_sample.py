@@ -218,6 +218,7 @@ def test_waveform_statistics():
 
     # Compute variance for the noise distribution using the same formula as in
     # plot_waveform_histograms
+    assert last_t is not None
     last_voltage_spectral_amp = np.abs(voltage_spectrum)
     noise_variance = (
         np.sum(last_voltage_spectral_amp**2)
