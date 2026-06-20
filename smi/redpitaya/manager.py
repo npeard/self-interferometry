@@ -10,6 +10,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 from numpy.fft import fft
@@ -679,9 +680,6 @@ class RedPitayaManager:
 
         # Ensure parent directory exists
         file_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Import h5py here to avoid circular imports
-        import h5py
 
         # Check if file exists to determine if we're creating or appending
         file_exists = file_path.exists()

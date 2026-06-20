@@ -134,7 +134,7 @@ class MichelsonInterferometer:
             displacement, time
         )
 
-        fig, ax1 = plt.subplots(figsize=(18, 6))
+        _fig, ax1 = plt.subplots(figsize=(18, 6))
         ax1.plot(time, signal, color='b')
         ax1.set_xlabel('Time (s)')
         ax1.set_ylabel('Signal (V)', color='b')
@@ -265,7 +265,7 @@ class InterferometerArray:
         waveform = Waveform(start_freq=start_freq, end_freq=end_freq)
 
         # Generate a random voltage waveform using CoilDriver.sample()
-        time, voltage, voltage_spectrum = coil_driver.sample(
+        time, voltage, _voltage_spectrum = coil_driver.sample(
             waveform=waveform,
             randomize_phase_only=randomize_phase_only,
             random_single_tone=random_single_tone,
@@ -338,7 +338,7 @@ class InterferometerArray:
 
         # Convert voltage to displacement using CoilDriver.get_displacement()
         # but now using the acquisition sample rate
-        displacement, displacement_spectrum, _ = coil_driver.get_displacement(
+        displacement, _displacement_spectrum, _ = coil_driver.get_displacement(
             voltage_waveform=acq_voltage, sample_rate=acq_sample_rate
         )
 
@@ -358,13 +358,13 @@ class InterferometerArray:
             displacement: Displacement data array
             time: Time data array
         """
-        time, signals, acq_voltage, displacement, velocity = self.get_simulated_buffer(
+        time, signals, _acq_voltage, displacement, velocity = self.get_simulated_buffer(
             displacement, time
         )
 
         # Create a figure with subplots for each interferometer
         n_interferometers = len(self.interferometers)
-        fig, axes = plt.subplots(
+        _fig, axes = plt.subplots(
             n_interferometers + 1,
             1,
             figsize=(18, 4 * (n_interferometers + 1)),
@@ -419,13 +419,13 @@ class InterferometerArray:
         Args:
             **kwargs: Arguments to pass to sample_simulated()
         """
-        time, signals, acq_voltage, displacement, velocity = self.sample_simulated(
+        time, signals, _acq_voltage, displacement, velocity = self.sample_simulated(
             **kwargs
         )
 
         # Create a figure with subplots for each interferometer
         n_interferometers = len(self.interferometers)
-        fig, axes = plt.subplots(
+        _fig, axes = plt.subplots(
             n_interferometers + 1,
             1,
             figsize=(10, 3 * (n_interferometers + 1)),

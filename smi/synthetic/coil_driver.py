@@ -83,7 +83,7 @@ class CoilDriver:
             )
 
         # Generate a sample from the waveform
-        t, voltage, voltage_spectrum = waveform.sample(
+        t, _voltage, voltage_spectrum = waveform.sample(
             randomize_phase_only=randomize_phase_only,
             random_single_tone=random_single_tone,
             skip_randomization=skip_randomization,
@@ -323,7 +323,7 @@ class CoilDriver:
         if is_torch:
             # Handle batch dimensions if present
             if len(velocity_waveform.shape) > 1:
-                batch_size, signal_length = velocity_waveform.shape
+                _batch_size, _signal_length = velocity_waveform.shape
 
                 displacement = torch.cumsum(velocity_waveform, dim=-1) * dt
                 # Shift displacement to start at zero
@@ -374,7 +374,7 @@ class CoilDriver:
         if is_torch:
             # Handle batch dimensions if present
             if len(displacement_waveform.shape) > 1:
-                batch_size, signal_length = displacement_waveform.shape
+                _batch_size, _signal_length = displacement_waveform.shape
                 velocity = torch.zeros_like(displacement_waveform)
 
                 # First point (forward difference)

@@ -887,7 +887,7 @@ def _print_table(results: list[Result], raw_mb: float) -> None:
 
     ok = [r for r in results if r.status == 'ok']
     other = [r for r in results if r.status != 'ok']
-    ok.sort(key=lambda r: (r.row_read_ms if r.row_read_ms == r.row_read_ms else 1e9))
+    ok.sort(key=lambda r: r.row_read_ms if r.row_read_ms == r.row_read_ms else 1e9)
 
     for r in ok:
         ratio = (

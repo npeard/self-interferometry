@@ -242,7 +242,7 @@ class TestLSTMBidirectionalNonCausality:
             IN_CHANNELS,
             BLOCK_SIZE,
         )
-        violation_rate, n_violations, _ = _causal_violation_rate(
+        violation_rate, _n_violations, _ = _causal_violation_rate(
             baseline, outputs, STEP_POSITIONS, BLOCK_SIZE, VIOLATION_THRESHOLD
         )
         assert violation_rate > 0.0, (
@@ -259,7 +259,7 @@ class TestSCNNNonCausality:
         baseline, outputs = _get_step_outputs(
             scnn_model, STEP_POSITIONS, SEQUENCE_LENGTH, IN_CHANNELS, BLOCK_SIZE
         )
-        violation_rate, n_violations, _ = _causal_violation_rate(
+        violation_rate, _n_violations, _ = _causal_violation_rate(
             baseline, outputs, STEP_POSITIONS, BLOCK_SIZE, VIOLATION_THRESHOLD
         )
         assert violation_rate > 0.0, (

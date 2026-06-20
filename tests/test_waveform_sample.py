@@ -47,7 +47,7 @@ def test_waveform_sample_spectrum_consistency():
         sample_rate = 1 / (t[1] - t[0])
 
         # Calculate FFT of the voltage waveform using the calculate_fft function
-        freqs_fft, spectrum_fft = calculate_fft(voltage, sample_rate)
+        _freqs_fft, spectrum_fft = calculate_fft(voltage, sample_rate)
 
         # Extract magnitude and phase from the complex spectrum
         voltage_mag_fft = np.abs(spectrum_fft)
@@ -93,7 +93,7 @@ def test_waveform_frequency_range():
     sample_rate = 1 / (waveform.t[1] - waveform.t[0])
 
     # Calculate FFT of the voltage waveform using the calculate_fft function
-    freqs_fft, spectrum_fft = calculate_fft(voltage, sample_rate)
+    freqs_fft, _spectrum_fft = calculate_fft(voltage, sample_rate)
 
     # Check that significant spectral content is within the specified range
     # (allowing for some leakage)
@@ -134,7 +134,7 @@ def test_waveform_length_consistency():
 
     # Generate multiple waveforms and check their lengths
     for i in range(5):
-        t, voltage, voltage_spectrum = waveform.sample()
+        t, voltage, _voltage_spectrum = waveform.sample()
         assert len(t) == len(voltage), (
             f'Test {i + 1}: Time and voltage arrays have different lengths'
         )

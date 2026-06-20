@@ -40,7 +40,7 @@ def _(config_path, create_model, yaml):
     # Handle list-valued hyperparams (from sweep configs) by taking first element
     _clean_hparams = {}
     for k, v in _model_hparams.items():
-        if (isinstance(v, list) and k not in ('temporal_channels',)) or (
+        if (isinstance(v, list) and k != 'temporal_channels') or (
             k == 'temporal_channels' and isinstance(v, list) and isinstance(v[0], list)
         ):
             _clean_hparams[k] = v[0]

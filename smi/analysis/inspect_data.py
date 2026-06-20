@@ -79,7 +79,7 @@ def visualize_dataset(
             samples_processed += 1
 
             # Create a figure with subplots - one for velocities and up to 3 for signals
-            fig, axs = plt.subplots(1 + num_channels, 1, figsize=(10, 8), sharex=True)
+            _fig, axs = plt.subplots(1 + num_channels, 1, figsize=(10, 8), sharex=True)
 
             # If there's only one subplot, make it an array for consistent indexing
             if num_channels == 0:
@@ -142,7 +142,7 @@ def plot_histograms(dataset_path: str | Path):
 
         logger.info(f'Using sample rate: {sample_rate:.2f} Hz')
         # Create figure with subplots (2 rows, 4 columns)
-        fig, axes = plt.subplots(2, 4, figsize=(16, 8))
+        _fig, axes = plt.subplots(2, 4, figsize=(16, 8))
 
         # Channel mapping and colors
         channel_info = {

@@ -144,7 +144,7 @@ class MambaBlock(nn.Module):
             [batch, d_model, seq_len]
         """
         residual = x
-        batch, d_model, seq_len = x.shape
+        _batch, _d_model, seq_len = x.shape
 
         # LayerNorm operates on the last dim -> transpose
         x = x.permute(0, 2, 1)  # [batch, seq_len, d_model]

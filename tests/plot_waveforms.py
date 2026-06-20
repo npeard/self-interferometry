@@ -68,10 +68,10 @@ def plot_waveforms(
     freqs_fft, voltage_fft = calculate_fft(voltage, sample_rate)
 
     # Get the displacement and velocity waveforms using the coil driver
-    displacement, displacement_spectrum, displacement_freqs = (
+    displacement, displacement_spectrum, _displacement_freqs = (
         coil_driver.get_displacement(voltage, sample_rate)
     )
-    velocity, velocity_spectrum, velocity_freqs = coil_driver.get_velocity(
+    velocity, velocity_spectrum, _velocity_freqs = coil_driver.get_velocity(
         voltage, sample_rate
     )
 
@@ -88,10 +88,10 @@ def plot_waveforms(
     freqs_fft_eq, voltage_fft_eq = calculate_fft(voltage_eq, sample_rate)
 
     # Get the displacement and velocity waveforms for the equalized voltage
-    displacement_eq, displacement_spectrum_eq, displacement_freqs_eq = (
+    displacement_eq, displacement_spectrum_eq, _displacement_freqs_eq = (
         coil_driver.get_displacement(voltage_eq, sample_rate)
     )
-    velocity_eq, velocity_spectrum_eq, velocity_freqs_eq = coil_driver.get_velocity(
+    velocity_eq, velocity_spectrum_eq, _velocity_freqs_eq = coil_driver.get_velocity(
         voltage_eq, sample_rate
     )
 
@@ -354,7 +354,7 @@ def plot_waveform_histograms(
     fig, ax = plt.subplots(figsize=figsize)
 
     # Plot histogram of time-domain voltage values with proper normalization
-    hist_values, bin_edges, _ = ax.hist(
+    _hist_values, _bin_edges, _ = ax.hist(
         all_voltages, bins=500, alpha=0.7, color='blue', density=True
     )
     ax.set_title('Histogram of Time-Domain Voltage Values')
