@@ -7,11 +7,7 @@ import pytest
 from smi.analysis.datamodule import VelocityDataModule
 
 DATASET = (
-    Path(__file__).parent.parent
-    / 'smi'
-    / 'analysis'
-    / 'data'
-    / 'circuit-noise-600.h5'
+    Path(__file__).parent.parent / 'smi' / 'analysis' / 'data' / 'circuit-noise-600.h5'
 )
 SIGNAL_LENGTH = 16384
 NUM_PD_CHANNELS = 3

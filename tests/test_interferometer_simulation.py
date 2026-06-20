@@ -4,10 +4,7 @@
 import numpy as np
 
 from smi.synthetic.coil_driver import CoilDriver
-from smi.synthetic.interferometers import (
-    InterferometerArray,
-    MichelsonInterferometer,
-)
+from smi.synthetic.interferometers import InterferometerArray, MichelsonInterferometer
 from smi.synthetic.waveform import Waveform
 
 

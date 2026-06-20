@@ -52,8 +52,12 @@ class VelocityDataModule(lightning_module.LightningDataModule):
         self.val_dataset = None
         self.test_dataset = None
 
-    def setup(self, stage: str | None = None) -> None:
-        """Create the dataset and the deterministic train/val/test split."""
+    def setup(self, stage: str | None = None) -> None:  # noqa: ARG002
+        """Create the dataset and the deterministic train/val/test split.
+
+        ``stage`` is part of the LightningDataModule API; the same split is built
+        for every stage, so it is unused here.
+        """
         if self.train_dataset is not None:
             return
 

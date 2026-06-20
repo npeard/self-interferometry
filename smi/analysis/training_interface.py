@@ -17,10 +17,7 @@ from torch.utils.data import DataLoader
 
 from smi.analysis.datamodule import VelocityDataModule
 from smi.analysis.lit_module import LitModule
-from smi.analysis.synthetic_lit_module import (
-    SyntheticIndexDataset,
-    SyntheticLitModule,
-)
+from smi.analysis.synthetic_lit_module import SyntheticIndexDataset, SyntheticLitModule
 
 logger = logging.getLogger(__name__)
 
@@ -422,7 +419,5 @@ class TrainingInterface:
             )
         elif hasattr(self, 'test_loader'):
             self.trainer.test(
-                self.lightning_module,
-                dataloaders=self.test_loader,
-                ckpt_path=ckpt_path,
+                self.lightning_module, dataloaders=self.test_loader, ckpt_path=ckpt_path
             )

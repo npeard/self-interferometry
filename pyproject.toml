@@ -135,10 +135,13 @@ allow-dict-calls-with-keyword-arguments = true
 "__init__.py" = ["F401"]
 "docs/**.py" = ["INP001", "ARG001", "ANN"]
 "conftest.py" = ["ANN"]
-"tests/**.py" = ["ANN"]
+"tests/**.py" = ["ANN", "INP001"]
 "notebooks/**.py" = ["T201", "ANN", "INP001", "E501", "B018", "PLR0915", "PTH123", "F841"]
 "*.ipynb" = ["ALL"]
 "scripts/check_ascii.py" = ["S603", "S607", "T201"]
+# CLI evaluation script: prints results, builds local SQL strings, and uses a
+# uniform (often unused) runner-lambda signature -- all acceptable for a script.
+"scripts/benchmark_storage.py" = ["T201", "ARG005", "S608", "C901", "N818", "PLR0915", "INP001"]
 "tests/plot_waveforms.py" = ["PLR0915", "E501"]
 "smi/redpitaya/manager.py" = ["C901", "PLR0912", "PLR0915"]
 "smi/redpitaya/scpi.py" = ["C901", "PLR0912", "PLR0915", "E501"]
@@ -213,7 +216,9 @@ all = { depends-on = ["format", "lint", "ascii", "typecheck", "test"] }
 python-version = "3.12"
 
 [tool.ty.src]
-exclude = [".pixi", "**/*.ipynb"]
+# scripts/benchmark_storage.py depends on the separate 'bench' environment
+# (pyarrow/zarr/duckdb/hdf5plugin), which ty (run in 'dev') cannot resolve.
+exclude = [".pixi", "**/*.ipynb", "scripts/benchmark_storage.py"]
 
 # Rules dominated by PyTorch / scientific-library typing gaps (incomplete third-
 # party stubs, autograd Function patterns). Downgraded so the high-signal rules

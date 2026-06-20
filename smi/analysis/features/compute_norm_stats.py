@@ -59,9 +59,9 @@ def compute_stats(dataset_path: str | Path, chunk_size: int = 500) -> dict[str, 
     feature_names = (
         default_registry.input_features() + default_registry.target_features()
     )
-    sums = {name: 0.0 for name in feature_names}
-    sq_sums = {name: 0.0 for name in feature_names}
-    counts = {name: 0 for name in feature_names}
+    sums = dict.fromkeys(feature_names, 0.0)
+    sq_sums = dict.fromkeys(feature_names, 0.0)
+    counts = dict.fromkeys(feature_names, 0)
 
     with h5py.File(dataset_path, 'r') as f:
         for ch in ALL_CHANNELS:
@@ -106,8 +106,7 @@ def write_normalization_module(stats: dict[str, dict], out_path: Path) -> None:
         '',
         'Regenerate with::',
         '',
-        '    pixi run python -m smi.analysis.features.compute_norm_stats'
-        ' <dataset.h5>',
+        '    pixi run python -m smi.analysis.features.compute_norm_stats <dataset.h5>',
         '"""',
         '',
         'NORMALIZATION_STATS: dict[str, dict[str, float]] = {',

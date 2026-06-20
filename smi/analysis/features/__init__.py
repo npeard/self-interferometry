@@ -12,19 +12,8 @@ model's normalization wrapper (``analysis/models/base.py``) bakes those stats
 into ``register_buffer`` s so the rest of the codebase works in raw units.
 """
 
-from .registry import (
-    FeatureRegistry,
-    FeatureSpec,
-    default_registry,
-    register_feature,
-)
-
 # Importing features.py registers all built-in features as a side effect.
-from . import features  # noqa: E402,F401  (side-effect import after registry)
+from . import features
+from .registry import FeatureRegistry, FeatureSpec, default_registry, register_feature
 
-__all__ = [
-    'FeatureRegistry',
-    'FeatureSpec',
-    'default_registry',
-    'register_feature',
-]
+__all__ = ['FeatureRegistry', 'FeatureSpec', 'default_registry', 'register_feature']

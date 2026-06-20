@@ -315,7 +315,9 @@ def bench_zarr(
     return res
 
 
-def bench_parquet(data: dict[str, np.ndarray], out: Path, *, compression: str) -> Result:
+def bench_parquet(
+    data: dict[str, np.ndarray], out: Path, *, compression: str
+) -> Result:
     """Benchmark Apache Parquet via pyarrow.
 
     Layout: one column per channel, each cell a fixed-length list of n_samples
@@ -361,13 +363,15 @@ def bench_parquet(data: dict[str, np.ndarray], out: Path, *, compression: str) -
     return res
 
 
-def bench_feather(data: dict[str, np.ndarray], out: Path, *, compression: str) -> Result:
+def bench_feather(
+    data: dict[str, np.ndarray], out: Path, *, compression: str
+) -> Result:
     """Benchmark Arrow IPC / Feather V2 via pyarrow.
 
     Official docs: https://arrow.apache.org/docs/python/feather.html
     """
     import pyarrow as pa
-    import pyarrow.feather as feather
+    from pyarrow import feather
 
     n_shots, n_samples = data[CHANNELS[0]].shape
     res = Result(name=f'feather ({compression}, arrow IPC)')
@@ -421,9 +425,7 @@ def bench_sqlite(data: dict[str, np.ndarray], out: Path) -> Result:
             'PRIMARY KEY (shot, channel))'
         )
         rows = [
-            (i, ch, data[ch][i].tobytes())
-            for i in range(n_shots)
-            for ch in CHANNELS
+            (i, ch, data[ch][i].tobytes()) for i in range(n_shots) for ch in CHANNELS
         ]
         con.executemany('INSERT INTO shots VALUES (?, ?, ?)', rows)
         con.commit()
@@ -589,8 +591,12 @@ def build_candidates(data: dict[str, np.ndarray], scratch: Path) -> list[Candida
             'hdf5 (gzip-4, chunked) [baseline]',
             ('h5py',),
             lambda out, p=p: bench_hdf5(
-                data, p, compression='gzip', compression_opts=4,
-                chunks=(1, n_samples), label='hdf5 (gzip-4, chunked) [baseline]'
+                data,
+                p,
+                compression='gzip',
+                compression_opts=4,
+                chunks=(1, n_samples),
+                label='hdf5 (gzip-4, chunked) [baseline]',
             ),
             [p],
         )
@@ -602,8 +608,11 @@ def build_candidates(data: dict[str, np.ndarray], scratch: Path) -> list[Candida
             'hdf5 (lzf, chunked)',
             ('h5py',),
             lambda out, p=p: bench_hdf5(
-                data, p, compression='lzf', chunks=(1, n_samples),
-                label='hdf5 (lzf, chunked)'
+                data,
+                p,
+                compression='lzf',
+                chunks=(1, n_samples),
+                label='hdf5 (lzf, chunked)',
             ),
             [p],
         )
@@ -615,8 +624,12 @@ def build_candidates(data: dict[str, np.ndarray], scratch: Path) -> list[Candida
             'hdf5 (gzip-9, chunked)',
             ('h5py',),
             lambda out, p=p: bench_hdf5(
-                data, p, compression='gzip', compression_opts=9,
-                chunks=(1, n_samples), label='hdf5 (gzip-9, chunked)'
+                data,
+                p,
+                compression='gzip',
+                compression_opts=9,
+                chunks=(1, n_samples),
+                label='hdf5 (gzip-9, chunked)',
             ),
             [p],
         )
@@ -628,8 +641,11 @@ def build_candidates(data: dict[str, np.ndarray], scratch: Path) -> list[Candida
             'hdf5 (uncompressed, chunked)',
             ('h5py',),
             lambda out, p=p: bench_hdf5(
-                data, p, compression=None, chunks=(1, n_samples),
-                label='hdf5 (uncompressed, chunked)'
+                data,
+                p,
+                compression=None,
+                chunks=(1, n_samples),
+                label='hdf5 (uncompressed, chunked)',
             ),
             [p],
         )
@@ -640,13 +656,15 @@ def build_candidates(data: dict[str, np.ndarray], scratch: Path) -> list[Candida
         import hdf5plugin
 
         flt = dict(
-            hdf5plugin.Blosc(
-                cname='zstd', clevel=5, shuffle=hdf5plugin.Blosc.SHUFFLE
-            )
+            hdf5plugin.Blosc(cname='zstd', clevel=5, shuffle=hdf5plugin.Blosc.SHUFFLE)
         )
         return bench_hdf5(
-            data, p, compression=None, chunks=(1, n_samples),
-            label='hdf5 (blosc-zstd+shuffle, chunked)', plugin_filter=flt
+            data,
+            p,
+            compression=None,
+            chunks=(1, n_samples),
+            label='hdf5 (blosc-zstd+shuffle, chunked)',
+            plugin_filter=flt,
         )
 
     p = scratch / 'hdf5_blosc.h5'
@@ -662,22 +680,32 @@ def build_candidates(data: dict[str, np.ndarray], scratch: Path) -> list[Candida
     # --- NumPy ----------------------------------------------------------
     p = scratch / 'npy_store'
     candidates.append(
-        Candidate('npy (mmap, uncompressed)', ('numpy',),
-                  lambda out, p=p: bench_npy_memmap(data, p), [p])
+        Candidate(
+            'npy (mmap, uncompressed)',
+            ('numpy',),
+            lambda out, p=p: bench_npy_memmap(data, p),
+            [p],
+        )
     )
 
     p = scratch / 'data_uncompressed'
     candidates.append(
-        Candidate('npz (uncompressed)', ('numpy',),
-                  lambda out, p=p: bench_npz(data, p, compressed=False),
-                  [p.with_suffix('.npz')])
+        Candidate(
+            'npz (uncompressed)',
+            ('numpy',),
+            lambda out, p=p: bench_npz(data, p, compressed=False),
+            [p.with_suffix('.npz')],
+        )
     )
 
     p = scratch / 'data_compressed'
     candidates.append(
-        Candidate('npz (compressed)', ('numpy',),
-                  lambda out, p=p: bench_npz(data, p, compressed=True),
-                  [p.with_suffix('.npz')])
+        Candidate(
+            'npz (compressed)',
+            ('numpy',),
+            lambda out, p=p: bench_npz(data, p, compressed=True),
+            [p.with_suffix('.npz')],
+        )
     )
 
     # --- Zarr -----------------------------------------------------------
@@ -685,52 +713,75 @@ def build_candidates(data: dict[str, np.ndarray], scratch: Path) -> list[Candida
         from zarr.codecs import BloscCodec
 
         return bench_zarr(
-            data, p, label='zarr (blosc-zstd, per-shot chunks)',
-            compressors=BloscCodec(cname='zstd', clevel=5, shuffle='shuffle')
+            data,
+            p,
+            label='zarr (blosc-zstd, per-shot chunks)',
+            compressors=BloscCodec(cname='zstd', clevel=5, shuffle='shuffle'),
         )
 
     p = scratch / 'zarr_zstd.zarr'
     candidates.append(
-        Candidate('zarr (blosc-zstd, per-shot chunks)', ('zarr',),
-                  lambda out, p=p: _zarr_zstd(out, p), [p])
+        Candidate(
+            'zarr (blosc-zstd, per-shot chunks)',
+            ('zarr',),
+            lambda out, p=p: _zarr_zstd(out, p),
+            [p],
+        )
     )
 
     # --- Parquet --------------------------------------------------------
     for comp in ('zstd', 'snappy'):
         p = scratch / f'data_{comp}.parquet'
         candidates.append(
-            Candidate(f'parquet ({comp}, pyarrow)', ('pyarrow',),
-                      lambda out, p=p, c=comp: bench_parquet(data, p, compression=c),
-                      [p])
+            Candidate(
+                f'parquet ({comp}, pyarrow)',
+                ('pyarrow',),
+                lambda out, p=p, c=comp: bench_parquet(data, p, compression=c),
+                [p],
+            )
         )
 
     # --- Feather / Arrow IPC -------------------------------------------
     for comp in ('zstd', 'lz4', 'uncompressed'):
         p = scratch / f'data_{comp}.feather'
         candidates.append(
-            Candidate(f'feather ({comp}, arrow IPC)', ('pyarrow',),
-                      lambda out, p=p, c=comp: bench_feather(data, p, compression=c),
-                      [p])
+            Candidate(
+                f'feather ({comp}, arrow IPC)',
+                ('pyarrow',),
+                lambda out, p=p, c=comp: bench_feather(data, p, compression=c),
+                [p],
+            )
         )
 
     # --- SQLite ---------------------------------------------------------
     p = scratch / 'data.sqlite'
     candidates.append(
-        Candidate('sqlite (BLOB rows)', ('sqlite3',),
-                  lambda out, p=p: bench_sqlite(data, p), [p])
+        Candidate(
+            'sqlite (BLOB rows)',
+            ('sqlite3',),
+            lambda out, p=p: bench_sqlite(data, p),
+            [p],
+        )
     )
 
     # --- DuckDB ---------------------------------------------------------
     p = scratch / 'data.duckdb'
     candidates.append(
-        Candidate('duckdb (native)', ('duckdb',),
-                  lambda out, p=p: bench_duckdb(data, p, over_parquet=None), [p])
+        Candidate(
+            'duckdb (native)',
+            ('duckdb',),
+            lambda out, p=p: bench_duckdb(data, p, over_parquet=None),
+            [p],
+        )
     )
     pq_path = scratch / 'duckdb_over.parquet'
     candidates.append(
-        Candidate('duckdb (over parquet)', ('duckdb',),
-                  lambda out, p=pq_path: bench_duckdb(data, p, over_parquet=p),
-                  [pq_path])
+        Candidate(
+            'duckdb (over parquet)',
+            ('duckdb',),
+            lambda out, p=pq_path: bench_duckdb(data, p, over_parquet=p),
+            [pq_path],
+        )
     )
 
     return candidates
@@ -742,15 +793,19 @@ def main() -> None:
     print('Storage-format benchmark for self-interferometry shot data')
     print('=' * 78)
     print(f'Source : {SOURCE_H5}')
-    print(f'Subset : first {N_SHOTS} shots x {len(CHANNELS)} channels '
-          f'({", ".join(CHANNELS)})')
+    print(
+        f'Subset : first {N_SHOTS} shots x {len(CHANNELS)} channels '
+        f'({", ".join(CHANNELS)})'
+    )
     print(f'Random-row reads averaged over {N_RANDOM_READS} draws')
     print()
 
     if not SOURCE_H5.exists():
         print(f'ERROR: source file not found: {SOURCE_H5}')
-        print('Real datasets are gitignored and absent from worktrees. Run from '
-              'the main working tree.')
+        print(
+            'Real datasets are gitignored and absent from worktrees. Run from '
+            'the main working tree.'
+        )
         return
 
     SCRATCH_DIR.mkdir(parents=True, exist_ok=True)
@@ -759,8 +814,10 @@ def main() -> None:
     data = load_subset()
     n_shots, n_samples = data[CHANNELS[0]].shape
     raw_mb = sum(a.nbytes for a in data.values()) / 1e6
-    print(f'Loaded {n_shots} shots x {n_samples} samples x {len(CHANNELS)} '
-          f'channels = {raw_mb:.1f} MB raw float32 in memory.')
+    print(
+        f'Loaded {n_shots} shots x {n_samples} samples x {len(CHANNELS)} '
+        f'channels = {raw_mb:.1f} MB raw float32 in memory.'
+    )
     print()
 
     signal.signal(signal.SIGALRM, _on_alarm)
@@ -821,8 +878,10 @@ def _print_table(results: list[Result], raw_mb: float) -> None:
     print('=' * 100)
     print(f'RESULTS (raw in-memory size: {raw_mb:.1f} MB)')
     print('=' * 100)
-    header = (f'{"format":<38}{"write_s":>9}{"size_MB":>9}'
-              f'{"compress":>9}{"load_s":>9}{"row_ms":>9}')
+    header = (
+        f'{"format":<38}{"write_s":>9}{"size_MB":>9}'
+        f'{"compress":>9}{"load_s":>9}{"row_ms":>9}'
+    )
     print(header)
     print('-' * len(header))
 
@@ -832,20 +891,24 @@ def _print_table(results: list[Result], raw_mb: float) -> None:
 
     for r in ok:
         ratio = (
-            raw_mb / r.size_mb
-            if r.size_mb and r.size_mb == r.size_mb
-            else float('nan')
+            raw_mb / r.size_mb if r.size_mb and r.size_mb == r.size_mb else float('nan')
         )
-        print(f'{r.name:<38}{r.write_s:>9.3f}{r.size_mb:>9.1f}'
-              f'{ratio:>8.2f}x{r.full_load_s:>9.3f}{r.row_read_ms:>9.3f}')
+        print(
+            f'{r.name:<38}{r.write_s:>9.3f}{r.size_mb:>9.1f}'
+            f'{ratio:>8.2f}x{r.full_load_s:>9.3f}{r.row_read_ms:>9.3f}'
+        )
 
     for r in other:
-        print(f'{r.name:<38}{"--":>9}{"--":>9}{"--":>9}{"--":>9}{"--":>9}'
-              f'   [{r.status}: {r.notes}]')
+        print(
+            f'{r.name:<38}{"--":>9}{"--":>9}{"--":>9}{"--":>9}{"--":>9}'
+            f'   [{r.status}: {r.notes}]'
+        )
 
     print('-' * len(header))
-    print('write_s = serialize time | size_MB = on-disk | compress = raw/disk '
-          'ratio | load_s = full read | row_ms = mean ms per random single-row read')
+    print(
+        'write_s = serialize time | size_MB = on-disk | compress = raw/disk '
+        'ratio | load_s = full read | row_ms = mean ms per random single-row read'
+    )
 
 
 if __name__ == '__main__':

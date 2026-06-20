@@ -61,7 +61,9 @@ def test_internal_input_is_standardized():
     inner = _tiny_tcn()
     means = np.array([5.0, -2.0, 0.3])
     stds = np.array([2.0, 0.7, 1.5])
-    model = Model(inner, input_mean=means, input_std=stds, output_mean=0.0, output_std=1.0)
+    model = Model(
+        inner, input_mean=means, input_std=stds, output_mean=0.0, output_std=1.0
+    )
 
     rng = np.random.default_rng(0)
     # Raw inputs distributed per-channel as N(mean, std^2).
@@ -103,8 +105,6 @@ def test_from_registry_stats_selects_named_features():
     torch.testing.assert_close(
         model.input_mean.flatten(), torch.tensor([1.0, 3.0, 5.0])
     )
-    torch.testing.assert_close(
-        model.input_std.flatten(), torch.tensor([2.0, 4.0, 6.0])
-    )
+    torch.testing.assert_close(model.input_std.flatten(), torch.tensor([2.0, 4.0, 6.0]))
     assert float(model.output_mean) == 7.0
     assert float(model.output_std) == 8.0

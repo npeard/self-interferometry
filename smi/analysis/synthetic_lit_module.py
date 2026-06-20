@@ -4,9 +4,8 @@ import logging
 from typing import override
 
 import torch
-from torch.utils.data import Dataset
-
 from torch import nn
+from torch.utils.data import Dataset
 
 from smi.analysis.lit_module import LitModule
 from smi.analysis.models.base import Model

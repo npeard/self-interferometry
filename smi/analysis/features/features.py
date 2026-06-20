@@ -9,6 +9,8 @@ velocity and displacement waveforms derived from the speaker drive voltage
 stable identifiers used as keys in the version-controlled ``normalization.py``.
 """
 
+from collections.abc import Callable
+
 import numpy as np
 
 from smi.synthetic.coil_driver import CoilDriver
@@ -28,7 +30,7 @@ PD_FEATURE_TO_CHANNEL = {
 }
 
 
-def _make_pd_feature(channel: str):
+def _make_pd_feature(channel: str) -> Callable[[RawShot], np.ndarray]:
     """Build an identity compute function for a photodiode channel."""
 
     def compute(raw: RawShot) -> np.ndarray:
