@@ -48,11 +48,11 @@ def _(mo):
 
 @app.cell
 def _():
-    freespace_datapath = '/Users/nolanpeard/Documents/Projects/self-interferometry/smi/analysis/data/free-space-synchro_10k.h5'
-    mmfiber_datapath = '/Users/nolanpeard/Documents/Projects/self-interferometry/smi/analysis/data/mmfiber-synchro_10k.h5'
+    freespace_datapath = '/Users/nolanpeard/Documents/Projects/smi/smi/analysis/data/free-space-synchro_10k.h5'
+    mmfiber_datapath = '/Users/nolanpeard/Documents/Projects/smi/smi/analysis/data/mmfiber-synchro_10k.h5'
 
-    best_freespace_model = '/Users/nolanpeard/Documents/Projects/self-interferometry/smi/analysis/models/checkpoints/4puqewmv_epoch=199-val_total_unweighted_loss=0.0000.ckpt'
-    best_fiber_model = '/Users/nolanpeard/Documents/Projects/self-interferometry/smi/analysis/models/checkpoints/bfzctg24_epoch=199-val_total_unweighted_loss=0.0000.ckpt'
+    best_freespace_model = '/Users/nolanpeard/Documents/Projects/smi/smi/analysis/models/checkpoints/4puqewmv_epoch=199-val_total_unweighted_loss=0.0000.ckpt'
+    best_fiber_model = '/Users/nolanpeard/Documents/Projects/smi/smi/analysis/models/checkpoints/bfzctg24_epoch=199-val_total_unweighted_loss=0.0000.ckpt'
     return best_fiber_model, mmfiber_datapath
 
 
