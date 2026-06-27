@@ -39,8 +39,10 @@ from torch.func import functional_call, stack_module_state
 
 from smi.analysis.models.base import Model
 from smi.analysis.models.factory import create_model
+from smi.analysis.synthetic_lit_module import SyntheticLitModule
 from smi.redpitaya.redpitaya_config import RedPitayaConfig
 from smi.synthetic.coil_driver import CoilDriver
+from smi.synthetic.waveform import Waveform
 
 logger = logging.getLogger(__name__)
 
@@ -226,6 +228,9 @@ class EnsembleModule(lightning_module.LightningModule):
             if len(per_member_lr) != self.num_members:
                 raise ValueError('per_member_lr must have length K')
             self.automatic_optimization = False
+            # Coerce to float: YAML scientific notation like ``1e-3`` (no decimal
+            # point) parses as a string, which would break the manual update.
+            per_member_lr = [float(x) for x in per_member_lr]
         self.per_member_lr = per_member_lr
 
         # Build K distinct members of the same architecture.
@@ -241,7 +246,12 @@ class EnsembleModule(lightning_module.LightningModule):
 
         # A meta-device copy of one member carries the architecture for
         # functional_call (no real storage; the stacked params/buffers supply it).
-        self.base = copy.deepcopy(members[0]).to('meta')
+        # Assign via object.__setattr__ so nn.Module does NOT register it as a
+        # child module -- otherwise Lightning's `.to(device)` during `fit` would
+        # try to move its meta tensors ("Cannot copy out of meta tensor"). The
+        # base never needs real storage; functional_call substitutes the stacked
+        # params/buffers (which are registered and moved normally).
+        object.__setattr__(self, 'base', copy.deepcopy(members[0]).to('meta'))
 
         self._stacked_params = nn.ParameterDict(
             {
@@ -258,13 +268,18 @@ class EnsembleModule(lightning_module.LightningModule):
             self._buffer_names.append(name)
 
         # Register per-member loss-weight tensors as buffers (move with .to()).
+        # float() each weight: YAML ``1e-3``-style values may arrive as strings.
         self.register_buffer(
             'velocity_weight_vec',
-            torch.tensor(self.velocity_loss_weights, dtype=torch.float32),
+            torch.tensor(
+                [float(w) for w in self.velocity_loss_weights], dtype=torch.float32
+            ),
         )
         self.register_buffer(
             'displacement_weight_vec',
-            torch.tensor(self.displacement_loss_weights, dtype=torch.float32),
+            torch.tensor(
+                [float(w) for w in self.displacement_loss_weights], dtype=torch.float32
+            ),
         )
 
         self.best_member_idx: int | None = None
@@ -398,6 +413,12 @@ class EnsembleModule(lightning_module.LightningModule):
             self.best_member_idx = member_best
         self.log('val/best_member', float(member_best))
         self.log('val/best_member_loss', member_best_loss)
+        # Report the best member's UNWEIGHTED total under the same key the
+        # single-model search trials use, so a Ray Tune / ASHA search can compare
+        # an ensemble trial against single-model trials on one metric.
+        self.log(
+            'val/total_unweighted_loss', loss_dicts[member_best]['total_unweighted']
+        )
 
     @override
     def test_step(self, batch: tuple[Tensor, Tensor, Tensor], batch_idx: int) -> None:
@@ -472,9 +493,7 @@ class EnsembleModule(lightning_module.LightningModule):
         if not 0 <= member_idx < self.num_members:
             raise IndexError(f'member_idx {member_idx} out of range')
 
-        member = build_member(
-            self.model_hparams, seed=self.seeds[member_idx]
-        )
+        member = build_member(self.model_hparams, seed=self.seeds[member_idx])
         state = member.state_dict()
         # Overwrite with the trained slice for this member.
         for key, tensor in self._stacked_params.items():
@@ -484,3 +503,81 @@ class EnsembleModule(lightning_module.LightningModule):
             state[name] = stacked[member_idx].detach().clone()
         member.load_state_dict(state)
         return member
+
+
+class SyntheticEnsembleModule(EnsembleModule):
+    """``EnsembleModule`` that generates one shared synthetic batch on-device.
+
+    This is the inner level of the search pipeline's synthetic-data workflow: it
+    mirrors :class:`smi.analysis.synthetic_lit_module.SyntheticLitModule` (same
+    on-device Rayleigh-spectrum generation via :meth:`generate_synthetic_batch`)
+    but feeds the SINGLE generated batch to all ``K`` members each step (the
+    ``in_dims=(0, 0, None)`` broadcast in the parent), so the cheap on-GPU data is
+    generated once and shared. The dataloader only supplies an iteration count
+    (use :class:`SyntheticIndexDataset`); the batch content is generated here.
+
+    Args:
+        model_hparams: Shared architecture hyperparameters; ``in_channels`` must
+            equal ``len(wavelengths_nm)``.
+        seeds: Per-member seeds (length defines ``K``).
+        wavelengths_nm: Interferometer wavelengths in nanometers (one per channel).
+        start_freq: Lower bound of the displacement spectrum (Hz).
+        end_freq: Upper bound of the displacement spectrum (Hz).
+        max_displacement_um: Peak displacement amplitude in microns.
+        **ensemble_kwargs: Forwarded to :class:`EnsembleModule` (``target``, ``lr``,
+            ``velocity_loss_weights``, ``displacement_loss_weights``, ``dropouts``,
+            ``per_member_lr``).
+    """
+
+    def __init__(
+        self,
+        model_hparams: dict[str, Any],
+        seeds: list[int],
+        *,
+        wavelengths_nm: list[float],
+        start_freq: float = 1.0,
+        end_freq: float = 1000.0,
+        max_displacement_um: float = 5.0,
+        **ensemble_kwargs: Any,
+    ) -> None:
+        if len(wavelengths_nm) != model_hparams['in_channels']:
+            raise ValueError(
+                f'len(wavelengths_nm)={len(wavelengths_nm)} must equal '
+                f'in_channels={model_hparams["in_channels"]}'
+            )
+        super().__init__(model_hparams, seeds, **ensemble_kwargs)
+        self.max_displacement_um = max_displacement_um
+        self.acq_sample_rate = RedPitayaConfig.SAMPLE_RATE_DEC1 / 256
+        self.waveform = Waveform(start_freq=start_freq, end_freq=end_freq)
+        self.register_buffer(
+            'wavelengths_um',
+            torch.tensor(
+                [w / 1000.0 for w in wavelengths_nm], dtype=torch.float32
+            ).view(1, -1, 1),
+        )
+
+    def _shared_batch(self, batch: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+        """Generate one synthetic batch (shared across all members) on-device."""
+        return SyntheticLitModule.generate_synthetic_batch(
+            len(batch),
+            self.device,
+            self.waveform,
+            self.wavelengths_um,
+            self.max_displacement_um,
+            self.acq_sample_rate,
+        )
+
+    @override
+    def training_step(self, batch: Tensor, batch_idx: int) -> Tensor:
+        """Generate a shared synthetic batch, then run the ensemble training step."""
+        return super().training_step(self._shared_batch(batch), batch_idx)
+
+    @override
+    def validation_step(self, batch: Tensor, batch_idx: int) -> None:
+        """Generate a shared synthetic batch, then run the ensemble validation step."""
+        super().validation_step(self._shared_batch(batch), batch_idx)
+
+    @override
+    def on_validation_epoch_start(self) -> None:
+        """Fix the seed so validation batches are reproducible across epochs."""
+        torch.manual_seed(42)

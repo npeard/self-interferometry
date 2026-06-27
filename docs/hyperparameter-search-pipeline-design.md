@@ -180,6 +180,11 @@ best hyperparameters per architecture, plus exported TorchScript models.
   vmap forward, per-member loss, shared- or per-member-lr optimization,
   best-member export), a reusable `generate_synthetic_batch` extracted from
   `SyntheticLitModule`, and `tests/test_ensemble.py` (incl. vmap==looped allclose).
-- **Remaining (follow-up):** compose the two levels (a Ray trial running an
-  `EnsembleModule` inner loop over the within-architecture axis); Optuna search
-  algorithm; automated best-model TorchScript export from a completed search.
+- **Composition (done):** a Ray Tune trial whose config has an `ensemble` section
+  trains a vmap-ensemble inner loop instead of a single model -- `train_func`
+  routes to `_train_ensemble`, which builds a `SyntheticEnsembleModule` (shared
+  on-GPU synthetic batches) or a real-data `EnsembleModule` (`VelocityDataModule`)
+  and reports the best member's `val/total_unweighted_loss` so ASHA compares it
+  with single-model trials. See `configs/tune-ensemble-example.yaml`.
+- **Remaining (follow-up):** Optuna search algorithm; automated best-model
+  TorchScript export from a completed search.

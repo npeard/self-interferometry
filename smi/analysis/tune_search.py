@@ -19,12 +19,17 @@ import logging
 from pathlib import Path
 from typing import Any
 
+import lightning as lightning_module
 import yaml
 from ray import tune
 from ray.tune import RunConfig, TuneConfig, Tuner
 from ray.tune.integration.pytorch_lightning import TuneReportCheckpointCallback
 from ray.tune.schedulers import ASHAScheduler
+from torch.utils.data import DataLoader
 
+from smi.analysis.datamodule import VelocityDataModule
+from smi.analysis.ensemble import EnsembleModule, SyntheticEnsembleModule
+from smi.analysis.synthetic_lit_module import SyntheticIndexDataset
 from smi.analysis.training_interface import TrainingConfig, TrainingInterface
 
 logger = logging.getLogger(__name__)
@@ -72,6 +77,11 @@ def build_param_space(config_dict: dict[str, Any]) -> dict[str, dict[str, Any]]:
             else:
                 section_space[key] = value
         param_space[section] = section_space
+    # The optional `ensemble` section passes through verbatim: its list-valued
+    # fields (e.g. per_member_lr) are per-member specs for the vmap ensemble, NOT
+    # tune.choice search dimensions. Ray passes plain values through unchanged.
+    if config_dict.get('ensemble') is not None:
+        param_space['ensemble'] = config_dict['ensemble']
     return param_space
 
 
@@ -123,14 +133,21 @@ def train_func(config: dict[str, dict[str, Any]]) -> None:
             section). Ray has already resolved all ``tune.choice`` dimensions to
             concrete values.
     """
-    training_config = _config_from_sampled(config)
-
     report_callback = TuneReportCheckpointCallback(
         metrics={SEARCH_METRIC: SEARCH_METRIC},
         on='validation_end',
         save_checkpoints=False,
     )
 
+    # Inner level: if the config has an `ensemble` section, this trial trains a
+    # vmap-ensemble over the within-architecture axis (seeds / loss weights /
+    # per-member lr) instead of a single model. It reports the same SEARCH_METRIC
+    # (its best member's unweighted loss) so ASHA can compare both trial kinds.
+    if config.get('ensemble') is not None:
+        _train_ensemble(config, report_callback)
+        return
+
+    training_config = _config_from_sampled(config)
     experiment_name = training_config.training_config.get(
         'experiment_name', training_config.model_config['type']
     )
@@ -142,6 +159,101 @@ def train_func(config: dict[str, dict[str, Any]]) -> None:
         check_val_every_n_epoch=1,
     )
     interface.train()
+
+
+def _resolve_dataset_path(data_config: dict[str, Any]) -> str:
+    """Resolve the HDF5 dataset path for the real-data ensemble path.
+
+    Accepts an explicit ``dataset_path``, or resolves ``data_dir`` + ``dataset_file``
+    relative to the package root (mirroring ``TrainingInterface.setup_data``).
+    """
+    if data_config.get('dataset_path'):
+        return str(data_config['dataset_path'])
+    base_dir = Path(__file__).parent.parent  # the `smi` package dir
+    data_dir = str(data_config['data_dir']).lstrip('./')
+    return str(base_dir / data_dir / data_config['dataset_file'])
+
+
+def _train_ensemble(
+    config: dict[str, dict[str, Any]], report_callback: TuneReportCheckpointCallback
+) -> None:
+    """Train a vmap-ensemble for one Tune trial (inner within-architecture fan).
+
+    Builds a :class:`SyntheticEnsembleModule` (on-GPU shared synthetic batches) or
+    a :class:`EnsembleModule` over real data (``VelocityDataModule``), per the
+    ``synthetic`` section, and fits it with the Ray report callback. The
+    architecture is fixed by ``config['model']``; the ``ensemble`` section
+    supplies the per-member axis (``size``/``seeds``, ``per_member_lr``,
+    ``velocity_loss_weights``, ``displacement_loss_weights``, ``dropouts``).
+    """
+    model_hparams = dict(config['model'])
+    training = config['training']
+    loss = config['loss']
+    ensemble = config['ensemble']
+    synthetic = config.get('synthetic')
+
+    seeds = ensemble.get('seeds') or list(range(int(ensemble['size'])))
+    common = dict(
+        target=training.get('target', 'velocity'),
+        lr=float(ensemble.get('lr', training.get('learning_rate', 1e-3))),
+        velocity_loss_weights=ensemble.get(
+            'velocity_loss_weights', loss.get('velocity_loss_weight', 1.0)
+        ),
+        displacement_loss_weights=ensemble.get(
+            'displacement_loss_weights', loss.get('displacement_loss_weight', 1.0)
+        ),
+        dropouts=ensemble.get('dropouts'),
+        per_member_lr=ensemble.get('per_member_lr'),
+    )
+    batch_size = int(training['batch_size'])
+
+    if synthetic is not None and synthetic.get('use_synthetic_training', False):
+        wavelengths_nm = synthetic['wavelengths_nm']
+        model_hparams['in_channels'] = len(wavelengths_nm)
+        module: EnsembleModule = SyntheticEnsembleModule(
+            model_hparams,
+            seeds,
+            wavelengths_nm=wavelengths_nm,
+            start_freq=synthetic.get('start_freq', 1.0),
+            end_freq=synthetic.get('end_freq', 1000.0),
+            max_displacement_um=synthetic.get('max_displacement_um', 5.0),
+            **common,
+        )
+        steps = int(synthetic.get('steps_per_epoch', 100))
+        val_steps = int(synthetic.get('val_steps', max(1, steps // 5)))
+        train_loader = DataLoader(
+            SyntheticIndexDataset(steps * batch_size),
+            batch_size=batch_size,
+            shuffle=True,
+        )
+        val_loader = DataLoader(
+            SyntheticIndexDataset(val_steps * batch_size), batch_size=batch_size
+        )
+    else:
+        data = config['data']
+        model_hparams['in_channels'] = int(data.get('num_pd_channels', 3))
+        module = EnsembleModule(model_hparams, seeds, **common)
+        datamodule = VelocityDataModule(
+            dataset_path=_resolve_dataset_path(data),
+            split_ratios=tuple(data.get('split_ratios', [80, 10, 10])),
+            batch_size=batch_size,
+            num_workers=int(data.get('num_workers', 0)),
+            num_pd_channels=int(data.get('num_pd_channels', 3)),
+        )
+        datamodule.setup()
+        train_loader = datamodule.train_dataloader()
+        val_loader = datamodule.val_dataloader()
+
+    trainer = lightning_module.Trainer(
+        max_epochs=int(training['max_epochs']),
+        accelerator=training.get('accelerator', 'cpu'),
+        devices=training.get('devices', 1),
+        callbacks=[report_callback],
+        check_val_every_n_epoch=1,
+        logger=False,
+        enable_checkpointing=False,
+    )
+    trainer.fit(module, train_loader, val_loader)
 
 
 def run_search(
