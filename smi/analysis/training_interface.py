@@ -114,7 +114,11 @@ class TrainingInterface:
         # Check the current CUDA version being used
         logger.info(f'CUDA version: {torch.version.cuda}')
 
-        if torch.version.cuda is not None:
+        # Guard on is_available() (not just a CUDA build): on a CUDA-build torch
+        # without a GPU/driver -- e.g. CPU-only CI or a Ray worker with no GPU --
+        # touching torch.cuda eagerly initializes CUDA and raises "Found no NVIDIA
+        # driver". is_available() returns False gracefully in that case.
+        if torch.cuda.is_available():
             # Check if CUDA is available and if so, print the device name
             logger.info(f'Device name: {torch.cuda.get_device_properties("cuda").name}')
 
