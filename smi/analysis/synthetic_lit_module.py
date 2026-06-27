@@ -130,26 +130,43 @@ class SyntheticLitModule(LitModule):
         """
         return Model.identity(inner, self.model_hparams['in_channels'])
 
-    def _generate_synthetic_batch(
-        self, batch_size: int, device: torch.device
+    @staticmethod
+    def generate_synthetic_batch(
+        batch_size: int,
+        device: torch.device,
+        waveform: Waveform,
+        wavelengths_um: torch.Tensor,
+        max_displacement_um: float,
+        acq_sample_rate: float,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Generate a batch of synthetic interferometer data on the given device.
+        """Generate one batch of synthetic interferometer data on the given device.
+
+        This is the reusable core of synthetic data generation, factored out so
+        that both ``SyntheticLitModule`` and the vmap ensemble
+        (``smi.analysis.ensemble``) can produce one batch and -- in the
+        ensemble's case -- share it across all members. The numerics are
+        identical to the historical in-module implementation.
 
         Args:
-            batch_size: Number of samples to generate
-            device: Target device for tensor creation
+            batch_size: Number of samples to generate.
+            device: Target device for tensor creation.
+            waveform: Waveform generator providing ``generate_batch_torch``.
+            wavelengths_um: Interferometer wavelengths in microns, shape
+                ``[1, C, 1]`` for broadcasting with ``[B, 1, L]`` displacement.
+            max_displacement_um: Peak displacement amplitude in microns.
+            acq_sample_rate: Acquisition sample rate (Hz) used to derive velocity.
 
         Returns:
-            Tuple of (signals, velocity, displacement) where:
-            - signals: [batch_size, num_channels, seq_len] interferometer signals
-            - velocity: [batch_size, seq_len] displacement velocity
-            - displacement: [batch_size, seq_len] mirror displacement in microns
+            Tuple of ``(signals, velocity, displacement)`` where:
+            - signals: ``[batch_size, num_channels, seq_len]`` interferometer signals
+            - velocity: ``[batch_size, seq_len]`` displacement velocity
+            - displacement: ``[batch_size, seq_len]`` mirror displacement in microns
         """
         # 1. Generate random displacement waveforms [B, L]
-        displacement = self.waveform.generate_batch_torch(batch_size, device)
+        displacement = waveform.generate_batch_torch(batch_size, device)
 
         # Apply random amplitude scaling per sample
-        scale = torch.rand(batch_size, 1, device=device) * self.max_displacement_um
+        scale = torch.rand(batch_size, 1, device=device) * max_displacement_um
         displacement = displacement * scale
 
         # Normalize each waveform to have unit max amplitude before scaling
@@ -157,7 +174,7 @@ class SyntheticLitModule(LitModule):
         displacement = displacement / max_abs * scale
 
         # 2. Random interferometer phases per sample per channel [B, C, 1]
-        num_channels = self.wavelengths_um.shape[1]
+        num_channels = wavelengths_um.shape[1]
         random_phases = (
             torch.rand(batch_size, num_channels, 1, device=device) * 2.0 * torch.pi
         )
@@ -165,7 +182,7 @@ class SyntheticLitModule(LitModule):
         # 3. Compute interferometer signals: cos(2*pi/lambda * 2 * displacement + phase)
         # displacement: [B, L] -> [B, 1, L] for broadcasting
         signals = torch.cos(
-            2.0 * torch.pi / self.wavelengths_um * 2.0 * displacement.unsqueeze(1)
+            2.0 * torch.pi / wavelengths_um * 2.0 * displacement.unsqueeze(1)
             + random_phases
         )
 
@@ -179,10 +196,37 @@ class SyntheticLitModule(LitModule):
         # yields a Tensor here.
         velocity = cast(
             torch.Tensor,
-            CoilDriver.derivative_displacement(displacement, self.acq_sample_rate),
+            CoilDriver.derivative_displacement(displacement, acq_sample_rate),
         )
 
         return signals, velocity, displacement
+
+    def _generate_synthetic_batch(
+        self, batch_size: int, device: torch.device
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Generate a batch of synthetic interferometer data on the given device.
+
+        Thin instance wrapper around :meth:`generate_synthetic_batch` that
+        supplies this module's waveform generator and synthetic parameters.
+
+        Args:
+            batch_size: Number of samples to generate
+            device: Target device for tensor creation
+
+        Returns:
+            Tuple of (signals, velocity, displacement) where:
+            - signals: [batch_size, num_channels, seq_len] interferometer signals
+            - velocity: [batch_size, seq_len] displacement velocity
+            - displacement: [batch_size, seq_len] mirror displacement in microns
+        """
+        return self.generate_synthetic_batch(
+            batch_size,
+            device,
+            self.waveform,
+            self.wavelengths_um,
+            self.max_displacement_um,
+            self.acq_sample_rate,
+        )
 
     @override
     def training_step(self, batch: torch.Tensor, batch_idx: int) -> torch.Tensor:
