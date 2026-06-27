@@ -2,11 +2,9 @@
 
 import contextlib
 import logging
-import random
 from dataclasses import dataclass
-from itertools import product
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
 import lightning as lightning_module
 import torch
@@ -24,146 +22,44 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class TrainingConfig:
-    """Configuration class for training parameters."""
+    """Configuration class for a single training run.
+
+    Hyperparameter search no longer expands list-valued YAML fields into a
+    Cartesian product here. Instead, :mod:`smi.analysis.tune_search` interprets
+    list-valued fields as a Ray Tune search space and samples a single config
+    per trial, which is then turned into a :class:`TrainingConfig`.
+    """
 
     model_config: dict[str, Any]
     training_config: dict[str, Any]
     data_config: dict[str, Any]
     loss_config: dict[str, Any]
     synthetic_config: dict[str, Any] | None = None
-    is_hyperparameter_search: bool = False
-    search_space: dict[str, list[Any]] | None = None
 
     @classmethod
-    def from_yaml(
-        cls, config_path: str
-    ) -> Union['TrainingConfig', list['TrainingConfig']]:
-        """Load configuration from YAML file.
+    def from_yaml(cls, config_path: str) -> 'TrainingConfig':
+        """Load a single training configuration from a YAML file.
 
-        If the file is a hyperparameter search config, returns a list of configs.
-        Otherwise, returns a single config.
+        List-valued fields (if any) are passed through verbatim; this method no
+        longer performs grid expansion. To run a hyperparameter search over
+        list-valued fields, use :func:`smi.analysis.tune_search.run_search`.
 
         Args:
-            config_path: Path to YAML configuration file
+            config_path: Path to YAML configuration file.
+
+        Returns:
+            A single :class:`TrainingConfig`.
         """
         with Path(config_path).open() as f:
             config_dict = yaml.safe_load(f)
-
-        synthetic_config = config_dict.get('synthetic')
-
-        # Check if this is a hyperparameter search config
-        # Also check synthetic section for list-valued params (e.g. wavelengths_nm)
-        has_search_params = (
-            any(isinstance(v, list) for v in config_dict['model'].values())
-            or any(isinstance(v, list) for v in config_dict['training'].values())
-            or any(isinstance(v, list) for v in config_dict['loss'].values())
-            or any(isinstance(v, list) for v in config_dict['data'].values())
-            or (
-                synthetic_config is not None
-                and any(isinstance(v, list) for v in synthetic_config.values())
-            )
-        )
-        if has_search_params:
-            return cls._create_search_configs(config_dict)
 
         return cls(
             model_config=config_dict['model'],
             training_config=config_dict['training'],
             loss_config=config_dict['loss'],
             data_config=config_dict['data'],
-            synthetic_config=synthetic_config,
+            synthetic_config=config_dict.get('synthetic'),
         )
-
-    @classmethod
-    def _split_list_params(
-        cls, section: dict[str, Any]
-    ) -> tuple[dict[str, list], dict[str, Any]]:
-        """Split a config section into list (search) and fixed parameters."""
-        lists = {k: v for k, v in section.items() if isinstance(v, list)}
-        fixed = {k: v for k, v in section.items() if not isinstance(v, list)}
-        return lists, fixed
-
-    @classmethod
-    def _create_search_configs(
-        cls, config_dict: dict[str, Any]
-    ) -> list['TrainingConfig']:
-        """Create multiple configurations for hyperparameter search."""
-        # Separate list and non-list parameters for each section
-        model_lists, model_fixed = cls._split_list_params(config_dict['model'])
-        training_lists, training_fixed = cls._split_list_params(config_dict['training'])
-        loss_lists, loss_fixed = cls._split_list_params(config_dict['loss'])
-        data_lists, data_fixed = cls._split_list_params(config_dict['data'])
-
-        # Handle synthetic section (optional)
-        synthetic_raw = config_dict.get('synthetic')
-        if synthetic_raw is not None:
-            synthetic_lists, synthetic_fixed = cls._split_list_params(synthetic_raw)
-        else:
-            synthetic_lists, synthetic_fixed = {}, {}
-
-        # Gather all sections for combination generation
-        sections = [
-            ('model', model_lists, model_fixed),
-            ('training', training_lists, training_fixed),
-            ('loss', loss_lists, loss_fixed),
-            ('data', data_lists, data_fixed),
-            ('synthetic', synthetic_lists, synthetic_fixed),
-        ]
-
-        # Build keys/values for each section
-        all_keys = []
-        all_values = []
-        section_names = []
-        for name, lists, _ in sections:
-            for k, v in lists.items():
-                all_keys.append((name, k))
-                all_values.append(v)
-                section_names.append(name)
-
-        # Generate all combinations across all sections
-        all_combinations = list(product(*all_values)) if all_values else [()]
-
-        configs = []
-        for combo in all_combinations:
-            # Start with fixed values for each section
-            section_configs = {
-                'model': model_fixed.copy(),
-                'training': training_fixed.copy(),
-                'loss': loss_fixed.copy(),
-                'data': data_fixed.copy(),
-                'synthetic': synthetic_fixed.copy(),
-            }
-
-            # Apply the search values from this combination
-            for (section_name, key), value in zip(all_keys, combo, strict=False):
-                section_configs[section_name][key] = value
-
-            # Build synthetic_config (None if no synthetic section)
-            synthetic_config = (
-                section_configs['synthetic'] if synthetic_raw is not None else None
-            )
-
-            configs.append(
-                cls(
-                    model_config=section_configs['model'],
-                    training_config=section_configs['training'],
-                    loss_config=section_configs['loss'],
-                    data_config=section_configs['data'],
-                    synthetic_config=synthetic_config,
-                    is_hyperparameter_search=True,
-                    search_space={
-                        'model': model_lists,
-                        'training': training_lists,
-                        'loss': loss_lists,
-                        'data': data_lists,
-                        'synthetic': synthetic_lists,
-                    },
-                )
-            )
-
-        # Randomly shuffle configurations
-        random.shuffle(configs)
-        return configs
 
 
 class TrainingInterface:
@@ -172,13 +68,23 @@ class TrainingInterface:
     CHECKPOINT_DIR = Path(__file__).parent / 'models' / 'checkpoints'
 
     def __init__(
-        self, config: TrainingConfig | None = None, experiment_name: str | None = None
+        self,
+        config: TrainingConfig | None = None,
+        experiment_name: str | None = None,
+        *,
+        extra_callbacks: list[Any] | None = None,
+        check_val_every_n_epoch: int = 5,
     ):
         """Initialize the training interface.
 
         Args:
             config: Training configuration (None for checkpoint evaluation mode)
             experiment_name: Name for logging and checkpointing
+            extra_callbacks: Additional Lightning callbacks to attach to the
+                trainer (e.g. Ray Tune's report callback). Defaults to none.
+            check_val_every_n_epoch: How often (in epochs) to run validation.
+                Defaults to 5 to preserve historical single-run behavior; the
+                Tune driver lowers this so metrics are reported each epoch.
         """
         self.config = config
         self.checkpoint_dir = str(self.CHECKPOINT_DIR)
@@ -197,7 +103,10 @@ class TrainingInterface:
             self.lightning_module = self.create_lightning_module()
 
             # Setup training
-            self.trainer = self.setup_trainer()
+            self.trainer = self.setup_trainer(
+                extra_callbacks=extra_callbacks,
+                check_val_every_n_epoch=check_val_every_n_epoch,
+            )
 
         # Check what version of PyTorch is installed
         logger.info(f'PyTorch version: {torch.__version__}')
@@ -350,8 +259,19 @@ class TrainingInterface:
 
         return LitModule(**common_kwargs)
 
-    def setup_trainer(self) -> lightning_module.Trainer:
-        """Setup Lightning trainer with callbacks and loggers."""
+    def setup_trainer(
+        self,
+        *,
+        extra_callbacks: list[Any] | None = None,
+        check_val_every_n_epoch: int = 5,
+    ) -> lightning_module.Trainer:
+        """Setup Lightning trainer with callbacks and loggers.
+
+        Args:
+            extra_callbacks: Additional callbacks appended after the default
+                logging callbacks (e.g. Ray Tune's report callback).
+            check_val_every_n_epoch: How often (in epochs) to run validation.
+        """
         callbacks = []
         # Add WandB logger if configured
         if self.config.training_config['use_logging']:
@@ -376,6 +296,10 @@ class TrainingInterface:
         else:
             loggers = []
 
+        # Append any caller-supplied callbacks (e.g. Ray Tune's reporter).
+        if extra_callbacks:
+            callbacks.extend(extra_callbacks)
+
         # Get accelerator and device settings from config
         accelerator = self.config.training_config['accelerator']
         devices = self.config.training_config['devices']
@@ -389,7 +313,7 @@ class TrainingInterface:
             max_epochs=self.config.training_config['max_epochs'],
             callbacks=callbacks,
             logger=loggers,
-            check_val_every_n_epoch=5,
+            check_val_every_n_epoch=check_val_every_n_epoch,
             accelerator=accelerator,
             devices=devices,
         )

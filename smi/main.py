@@ -8,6 +8,7 @@ import lightning as lightning_module
 
 from smi.analysis.generate_data import generate_dataset_from_rp
 from smi.analysis.training_interface import TrainingConfig, TrainingInterface
+from smi.analysis.tune_search import run_search
 from smi.redpitaya.manager import RedPitayaManager
 
 
@@ -44,6 +45,32 @@ def parse_args() -> argparse.Namespace:
         action='store_true',
         help='Acquire real data from Red Pitaya for training, validation, and test '
         'datasets',
+    )
+    parser.add_argument(
+        '--search',
+        action='store_true',
+        help='Run a Ray Tune hyperparameter/architecture search over the config '
+        '(list-valued fields become tune.choice search dimensions) instead of a '
+        'single training run.',
+    )
+    parser.add_argument(
+        '--num_search_samples',
+        type=int,
+        default=10,
+        help='Number of configurations to sample during --search (default: 10).',
+    )
+    parser.add_argument(
+        '--gpu_fraction',
+        type=float,
+        default=0.0,
+        help='Fraction of a GPU each search trial requests (0 for CPU; '
+        '~1/gpu_fraction trials pack per GPU on the rig).',
+    )
+    parser.add_argument(
+        '--max_concurrent_trials',
+        type=int,
+        default=None,
+        help='Cap on simultaneous search trials (limits CUDA-context overhead).',
     )
     parser.add_argument(
         '--num_samples',
@@ -123,7 +150,7 @@ def train_model(config_path: str, logger: logging.Logger) -> None:
         config_path: Path to the YAML config file
         logger: Logger instance for output
     """
-    config = TrainingConfig.from_yaml(config_path)
+    train_config = TrainingConfig.from_yaml(config_path)
 
     # Seed everything (Python random, NumPy, PyTorch, CUDA) from time
     seed = int(time.time())
@@ -132,24 +159,18 @@ def train_model(config_path: str, logger: logging.Logger) -> None:
     # deterministic splits
     logger.info(f'Using random seed: {seed}')
 
-    # Convert single config to list for unified processing
-    configs = config if isinstance(config, list) else [config]
+    # Create trainer
+    trainer = TrainingInterface(
+        config=train_config,
+        experiment_name=train_config.training_config['experiment_name'],
+    )
 
-    # Train with each configuration
-    for idx, train_config in enumerate(configs):
-        logger.info(f'Starting training run {idx + 1}/{len(configs)}')
-        # Create trainer
-        trainer = TrainingInterface(
-            config=train_config,
-            experiment_name=train_config.training_config['experiment_name'],
-        )
-
-        # Start training
-        trainer.train()
-        trainer.test()
-        # Close the wandb logger if it was configured
-        if trainer.config.training_config['use_logging']:
-            trainer.trainer.loggers[0].experiment.finish()
+    # Start training
+    trainer.train()
+    trainer.test()
+    # Close the wandb logger if it was configured
+    if trainer.config.training_config['use_logging']:
+        trainer.trainer.loggers[0].experiment.finish()
 
 
 def main():
@@ -175,7 +196,22 @@ def main():
         acquire_dataset(args.num_samples, args.dataset_name, logger)
         sys.exit()
 
-    # Mode 2: Training (requires TrainingConfig)
+    # Mode 2: Ray Tune hyperparameter/architecture search
+    if args.search:
+        if not args.config:
+            raise ValueError('Config file is required for search mode')
+        logger.info('Starting Ray Tune search with config: %s', args.config)
+        best = run_search(
+            args.config,
+            num_samples=args.num_search_samples,
+            gpu_fraction=args.gpu_fraction,
+            max_concurrent_trials=args.max_concurrent_trials,
+        )
+        logger.info('Best config: %s', best.config)
+        logger.info('Best metrics: %s', best.metrics)
+        sys.exit()
+
+    # Mode 3: Training (requires TrainingConfig)
     if not args.config:
         raise ValueError('Config file is required for training mode')
 
