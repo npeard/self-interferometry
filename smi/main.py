@@ -8,7 +8,7 @@ import lightning as lightning_module
 
 from smi.analysis.generate_data import generate_dataset_from_rp
 from smi.analysis.training_interface import TrainingConfig, TrainingInterface
-from smi.analysis.tune_search import run_search
+from smi.analysis.tune_search import export_best_model, run_search
 from smi.redpitaya.manager import RedPitayaManager
 
 
@@ -71,6 +71,20 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=None,
         help='Cap on simultaneous search trials (limits CUDA-context overhead).',
+    )
+    parser.add_argument(
+        '--search_alg',
+        type=str,
+        default='random',
+        choices=['random', 'optuna'],
+        help='Search algorithm for --search (default: random).',
+    )
+    parser.add_argument(
+        '--export_best',
+        type=str,
+        default=None,
+        help='After --search, export the best single-model trial to this '
+        'TorchScript .pt path.',
     )
     parser.add_argument(
         '--num_samples',
@@ -206,9 +220,13 @@ def main():
             num_samples=args.num_search_samples,
             gpu_fraction=args.gpu_fraction,
             max_concurrent_trials=args.max_concurrent_trials,
+            search_alg=args.search_alg,
         )
         logger.info('Best config: %s', best.config)
         logger.info('Best metrics: %s', best.metrics)
+        if args.export_best:
+            path = export_best_model(best, args.export_best)
+            logger.info('Exported best model to %s', path)
         sys.exit()
 
     # Mode 3: Training (requires TrainingConfig)

@@ -20,16 +20,20 @@ from pathlib import Path
 from typing import Any
 
 import lightning as lightning_module
+import torch
 import yaml
 from ray import tune
-from ray.tune import RunConfig, TuneConfig, Tuner
+from ray.tune import CheckpointConfig, RunConfig, TuneConfig, Tuner
 from ray.tune.integration.pytorch_lightning import TuneReportCheckpointCallback
 from ray.tune.schedulers import ASHAScheduler
+from ray.tune.search.optuna import OptunaSearch
 from torch.utils.data import DataLoader
 
 from smi.analysis.datamodule import VelocityDataModule
 from smi.analysis.ensemble import EnsembleModule, SyntheticEnsembleModule
-from smi.analysis.synthetic_lit_module import SyntheticIndexDataset
+from smi.analysis.lit_module import LitModule
+from smi.analysis.models.base import Model
+from smi.analysis.synthetic_lit_module import SyntheticIndexDataset, SyntheticLitModule
 from smi.analysis.training_interface import TrainingConfig, TrainingInterface
 
 logger = logging.getLogger(__name__)
@@ -133,19 +137,21 @@ def train_func(config: dict[str, dict[str, Any]]) -> None:
             section). Ray has already resolved all ``tune.choice`` dimensions to
             concrete values.
     """
-    report_callback = TuneReportCheckpointCallback(
-        metrics={SEARCH_METRIC: SEARCH_METRIC},
-        on='validation_end',
-        save_checkpoints=False,
-    )
-
     # Inner level: if the config has an `ensemble` section, this trial trains a
     # vmap-ensemble over the within-architecture axis (seeds / loss weights /
     # per-member lr) instead of a single model. It reports the same SEARCH_METRIC
     # (its best member's unweighted loss) so ASHA can compare both trial kinds.
     if config.get('ensemble') is not None:
-        _train_ensemble(config, report_callback)
+        _train_ensemble(config)
         return
+
+    # Single-model trial: save a checkpoint each validation so the best trial's
+    # weights can be exported afterward (see :func:`export_best_model`).
+    report_callback = TuneReportCheckpointCallback(
+        metrics={SEARCH_METRIC: SEARCH_METRIC},
+        on='validation_end',
+        save_checkpoints=True,
+    )
 
     training_config = _config_from_sampled(config)
     experiment_name = training_config.training_config.get(
@@ -174,18 +180,25 @@ def _resolve_dataset_path(data_config: dict[str, Any]) -> str:
     return str(base_dir / data_dir / data_config['dataset_file'])
 
 
-def _train_ensemble(
-    config: dict[str, dict[str, Any]], report_callback: TuneReportCheckpointCallback
-) -> None:
+def _train_ensemble(config: dict[str, dict[str, Any]]) -> None:
     """Train a vmap-ensemble for one Tune trial (inner within-architecture fan).
 
     Builds a :class:`SyntheticEnsembleModule` (on-GPU shared synthetic batches) or
     a :class:`EnsembleModule` over real data (``VelocityDataModule``), per the
-    ``synthetic`` section, and fits it with the Ray report callback. The
+    ``synthetic`` section, and fits it while reporting :data:`SEARCH_METRIC`. The
     architecture is fixed by ``config['model']``; the ``ensemble`` section
     supplies the per-member axis (``size``/``seeds``, ``per_member_lr``,
     ``velocity_loss_weights``, ``displacement_loss_weights``, ``dropouts``).
+
+    Checkpointing is disabled here: an ensemble checkpoint is not a single
+    deployable model, so :func:`export_best_model` targets single-model trials;
+    use :meth:`EnsembleModule.best_member_model` to extract a member in-process.
     """
+    report_callback = TuneReportCheckpointCallback(
+        metrics={SEARCH_METRIC: SEARCH_METRIC},
+        on='validation_end',
+        save_checkpoints=False,
+    )
     model_hparams = dict(config['model'])
     training = config['training']
     loss = config['loss']
@@ -265,6 +278,7 @@ def run_search(
     max_concurrent_trials: int | None = None,
     max_t: int | None = None,
     grace_period: int = 1,
+    search_alg: str = 'random',
     storage_path: str | None = None,
 ) -> tune.ResultGrid | Any:
     """Run a Ray Tune search defined by a YAML config and return the best result.
@@ -288,10 +302,15 @@ def run_search(
             may run to completion). Defaults to the config's ``max_epochs``.
         grace_period: ASHA ``grace_period`` (min iterations before a trial may be
             early-stopped).
+        search_alg: ``'random'`` (default; ASHA over randomly sampled configs) or
+            ``'optuna'`` (Optuna TPE sampler over the same space, which tends to
+            find good configs in fewer samples for continuous/ordinal spaces).
         storage_path: Where Ray persists results. Defaults to Ray's default.
 
     Returns:
         The best :class:`ray.tune.Result` by :data:`SEARCH_METRIC` (``min``).
+        The best single-model trial carries a checkpoint usable by
+        :func:`export_best_model`.
     """
     with Path(config_path).open() as f:
         config_dict = yaml.safe_load(f)
@@ -311,15 +330,34 @@ def run_search(
         train_func, {'CPU': cpus_per_trial, 'GPU': gpu_fraction}
     )
 
+    if search_alg == 'optuna':
+        searcher: OptunaSearch | None = OptunaSearch(
+            metric=SEARCH_METRIC, mode=SEARCH_MODE
+        )
+    elif search_alg == 'random':
+        searcher = None  # Tune's default random sampling over the param_space.
+    else:
+        raise ValueError(f"search_alg must be 'random' or 'optuna', got {search_alg!r}")
+
     tuner = Tuner(
         trainable,
         param_space=param_space,
         tune_config=TuneConfig(
             num_samples=num_samples,
             scheduler=scheduler,
+            search_alg=searcher,
             max_concurrent_trials=max_concurrent_trials,
         ),
-        run_config=RunConfig(storage_path=storage_path),
+        # Keep only the best-scoring checkpoint per trial so the best trial's
+        # checkpoint is the one with the lowest SEARCH_METRIC (for export).
+        run_config=RunConfig(
+            storage_path=storage_path,
+            checkpoint_config=CheckpointConfig(
+                num_to_keep=1,
+                checkpoint_score_attribute=SEARCH_METRIC,
+                checkpoint_score_order=SEARCH_MODE,
+            ),
+        ),
     )
 
     results = tuner.fit()
@@ -331,3 +369,72 @@ def run_search(
         best_result.config,
     )
     return best_result
+
+
+def export_best_model(best_result: Any, output_path: str) -> str:
+    """Export the best single-model trial as a TorchScript artifact.
+
+    Loads the best trial's checkpoint, rebuilds its LightningModule
+    (``SyntheticLitModule`` if the trial was synthetic, else ``LitModule``),
+    scripts the baked-normalization :class:`Model` wrapper via
+    :meth:`Model.to_torchscript`, and writes it to ``output_path``. The scripted
+    model takes raw device signals and returns raw velocity/displacement.
+
+    Args:
+        best_result: A ``ray.tune.Result`` (e.g. from :func:`run_search`) for a
+            single-model trial. Ensemble trials are not checkpointed; use
+            :meth:`smi.analysis.ensemble.EnsembleModule.best_member_model` for
+            those.
+        output_path: Destination ``.pt`` path for the TorchScript model.
+
+    Returns:
+        ``output_path``.
+
+    Raises:
+        ValueError: If the result has no checkpoint (e.g. an ensemble trial) or
+            no Lightning checkpoint file is found.
+    """
+    if best_result.checkpoint is None:
+        raise ValueError(
+            'Best result has no checkpoint to export (ensemble trials are not '
+            'checkpointed -- use EnsembleModule.best_member_model instead).'
+        )
+
+    config = best_result.config or {}
+    synthetic = config.get('synthetic')
+    is_synthetic = synthetic is not None and synthetic.get('use_synthetic_training')
+    module_cls: type[LitModule] = SyntheticLitModule if is_synthetic else LitModule
+
+    with best_result.checkpoint.as_directory() as ckpt_dir:
+        # Lightning checkpoints are usually ``*.ckpt``; Ray's
+        # TuneReportCheckpointCallback saves the file literally named
+        # ``checkpoint`` (no extension), so fall back to that.
+        ckpt_files = sorted(Path(ckpt_dir).rglob('*.ckpt')) or [
+            p for p in Path(ckpt_dir).rglob('checkpoint') if p.is_file()
+        ]
+        if not ckpt_files:
+            raise ValueError(f'No Lightning checkpoint found under {ckpt_dir}')
+        lit = module_cls.load_from_checkpoint(str(ckpt_files[0]), map_location='cpu')
+
+    # torch.compile (GPU runs) wraps the model; unwrap to the raw Model.
+    model = getattr(lit.model, '_orig_mod', lit.model)
+    model.eval()
+
+    # Bake out any training-time weight parametrizations (e.g. weight_norm):
+    # TorchScript cannot script live parametrizations, and at inference the
+    # effective weight is fixed, so folding it in is equivalent.
+    parametrize = torch.nn.utils.parametrize
+    for submodule in model.modules():
+        if parametrize.is_parametrized(submodule):
+            for tensor_name in list(submodule.parametrizations):
+                parametrize.remove_parametrizations(
+                    submodule, tensor_name, leave_parametrized=True
+                )
+
+    if isinstance(model, Model):
+        scripted = model.to_torchscript()
+    else:
+        scripted = torch.jit.script(model)
+    torch.jit.save(scripted, output_path)
+    logger.info('Exported best model to %s', output_path)
+    return output_path

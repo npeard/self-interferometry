@@ -35,10 +35,7 @@ def _tcn_hparams() -> dict:
 
 def _make_ensemble(**kwargs) -> EnsembleModule:
     defaults = dict(
-        model_hparams=_tcn_hparams(),
-        seeds=[0, 1, 2],
-        target='velocity',
-        lr=1e-3,
+        model_hparams=_tcn_hparams(), seeds=[0, 1, 2], target='velocity', lr=1e-3
     )
     defaults.update(kwargs)
     return EnsembleModule(**defaults)
@@ -162,8 +159,12 @@ def test_physics_loss_matches_litmodule_logic():
     vel = torch.randn(BATCH, SEQ_LEN)
     disp = torch.randn(BATCH, SEQ_LEN)
     out = physics_loss(
-        pred, vel, disp, target='velocity',
-        velocity_loss_weight=2.0, displacement_loss_weight=3.0,
+        pred,
+        vel,
+        disp,
+        target='velocity',
+        velocity_loss_weight=2.0,
+        displacement_loss_weight=3.0,
     )
     expected = 2.0 * out['velocity'] + 3.0 * out['displacement']
     assert torch.allclose(out['total'], expected)

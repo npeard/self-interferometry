@@ -10,6 +10,7 @@ and 1-2 steps per epoch. The end-to-end smoke test exercises the *same*
 from pathlib import Path
 
 import pytest
+import torch
 import yaml
 
 ray = pytest.importorskip('ray')
@@ -19,6 +20,7 @@ from ray import tune  # noqa: E402  (after importorskip)
 from smi.analysis.tune_search import (  # noqa: E402
     SEARCH_METRIC,
     build_param_space,
+    export_best_model,
     run_search,
 )
 
@@ -105,3 +107,54 @@ def test_run_search_smoke_returns_best_result():
     # The sampled value came from one of the search dimensions.
     assert best.config['model']['dropout'] in (0.0, 0.05)
     assert best.config['training']['learning_rate'] in ('1e-3', '5e-4')
+
+
+def test_run_search_optuna_search_alg():
+    """The Optuna search algorithm runs over the same space and returns a best."""
+    pytest.importorskip('optuna')
+    if not ray.is_initialized():
+        ray.init(
+            local_mode=True, num_cpus=1, include_dashboard=False, log_to_driver=False
+        )
+    try:
+        best = run_search(
+            str(CONFIG_PATH),
+            num_samples=2,
+            gpu_fraction=0.0,
+            cpus_per_trial=1,
+            max_concurrent_trials=1,
+            search_alg='optuna',
+        )
+    finally:
+        ray.shutdown()
+
+    assert best is not None
+    assert SEARCH_METRIC in best.metrics
+
+
+def test_export_best_model_to_torchscript(tmp_path):
+    """The best single-model trial exports to a runnable TorchScript artifact."""
+    if not ray.is_initialized():
+        ray.init(
+            local_mode=True, num_cpus=1, include_dashboard=False, log_to_driver=False
+        )
+    try:
+        best = run_search(
+            str(CONFIG_PATH),
+            num_samples=1,
+            gpu_fraction=0.0,
+            cpus_per_trial=1,
+            max_concurrent_trials=1,
+        )
+        out = tmp_path / 'best_model.pt'
+        export_best_model(best, str(out))
+    finally:
+        ray.shutdown()
+
+    assert out.exists()
+    scripted = torch.jit.load(str(out))
+    # Raw signals [B, C, L] -> raw prediction [B, 1, L]; C from wavelengths_nm (3).
+    signals = torch.randn(1, 3, 256)
+    with torch.no_grad():
+        prediction = scripted(signals)
+    assert prediction.shape == (1, 1, 256)

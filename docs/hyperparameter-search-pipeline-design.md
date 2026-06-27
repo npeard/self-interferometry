@@ -186,5 +186,11 @@ best hyperparameters per architecture, plus exported TorchScript models.
   on-GPU synthetic batches) or a real-data `EnsembleModule` (`VelocityDataModule`)
   and reports the best member's `val/total_unweighted_loss` so ASHA compares it
   with single-model trials. See `configs/tune-ensemble-example.yaml`.
-- **Remaining (follow-up):** Optuna search algorithm; automated best-model
-  TorchScript export from a completed search.
+- **Optuna (done):** `run_search(search_alg='optuna')` (and `main.py
+  --search_alg optuna`) uses Ray's `OptunaSearch` (TPE) over the same space
+  instead of random sampling.
+- **Best-model export (done):** single-model trials checkpoint each validation;
+  `export_best_model(best_result, path)` (and `main.py --export_best PATH`) loads
+  the best trial's checkpoint and writes a TorchScript artifact (baking out
+  training-time weight parametrizations so it scripts cleanly). Ensemble trials
+  are not checkpointed; use `EnsembleModule.best_member_model` for those.
