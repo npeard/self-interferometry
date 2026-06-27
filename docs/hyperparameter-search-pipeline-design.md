@@ -168,3 +168,18 @@ best hyperparameters per architecture, plus exported TorchScript models.
 - Ray + Lightning + W&B version compatibility on the rig.
 - DataLoader `num_workers` on the rig (Linux fork is fine; the macOS segfault is
   dev-box-only).
+
+## 11. Implementation status
+
+- **Phase 1 (done):** `smi/analysis/tune_search.py` (`build_param_space`,
+  `train_func`, `run_search` with ASHA + fractional GPU), the YAML grid removed
+  from `training_interface.py` (`from_yaml` returns a single config), a `--search`
+  mode in `main.py`, `configs/tune-example.yaml`, and CPU smoke tests in
+  `tests/test_tune_search.py`.
+- **Phase 2 (done):** `smi/analysis/ensemble.py` (`EnsembleModule`: shared-batch
+  vmap forward, per-member loss, shared- or per-member-lr optimization,
+  best-member export), a reusable `generate_synthetic_batch` extracted from
+  `SyntheticLitModule`, and `tests/test_ensemble.py` (incl. vmap==looped allclose).
+- **Remaining (follow-up):** compose the two levels (a Ray trial running an
+  `EnsembleModule` inner loop over the within-architecture axis); Optuna search
+  algorithm; automated best-model TorchScript export from a completed search.
