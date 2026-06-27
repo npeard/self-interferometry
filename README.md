@@ -106,7 +106,6 @@ Set the checkpoint path and dataset path (or `"synthetic"`) in the UI controls a
 
 ## Data storage
 
-Datasets are stored as HDF5 (gzip-4, chunked one shot per chunk), which the
-benchmark in `scripts/benchmark_storage.py` found to be the best balance of
-compression and random-shot read speed for this workload; see
-`docs/data-storage-evaluation.md`.
+Datasets are stored as HDF5 (gzip-4, chunked one shot per chunk), which a
+one-off benchmark found to be the best balance of compression and random-shot
+read speed for this workload; see `docs/data-storage-evaluation.md`.

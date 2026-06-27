@@ -1,9 +1,11 @@
 # Data Storage Format Evaluation
 
 Evaluation of on-disk storage formats for self-interferometry acquisition data.
-This is an **evaluate-and-recommend** study; it does **not** change the existing
-data pipeline. A runnable benchmark accompanies it at
-`scripts/benchmark_storage.py`.
+This is an **evaluate-and-recommend** study; it did **not** change the existing
+data pipeline. The conclusion (keep HDF5) has been adopted, so the one-off
+benchmark script and its dependencies (pyarrow/zarr/duckdb/hdf5plugin) were
+removed afterward. The benchmark code is preserved in git history if it ever
+needs to be re-run on different hardware or data.
 
 ## 1. The workload
 
@@ -49,8 +51,8 @@ Subset: first 200 shots x 4 channels from `circuit-noise-600.h5`
 (`52.4 MB` raw float32 in memory). Full-load = best of 3; random-row metric =
 mean over 50 uniform random shot indices, reusing one open handle/connection.
 Hardware: the developer's macOS machine; treat absolute numbers as relative,
-not portable. Reproduce with `pixi run -e bench python scripts/benchmark_storage.py`.
-Sorted by random-row read time (the metric that dominates training throughput).
+not portable. Sorted by random-row read time (the metric that dominates training
+throughput).
 
 | format | write_s | size_MB | ratio | load_s | row_ms |
 |---|---:|---:|---:|---:|---:|
@@ -141,8 +143,9 @@ Optional, situational tweaks (not required):
 - Do **not** raise gzip to level 9: +0.17x ratio for 6x write cost.
 - For Polars-based EDA, export selected shots to Parquet/Feather on demand; do not
   adopt them as the primary training store (10-28x slower per-shot reads).
-- Keep `scripts/benchmark_storage.py` (and the `bench` pixi environment) so this
-  comparison can be re-run if the data characteristics or access pattern change.
+- The benchmark script was removed after this decision; recover it from git
+  history (and re-add pyarrow/zarr/duckdb/hdf5plugin) if the data
+  characteristics or access pattern change enough to warrant re-evaluation.
 
 ## 7. Official documentation cited
 

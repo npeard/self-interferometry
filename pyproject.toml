@@ -15,10 +15,14 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "numpy>=1.26",
+    # This machine (old Intel Mac) is locked to the last x86-64 macOS PyTorch
+    # wheels (2.2.x), which are built against the NumPy 1.x C-ABI. NumPy 2.x
+    # therefore breaks torch ("Failed to initialize NumPy: _ARRAY_API not
+    # found") and segfaults the test suite -- so NumPy is held below 2.
+    "numpy>=1.26,<2",
     "matplotlib",
     "numba",
-    "torch>=2.2",
+    "torch>=2.2,<2.3",
     "lightning",
     "h5py",
     "tqdm",
@@ -140,10 +144,6 @@ allow-dict-calls-with-keyword-arguments = true
 "notebooks/**.py" = ["T201", "ANN", "INP001", "E501", "B018", "PLR0915", "PTH123", "F841", "PLC0415"]
 "*.ipynb" = ["ALL"]
 "scripts/check_ascii.py" = ["S603", "S607", "T201"]
-# CLI evaluation script: prints results, builds local SQL strings, uses a
-# uniform (often unused) runner-lambda signature, and imports optional backends
-# lazily so missing ones can be skipped -- all acceptable for a script.
-"scripts/benchmark_storage.py" = ["T201", "ARG005", "S608", "C901", "N818", "PLR0915", "INP001", "PLC0415"]
 "tests/plot_waveforms.py" = ["PLR0915", "E501"]
 "smi/redpitaya/manager.py" = ["C901", "PLR0912", "PLR0915"]
 "smi/redpitaya/scpi.py" = ["C901", "PLR0912", "PLR0915", "E501"]
@@ -163,6 +163,9 @@ platforms = ["osx-64", "osx-arm64", "linux-64"]
 python = ">=3.12,<3.13"
 numba = "*"
 polars = ">=1.0"
+# Held below 2 to stay ABI-compatible with the torch 2.2 wheels (see the
+# dependencies note above); also keeps the conda solve from pulling NumPy 2.x.
+numpy = ">=1.26,<2"
 # ruff/codespell live in the default env so the `format`/`lint`/`spell` tasks
 # (defined under [tool.pixi.tasks], which runs in the default env) use the
 # pinned, lockfile-backed tools instead of whatever happens to be on PATH.
@@ -189,27 +192,19 @@ pytest-xdist = ">=2.5"
 pytest-benchmark = "*"
 coverage = { version = "*", extras = ["toml"] }
 
-# Storage-format evaluation only (scripts/benchmark_storage.py). These are not
-# used by the library or training pipeline; kept isolated in their own
-# environment so they do not bloat default/dev/test. See
-# docs/data-storage-evaluation.md.
-[tool.pixi.feature.bench.dependencies]
-pyarrow = ">=24.0.0,<25"
-zarr = ">=3.2.1,<4"
-duckdb = ">=1.5.4,<2"
-hdf5plugin = ">=6.0.0,<7"
-
 [tool.pixi.environments]
-default = { solve-group = "default" }
+# The default env includes the test feature so the `test`/`all` tasks (defined
+# under [tool.pixi.tasks], which run in the default env) have pytest available.
+default = { features = ["test"], solve-group = "default" }
 dev = { features = ["dev", "test"], solve-group = "default" }
 test = { features = ["test"], solve-group = "default" }
-bench = { features = ["bench"], solve-group = "default" }
 
 [tool.pixi.tasks]
 format = "ruff format . && ruff check --fix ."
 lint = "ruff check ."
 ascii = "python scripts/check_ascii.py"
-test = "pytest"
+# `python -m pytest` (not bare `pytest`) so it runs via the env's interpreter.
+test = "python -m pytest"
 spell = "codespell ."
 precommit = "pre-commit run --all-files"
 
@@ -225,11 +220,9 @@ python-version = "3.12"
 python = ".pixi/envs/dev"
 
 [tool.ty.src]
-# scripts/benchmark_storage.py depends on the separate 'bench' environment
-# (pyarrow/zarr/duckdb/hdf5plugin), which ty (run in 'dev') cannot resolve.
 # notebooks/ are exploratory marimo apps (like .ipynb, already excluded) with
 # optional-only deps (e.g. torchview); they are not type-gated library code.
-exclude = [".pixi", "**/*.ipynb", "notebooks/**", "scripts/benchmark_storage.py"]
+exclude = [".pixi", "**/*.ipynb", "notebooks/**"]
 
 # Rules dominated by PyTorch / scientific-library typing gaps (incomplete third-
 # party stubs, autograd Function patterns). Downgraded so the high-signal rules
