@@ -192,12 +192,20 @@ pytest-xdist = ">=2.5"
 pytest-benchmark = "*"
 coverage = { version = "*", extras = ["toml"] }
 
+# Hyperparameter / architecture search (smi/analysis/tune_search.py). Included
+# in every test-running env so the search pathway is exercised on CPU in CI as
+# well as on the GPU rig. See docs/hyperparameter-search-pipeline-design.md.
+[tool.pixi.feature.tune.pypi-dependencies]
+ray = { version = ">=2.9", extras = ["tune"] }
+optuna = "*"
+
 [tool.pixi.environments]
 # The default env includes the test feature so the `test`/`all` tasks (defined
 # under [tool.pixi.tasks], which run in the default env) have pytest available.
-default = { features = ["test"], solve-group = "default" }
-dev = { features = ["dev", "test"], solve-group = "default" }
-test = { features = ["test"], solve-group = "default" }
+# `tune` is everywhere so the Ray search path is import- and test-able in CI.
+default = { features = ["test", "tune"], solve-group = "default" }
+dev = { features = ["dev", "test", "tune"], solve-group = "default" }
+test = { features = ["test", "tune"], solve-group = "default" }
 
 [tool.pixi.tasks]
 format = "ruff format . && ruff check --fix ."
