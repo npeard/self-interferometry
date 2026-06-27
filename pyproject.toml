@@ -205,7 +205,7 @@ lint = "ruff check ."
 ascii = "python scripts/check_ascii.py"
 # `python -m pytest` (not bare `pytest`) so it runs via the env's interpreter.
 test = "python -m pytest"
-spell = "codespell ."
+spell = "python -m codespell_lib ."
 precommit = "pre-commit run --all-files"
 
 [tool.pixi.feature.dev.tasks]
