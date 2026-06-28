@@ -84,22 +84,16 @@ def test_run_search_smoke_returns_best_result():
     """End-to-end: 1 sample, CPU, 1 epoch, tiny synthetic config.
 
     Exercises the same train_func path used on GPU and asserts a best result
-    with the search metric is returned.
+    with the search metric is returned. Ray is auto-initialized by run_search
+    (local_mode was removed in Ray 2.49); trials run as real workers on CPU.
     """
-    if not ray.is_initialized():
-        ray.init(
-            local_mode=True, num_cpus=1, include_dashboard=False, log_to_driver=False
-        )
-    try:
-        best = run_search(
-            str(CONFIG_PATH),
-            num_samples=1,
-            gpu_fraction=0.0,
-            cpus_per_trial=1,
-            max_concurrent_trials=1,
-        )
-    finally:
-        ray.shutdown()
+    best = run_search(
+        str(CONFIG_PATH),
+        num_samples=1,
+        gpu_fraction=0.0,
+        cpus_per_trial=1,
+        max_concurrent_trials=1,
+    )
 
     assert best is not None
     assert SEARCH_METRIC in best.metrics
@@ -112,21 +106,14 @@ def test_run_search_smoke_returns_best_result():
 def test_run_search_optuna_search_alg():
     """The Optuna search algorithm runs over the same space and returns a best."""
     pytest.importorskip('optuna')
-    if not ray.is_initialized():
-        ray.init(
-            local_mode=True, num_cpus=1, include_dashboard=False, log_to_driver=False
-        )
-    try:
-        best = run_search(
-            str(CONFIG_PATH),
-            num_samples=2,
-            gpu_fraction=0.0,
-            cpus_per_trial=1,
-            max_concurrent_trials=1,
-            search_alg='optuna',
-        )
-    finally:
-        ray.shutdown()
+    best = run_search(
+        str(CONFIG_PATH),
+        num_samples=2,
+        gpu_fraction=0.0,
+        cpus_per_trial=1,
+        max_concurrent_trials=1,
+        search_alg='optuna',
+    )
 
     assert best is not None
     assert SEARCH_METRIC in best.metrics
@@ -134,22 +121,15 @@ def test_run_search_optuna_search_alg():
 
 def test_export_best_model_to_torchscript(tmp_path):
     """The best single-model trial exports to a runnable TorchScript artifact."""
-    if not ray.is_initialized():
-        ray.init(
-            local_mode=True, num_cpus=1, include_dashboard=False, log_to_driver=False
-        )
-    try:
-        best = run_search(
-            str(CONFIG_PATH),
-            num_samples=1,
-            gpu_fraction=0.0,
-            cpus_per_trial=1,
-            max_concurrent_trials=1,
-        )
-        out = tmp_path / 'best_model.pt'
-        export_best_model(best, str(out))
-    finally:
-        ray.shutdown()
+    best = run_search(
+        str(CONFIG_PATH),
+        num_samples=1,
+        gpu_fraction=0.0,
+        cpus_per_trial=1,
+        max_concurrent_trials=1,
+    )
+    out = tmp_path / 'best_model.pt'
+    export_best_model(best, str(out))
 
     assert out.exists()
     scripted = torch.jit.load(str(out))
