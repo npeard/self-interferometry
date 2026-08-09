@@ -17,12 +17,21 @@ repos:
     -   id: debug-statements
     -   id: check-merge-conflict
 
--   repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.12.10
+    # Use the pixi-managed ruff (same binary/version/config as `pixi run lint`)
+    # rather than a separately pinned ruff-pre-commit, so the hook and the task
+    # never diverge. Requires `pixi install`.
+-   repo: local
     hooks:
     -   id: ruff
-        args: [--fix, --exit-non-zero-on-fix]
+        name: ruff
+        entry: .pixi/envs/dev/bin/ruff check --fix --exit-non-zero-on-fix
+        language: system
+        types: [python]
     -   id: ruff-format
+        name: ruff-format
+        entry: .pixi/envs/dev/bin/ruff format
+        language: system
+        types: [python]
 
 -   repo: https://github.com/codespell-project/codespell
     rev: v2.4.1

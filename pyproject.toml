@@ -1,5 +1,5 @@
 [project]
-name = "self-interferometry"
+name = "smi"
 version = "0.1.0"
 description = "Self-Mixing Interferometry for Rapid Vibration/Acoustic Spectrograms"
 authors = [
@@ -15,10 +15,14 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "numpy>=1.26",
+    # This machine (old Intel Mac) is locked to the last x86-64 macOS PyTorch
+    # wheels (2.2.x), which are built against the NumPy 1.x C-ABI. NumPy 2.x
+    # therefore breaks torch ("Failed to initialize NumPy: _ARRAY_API not
+    # found") and segfaults the test suite -- so NumPy is held below 2.
+    "numpy>=1.26,<2",
     "matplotlib",
     "numba",
-    "torch>=2.2",
+    "torch>=2.2,<2.3",
     "lightning",
     "h5py",
     "tqdm",
@@ -27,8 +31,8 @@ dependencies = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/npeard/self-interferometry"
-"Bug Tracker" = "https://github.com/npeard/self-interferometry/issues"
+"Homepage" = "https://github.com/npeard/smi"
+"Bug Tracker" = "https://github.com/npeard/smi/issues"
 
 [build-system]
 requires = ["flit_core>=3.9.0,<4"]
@@ -55,7 +59,7 @@ filterwarnings = [
     "ignore::UserWarning:numba.*",
     "ignore::DeprecationWarning:numba.*",
     # Keep warnings from your own package (as warnings, not errors)
-    "default::Warning:self_interferometry.*",
+    "default::Warning:smi.*",
 ]
 
 [project.optional-dependencies]
@@ -81,7 +85,7 @@ dev = [
 ]
 
 [tool.flit.module]
-name = "self_interferometry"
+name = "smi"
 
 [tool.ruff.format]
 quote-style = "single"
@@ -135,14 +139,15 @@ allow-dict-calls-with-keyword-arguments = true
 "__init__.py" = ["F401"]
 "docs/**.py" = ["INP001", "ARG001", "ANN"]
 "conftest.py" = ["ANN"]
-"tests/**.py" = ["ANN"]
-"notebooks/**.py" = ["T201", "ANN", "INP001", "E501", "B018", "PLR0915", "PTH123", "F841"]
+"tests/**.py" = ["ANN", "INP001"]
+# Marimo notebooks define imports inside reactive cells (PLC0415 is expected).
+"notebooks/**.py" = ["T201", "ANN", "INP001", "E501", "B018", "PLR0915", "PTH123", "F841", "PLC0415"]
 "*.ipynb" = ["ALL"]
 "scripts/check_ascii.py" = ["S603", "S607", "T201"]
 "tests/plot_waveforms.py" = ["PLR0915", "E501"]
-"self_interferometry/acquisition/redpitaya/manager.py" = ["C901", "PLR0912", "PLR0915"]
-"self_interferometry/acquisition/redpitaya/scpi.py" = ["C901", "PLR0912", "PLR0915", "E501"]
-"self_interferometry/analysis/inspect_data.py" = ["PLR0915"]
+"smi/redpitaya/manager.py" = ["C901", "PLR0912", "PLR0915"]
+"smi/redpitaya/scpi.py" = ["C901", "PLR0912", "PLR0915", "E501"]
+"smi/analysis/inspect_data.py" = ["PLR0915"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -157,13 +162,20 @@ platforms = ["osx-64", "osx-arm64", "linux-64"]
 [tool.pixi.dependencies]
 python = ">=3.12,<3.13"
 numba = "*"
+polars = ">=1.0"
+# Held below 2 to stay ABI-compatible with the torch 2.2 wheels (see the
+# dependencies note above); also keeps the conda solve from pulling NumPy 2.x.
+numpy = ">=1.26,<2"
+# ruff/codespell live in the default env so the `format`/`lint`/`spell` tasks
+# (defined under [tool.pixi.tasks], which runs in the default env) use the
+# pinned, lockfile-backed tools instead of whatever happens to be on PATH.
+ruff = ">=0.15,<0.16"
+codespell = "*"
 
 [tool.pixi.pypi-dependencies]
-self-interferometry = { path = ".", editable = true }
+smi = { path = ".", editable = true }
 
 [tool.pixi.feature.dev.pypi-dependencies]
-ruff = "*"
-codespell = "*"
 pre-commit = "*"
 nbstripout = "*"
 ty = "*"
@@ -180,17 +192,28 @@ pytest-xdist = ">=2.5"
 pytest-benchmark = "*"
 coverage = { version = "*", extras = ["toml"] }
 
+# Hyperparameter / architecture search (smi/analysis/tune_search.py). Included
+# in every test-running env so the search pathway is exercised on CPU in CI as
+# well as on the GPU rig. See docs/hyperparameter-search-pipeline-design.md.
+[tool.pixi.feature.tune.pypi-dependencies]
+ray = { version = ">=2.9", extras = ["tune"] }
+optuna = "*"
+
 [tool.pixi.environments]
-default = { solve-group = "default" }
-dev = { features = ["dev", "test"], solve-group = "default" }
-test = { features = ["test"], solve-group = "default" }
+# The default env includes the test feature so the `test`/`all` tasks (defined
+# under [tool.pixi.tasks], which run in the default env) have pytest available.
+# `tune` is everywhere so the Ray search path is import- and test-able in CI.
+default = { features = ["test", "tune"], solve-group = "default" }
+dev = { features = ["dev", "test", "tune"], solve-group = "default" }
+test = { features = ["test", "tune"], solve-group = "default" }
 
 [tool.pixi.tasks]
 format = "ruff format . && ruff check --fix ."
 lint = "ruff check ."
 ascii = "python scripts/check_ascii.py"
-test = "pytest"
-spell = "codespell ."
+# `python -m pytest` (not bare `pytest`) so it runs via the env's interpreter.
+test = "python -m pytest"
+spell = "python -m codespell_lib ."
 precommit = "pre-commit run --all-files"
 
 [tool.pixi.feature.dev.tasks]
@@ -199,9 +222,15 @@ all = { depends-on = ["format", "lint", "ascii", "typecheck", "test"] }
 
 [tool.ty.environment]
 python-version = "3.12"
+# Resolve third-party imports against the dev pixi environment explicitly, so
+# `ty` is deterministic whether invoked via `pixi run typecheck` (env activated)
+# or directly by the pre-commit hook (`.pixi/envs/dev/bin/ty`, env not active).
+python = ".pixi/envs/dev"
 
 [tool.ty.src]
-exclude = [".pixi", "**/*.ipynb"]
+# notebooks/ are exploratory marimo apps (like .ipynb, already excluded) with
+# optional-only deps (e.g. torchview); they are not type-gated library code.
+exclude = [".pixi", "**/*.ipynb", "notebooks/**"]
 
 # Rules dominated by PyTorch / scientific-library typing gaps (incomplete third-
 # party stubs, autograd Function patterns). Downgraded so the high-signal rules
@@ -217,7 +246,7 @@ invalid-type-form = "ignore"
 possibly-missing-submodule = "ignore"
 
 [tool.coverage.run]
-source = ["self_interferometry"]
+source = ["smi"]
 branch = true
 
 [tool.coverage.report]
